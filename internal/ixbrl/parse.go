@@ -425,11 +425,18 @@ func qnameLocal(q string) string {
 	return q
 }
 
-// Prod{run}_{batch}_{company}_{yyyymmdd}.{ext} or {company}_aa_{date}.xhtml
+// Filename patterns seen in Companies House dumps:
+//   - {company}_{type}_{date}.xhtml   e.g. 03024914_aa_2023-03-13.xhtml
+//   - Prod{run}_{batch}_{company}_{yyyymmdd}.{html|xml|xhtml}
+//     e.g. Prod223_4203_00134794_20250927.html
+//   - Optional LLP / SC / NI style ids: SC123456, NI123456, etc.
 var (
-	companyFileRE = regexp.MustCompile(`(?i)(?:^|/)(\d{6,8}|[A-Z]{2}\d{6})[_\.]`)
-	// Historical CH bulk: Prod224_9956_04944372_20100331.xml
-	prodFileRE = regexp.MustCompile(`(?i)^Prod\d+_\d+_([^_]+)_\d{8}\.(html|xml|xhtml|zip)$`)
+	// Prefer Prod* first so the middle company field is not confused with batch numbers.
+	prodFileRE = regexp.MustCompile(`(?i)^Prod\d+_\d+_([A-Z]{0,2}\d{6,8})_\d{8}\.(html|htm|xml|xhtml|zip)$`)
+	// Leading company id before underscore or extension.
+	companyFileRE = regexp.MustCompile(`(?i)^([0-9]{6,8}|[A-Z]{2}[0-9]{6})[_\.]`)
+	// Fallback: first 6–8 digit run in the basename (last resort).
+	companyAnyRE = regexp.MustCompile(`(?i)(?:^|_)([0-9]{6,8}|[A-Z]{2}[0-9]{6})(?:[_\.]|$)`)
 )
 
 func companyFromFilename(name string) string {
@@ -440,7 +447,7 @@ func companyFromFilename(name string) string {
 	if m := companyFileRE.FindStringSubmatch(base); len(m) > 1 {
 		return m[1]
 	}
-	if m := regexp.MustCompile(`^(\d{6,8})`).FindStringSubmatch(base); len(m) > 1 {
+	if m := companyAnyRE.FindStringSubmatch(base); len(m) > 1 {
 		return m[1]
 	}
 	return ""

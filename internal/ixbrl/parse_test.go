@@ -8,37 +8,45 @@ import (
 )
 
 func TestParseSampleFiles(t *testing.T) {
-	samples, err := filepath.Glob(filepath.Join("..", "..", "samples", "*.xhtml"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Cover both modern CH dumps ({company}_aa_{date}.xhtml) and bulk Prod* (.html).
+	samples := globSamples(t)
 	if len(samples) == 0 {
 		t.Skip("no samples")
 	}
 	for _, p := range samples {
 		p := p
-		t.Run(filepath.Base(p), func(t *testing.T) {
+		base := filepath.Base(p)
+		t.Run(base, func(t *testing.T) {
 			data, err := os.ReadFile(p)
 			if err != nil {
 				t.Fatal(err)
 			}
-			facts, err := ParseBytes(data, filepath.Base(p))
+			facts, err := ParseBytes(data, base)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(facts) == 0 {
 				t.Fatal("expected facts")
 			}
-			var hasCompany, hasConcept bool
+
+			wantCompany := companyFromFilename(base)
+			var hasCompany, hasConcept, companyMatches bool
 			for _, f := range facts {
 				if f.CompanyID != "" {
 					hasCompany = true
+					if wantCompany != "" && f.CompanyID == wantCompany {
+						companyMatches = true
+					}
 				}
 				if f.Concept != "" {
 					hasConcept = true
 				}
 				if f.SourceFile == "" {
 					t.Error("missing source_file")
+				}
+				if f.SourceFile != base {
+					t.Errorf("source_file=%q want %q", f.SourceFile, base)
+					break
 				}
 			}
 			if !hasCompany {
@@ -47,9 +55,28 @@ func TestParseSampleFiles(t *testing.T) {
 			if !hasConcept {
 				t.Error("no concepts")
 			}
-			t.Logf("%s: %d facts", filepath.Base(p), len(facts))
+			if wantCompany != "" && !companyMatches {
+				// Company may also come from entity identifier / registered-number fact;
+				// require at least one fact carries the id implied by the filename.
+				t.Errorf("expected some fact with company_id=%q (from filename)", wantCompany)
+			}
+			t.Logf("%s: %d facts company=%s", base, len(facts), wantCompany)
 		})
 	}
+}
+
+func globSamples(t *testing.T) []string {
+	t.Helper()
+	dir := filepath.Join("..", "..", "samples")
+	var out []string
+	for _, pat := range []string{"*.xhtml", "*.html", "*.xml"} {
+		matches, err := filepath.Glob(filepath.Join(dir, pat))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, matches...)
+	}
+	return out
 }
 
 func TestNormaliseNumeric(t *testing.T) {
@@ -77,9 +104,16 @@ func TestNormaliseNumeric(t *testing.T) {
 
 func TestCompanyFromFilename(t *testing.T) {
 	cases := map[string]string{
-		"03024914_aa_2023-03-13.xhtml":           "03024914",
-		"Prod224_9956_04944372_20100331.xml":     "04944372",
-		"path/to/09652677_aa_2026-03-25.xhtml":   "09652677",
+		// Modern accounts dump: {company}_{type}_{date}.xhtml
+		"03024914_aa_2023-03-13.xhtml":         "03024914",
+		"path/to/09652677_aa_2026-03-25.xhtml": "09652677",
+		"13566765_aa_2026-03-26.xhtml":         "13566765",
+		// Bulk / historic: Prod{run}_{batch}_{company}_{yyyymmdd}.html
+		"Prod224_9956_04944372_20100331.xml":       "04944372",
+		"Prod223_4203_00134794_20250927.html":      "00134794",
+		"Prod223_4203_15145702_20251231.html":      "15145702",
+		"Prod223_4203_10941963_20250930.html":      "10941963",
+		"dir/Prod223_4203_08798715_20250331.html":  "08798715",
 	}
 	for in, want := range cases {
 		if got := companyFromFilename(in); got != want {
