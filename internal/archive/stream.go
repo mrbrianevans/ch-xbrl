@@ -120,6 +120,8 @@ func isZstd(source string) bool {
 		strings.Contains(s, ".tar.zst") || strings.Contains(s, "tar.zst")
 }
 
+// isXBRLName reports whether a tar member looks like an iXBRL/XBRL instance.
+// Companies House uses both .xhtml (recent) and .html (bulk Prod* packages).
 func isXBRLName(name string) bool {
 	l := strings.ToLower(name)
 	return strings.HasSuffix(l, ".xhtml") ||

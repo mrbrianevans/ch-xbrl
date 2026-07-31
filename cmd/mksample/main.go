@@ -1,4 +1,5 @@
-// Command mksample packs samples/*.xhtml into a .tar.zst for local testing.
+// Command mksample packs sample iXBRL files into a .tar.zst for local testing.
+// Includes modern {company}_aa_*.xhtml and bulk Prod*_*.html naming conventions.
 //
 //	go run ./cmd/mksample -out samples/sample.tar.zst
 package main
@@ -31,8 +32,10 @@ func main() {
 		if strings.HasSuffix(low, ".tar.zst") || strings.HasSuffix(low, ".zst") {
 			return nil
 		}
+		// .html = bulk Prod* dumps; .xhtml = newer accounts packages
 		if !(strings.HasSuffix(low, ".xhtml") || strings.HasSuffix(low, ".html") ||
-			strings.HasSuffix(low, ".xbrl") || strings.HasSuffix(low, ".xml")) {
+			strings.HasSuffix(low, ".htm") || strings.HasSuffix(low, ".xbrl") ||
+			strings.HasSuffix(low, ".xml")) {
 			return nil
 		}
 		// archive member name = basename (flat layout, typical of CH bulk dumps)
