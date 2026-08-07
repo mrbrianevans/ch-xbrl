@@ -2,7 +2,7 @@
 
 How to sanity-check **ch-xbrl** extract output against [Arelle](https://arelle.org/) on local sample iXBRL files.
 
-This is a **correctness oracle**, not a bulk extractor. Arelle resolves the full DTS (schemas and linkbases) and is much slower than `cmd/extract`. Soft matching only: same fact counts and concepts matter more than byte-identical strings.
+This is a **correctness oracle**, not a bulk extractor. Arelle resolves the full DTS (schemas and linkbases) and is much slower than `cmd/ch-xbrl`. Soft matching only: same fact counts and concepts matter more than byte-identical strings.
 
 ---
 
@@ -51,12 +51,12 @@ uv run arelleCmdLine --version
 From the **repository root**, extract the sample archive (or any archive that contains the instances you will verify):
 
 ```bash
-go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
+go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
 ```
 
 Notes:
 
-- `cmd/extract` reads **zip / tar.zst**, not a single loose `.xhtml` path.
+- `cmd/ch-xbrl` reads **zip / tar.zst**, not a single loose `.xhtml` path.
 - Loose samples under `samples/` are also packed into `samples/sample.tar.zst` (via `cmd/mksample` if you refresh them).
 - The compare step filters extract rows by `source_file` basename matching the instance file name.
 
@@ -76,7 +76,7 @@ Flags:
 | Flag | Purpose |
 |------|---------|
 | `-i` | Single iXBRL/HTML instance |
-| `--extract` | Long-format CSV from `cmd/extract` |
+| `--extract` | Long-format CSV from `cmd/ch-xbrl` |
 | `--offline` | Arelle cache only (fast **after** taxonomies are cached) |
 | `-o out` | Directory for Arelle raw CSV (default `out/`) |
 | `--skip-arelle` | Reuse existing `out/<stem>.arelle_raw.csv` |
@@ -129,7 +129,7 @@ Then compare with DuckDB / re-run `verify_instance.py --skip-arelle` if the raw 
 ### One instance at a time
 
 - Do not pass CH bulk zips to this verifier. Arelle is slow; the tool is designed for single loose samples.
-- Use `cmd/extract` on zip/tar.zst for the reference long CSV; point `-i` at a file under `samples/`.
+- Use `cmd/ch-xbrl` on zip/tar.zst for the reference long CSV; point `-i` at a file under `samples/`.
 
 ### Soft value mismatches are usually narrative truncation
 
@@ -183,7 +183,7 @@ verify/arelle/
 **Inputs:**
 
 - Instances: all 33 `samples/*.{xhtml,html}`
-- Extract: `data/facts_sample.csv` from `go run ./cmd/extract -in samples/sample.tar.zst`
+- Extract: `data/facts_sample.csv` from `go run ./cmd/ch-xbrl -in samples/sample.tar.zst`
 - Procedure: offline batch first (many incomplete Arelle exports) → **re-run online** for files with 0 usable Arelle facts → merge results
 
 ### Summary
