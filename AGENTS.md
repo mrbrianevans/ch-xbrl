@@ -110,8 +110,8 @@ go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
 go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
-# remote CH bulk zip (HTTP range):
-# go run ./cmd/extract -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" -out data/facts.csv
+# remote CH bulk zip (batched parallel HTTP ranges via CloudFront):
+# go run ./cmd/extract -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" -out data/facts.csv -workers 16
 duckdb -c ".read sql/transform.sql"
 # or: make all
 # optional live zip smoke: CH_XBR_INTEGRATION=1 go test ./internal/archive/ -tags=integration -run TestIntegrationRemoteCHZip -v
