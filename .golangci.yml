@@ -1,8 +1,0 @@
-# golangci-lint v2 config — keep default standard set for a small pure-Go repo.
-version: "2"
-
-linters:
-  default: standard
-
-run:
-  tests: true
