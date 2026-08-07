@@ -17,12 +17,12 @@ System for **high-volume extraction** of Companies House accounts (inline XBRL /
 The pipeline is deliberately split into four stages:
 
 ```text
-  tar.zst (remote or local)
+  zip or tar.zst (remote or local)
            │
            ▼
   ┌─────────────────────┐
-  │  Go extract         │  stream zstd → tar → worker pool → iXBRL parse
-  │  cmd/extract        │
+  │  Go extract         │  open archive → worker pool → iXBRL parse
+  │  cmd/extract        │  (zip: HTTP range; tar.zst: stream zstd→tar)
   └─────────┬───────────┘
             │ long-format facts.csv
             │  (one row per fact)
@@ -56,7 +56,7 @@ A contrasting approach (wide rows and hard-coded concept priority *inside* the p
 
 ### Stages in brief
 
-1. **Extract (Go)** — Fully stream a `tar.zst` of many ~100 KB iXBRL files. For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
+1. **Extract (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET). For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
 
 2. **Taxonomy (Go, infrequent)** — Download or seed FRC (and related) schemas; write small static reference CSVs (`concepts.csv`, optionally labels/calculations later).
 
@@ -81,7 +81,7 @@ A contrasting approach (wide rows and hard-coded concept priority *inside* the p
 ## Repository layout
 
 ```text
-cmd/extract/       streaming extractor
+cmd/extract/       streaming extractor (zip / tar.zst, local or remote)
 cmd/taxonomy/      taxonomy → reference CSVs
 cmd/mksample/      build sample.tar.zst from samples/
 internal/          shared Go packages (ixbrl, archive, fact, csvout)
@@ -106,10 +106,28 @@ duckdb -c ".read sql/transform.sql"
 
 Or `make all` if you have Make.
 
-Production extract against a bulk archive:
+### Input formats
+
+| Input | Local | Remote |
+|-------|-------|--------|
+| `.zip` | file open + random access | HTTP **range** requests (central directory + members) |
+| `.tar.zst` / `.tar` | stream from disk | single streaming GET |
+
+Format is inferred from the path or URL (query strings ignored). Parsing of iXBRL members is unchanged.
+
+Production extract against a Companies House bulk ZIP:
+
+```bash
+go run ./cmd/extract \
+  -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" \
+  -out data/facts.csv -workers 16
+```
+
+Or a remote / local `tar.zst`:
 
 ```bash
 go run ./cmd/extract -in "https://example/Accounts_Bulk_Data.tar.zst" -out data/facts.csv -workers 16
+go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
 ```
 
 ## Design constraints

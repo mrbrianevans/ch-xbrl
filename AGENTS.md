@@ -25,7 +25,7 @@ Typical loop:
 
 High-volume **Companies House iXBRL** extraction into an analytics-ready form:
 
-1. **Go extractor** — stream remote/local `tar.zst` → long-format fact CSV.
+1. **Go extractor** — stream remote/local `.zip` or `tar.zst` → long-format fact CSV.
 2. **Go taxonomy tool** — infrequent FRC/UK taxonomy parse → reference CSVs.
 3. **Hand-curated map** — `mapping/concept_map.csv` in git.
 4. **DuckDB SQL** — normalise, priority-pick, pivot, cast → wide Parquet.
@@ -49,11 +49,11 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 ## Layout
 
 ```text
-cmd/extract/      stream tar.zst → facts.csv
+cmd/extract/      stream zip or tar.zst (local/remote) → facts.csv
 cmd/taxonomy/     taxonomy packages → reference/concepts.csv
 cmd/mksample/     samples/*.xhtml → samples/sample.tar.zst
 internal/ixbrl/   iXBRL parser
-internal/archive  tar.zst stream + writer
+internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
 internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
@@ -110,8 +110,11 @@ go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
 go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
+# remote CH bulk zip (HTTP range):
+# go run ./cmd/extract -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" -out data/facts.csv
 duckdb -c ".read sql/transform.sql"
 # or: make all
+# optional live zip smoke: CH_XBR_INTEGRATION=1 go test ./internal/archive/ -tags=integration -run TestIntegrationRemoteCHZip -v
 ```
 
 ## Communication
