@@ -1,8 +1,16 @@
-// Command extract streams a remote or local tar.zst of Companies House iXBRL
+// Command extract streams a remote or local archive of Companies House iXBRL
 // accounts and writes a long-format fact CSV.
+//
+// Supported inputs (local path or http(s) URL):
+//
+//	.zip      — random access; remote uses HTTP range requests
+//	.tar.zst  — sequential stream (optional plain .tar)
+//
+// Examples:
 //
 //	extract -in samples/sample.tar.zst -out data/facts.csv
 //	extract -in https://example.com/Accounts_Bulk_Data.tar.zst -out facts.csv -workers 16
+//	extract -in https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip -out facts.csv
 package main
 
 import (
@@ -23,7 +31,7 @@ import (
 )
 
 func main() {
-	in := flag.String("in", "", "local path or https URL of a .tar.zst (or .tar) archive")
+	in := flag.String("in", "", "local path or https URL of a .zip, .tar.zst, or .tar archive")
 	out := flag.String("out", "facts.csv", "output CSV path (use - for stdout)")
 	workers := flag.Int("workers", runtime.NumCPU(), "concurrent XBRL parse workers")
 	queue := flag.Int("queue", 64, "member queue depth")
@@ -31,6 +39,7 @@ func main() {
 
 	if *in == "" {
 		fmt.Fprintln(os.Stderr, "usage: extract -in <path|url> [-out facts.csv] [-workers N]")
+		fmt.Fprintln(os.Stderr, "  -in accepts local or remote .zip / .tar.zst / .tar")
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
@@ -108,6 +117,7 @@ func main() {
 	}()
 
 	start := time.Now()
+	log.Printf("input: %s format=%s", *in, archive.DetectFormat(*in))
 	n, streamErr := archive.Stream(ctx, *in, members)
 	wg.Wait()
 	close(done)
