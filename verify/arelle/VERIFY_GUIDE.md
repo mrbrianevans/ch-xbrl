@@ -283,6 +283,28 @@ extract: "In our opinion the financial statements:"
 
 ---
 
+## CI (GitHub Actions)
+
+Workflow: [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle-verify.yml)
+
+| Trigger | Behaviour |
+|---------|-----------|
+| Push to `master` / `main` | Full sample set; Arelle **online** (taxonomies can download) |
+| **workflow_dispatch** | Optional `limit` and `offline`; same report |
+
+Steps: `go test` → extract `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
+
+Local equivalent:
+
+```bash
+cd verify/arelle
+uv run python run_batch.py \
+  --extract ../../data/facts.csv \
+  --summary-md out/ci_summary.md
+```
+
+Job fails if any sample is **FAIL** or **ERROR**; **OK** / **OK_SOFT** keep the job green.
+
 ## Related docs
 
 - Short quick-start: [`README.md`](./README.md)

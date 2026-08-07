@@ -6,6 +6,23 @@ Sanity-check **one** iXBRL instance against `cmd/extract` using Arelle as a slow
 
 Soft match only — not byte-identical. Whitespace, thousands separators, `(reported)` empties, and common date displays are normalised. **Dimensions, units, and taxonomy are ignored.**
 
+## CI
+
+GitHub Actions workflow [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle-verify.yml):
+
+- **Triggers:** push to `master` / `main`, and **workflow_dispatch** (optional sample limit / offline)
+- Runs `go test`, `cmd/extract` on `samples/sample.tar.zst`, then Arelle soft-compare of every sample
+- Writes a Markdown report to the **job summary** (and `out/ci_summary.md` artefact)
+
+Local batch (same reporter as CI):
+
+```bash
+cd verify/arelle
+uv run python run_batch.py \
+  --extract ../../data/facts.csv \
+  --summary-md out/ci_summary.md
+```
+
 ## Setup
 
 ```bash
