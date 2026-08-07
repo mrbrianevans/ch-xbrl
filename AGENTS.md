@@ -80,7 +80,7 @@ README.md         goals and design overview
   go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
   ```
 
-- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, golangci-lint, `go test -race`, build).
+- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `go test -race`, build).
 
 - After concept map or SQL changes, run DuckDB when available:
 
