@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // isRemote reports whether source is an http(s) URL.
@@ -29,8 +30,7 @@ func openHTTP(ctx context.Context, source string) (io.ReadCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{Timeout: 0} // stream; no overall timeout
-	resp, err := client.Do(req)
+	resp, err := newRemoteHTTPClient().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +44,9 @@ func openHTTP(ctx context.Context, source string) (io.ReadCloser, error) {
 // openReaderAt returns random-access bytes for a local file or remote object
 // that supports HTTP range requests. closer must be closed by the caller when
 // non-nil (local *os.File); the http range reader needs no close.
+//
+// Prefer streamZipRemote for remote ZIP member extraction (batched ranges).
+// openReaderAt remains for local ZIP and low-level tests.
 func openReaderAt(ctx context.Context, source string) (ra io.ReaderAt, size int64, closer io.Closer, err error) {
 	if isRemote(source) {
 		rr, err := newHTTPRangeReader(ctx, source)
@@ -64,8 +67,80 @@ func openReaderAt(ctx context.Context, source string) (ra io.ReaderAt, size int6
 	return f, st.Size(), f, nil
 }
 
+// newRemoteHTTPClient returns an HTTP client tuned for CloudFront/S3 bulk range access:
+// long-lived connections, HTTP/2 when available, and enough idle conns for parallel ranges.
+func newRemoteHTTPClient() *http.Client {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConns = 128
+	t.MaxIdleConnsPerHost = 64
+	t.MaxConnsPerHost = 32
+	t.ForceAttemptHTTP2 = true
+	t.IdleConnTimeout = 0 // keep for bulk runs
+	return &http.Client{Timeout: 0, Transport: t}
+}
+
+// rangeGET fetches bytes [start, end] inclusive via a single HTTP Range request.
+// CloudFront/S3 return 206 Partial Content.
+func rangeGET(ctx context.Context, client *http.Client, url string, start, end int64) ([]byte, error) {
+	if start < 0 || end < start {
+		return nil, fmt.Errorf("invalid range %d-%d", start, end)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", start, end))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	want := end - start + 1
+	switch resp.StatusCode {
+	case http.StatusPartialContent:
+		// expected
+	case http.StatusOK:
+		if start != 0 {
+			return nil, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", url, start, end)
+		}
+	default:
+		io.Copy(io.Discard, resp.Body)
+		return nil, fmt.Errorf("HTTP %s for range %d-%d of %s", resp.Status, start, end, url)
+	}
+
+	buf := make([]byte, want)
+	n, err := io.ReadFull(resp.Body, buf)
+	if err == io.ErrUnexpectedEOF || err == io.EOF {
+		return nil, fmt.Errorf("short range body for %s: got %d want %d: %w", url, n, want, err)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
+
+// countingTransport wraps a RoundTripper and counts requests (tests / diagnostics).
+type countingTransport struct {
+	base http.RoundTripper
+	n    atomic.Int64
+}
+
+func (c *countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.n.Add(1)
+	base := c.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(req)
+}
+
+func (c *countingTransport) Count() int64 { return c.n.Load() }
+
 // httpRangeReader implements io.ReaderAt via HTTP Range requests.
 // Companies House bulk ZIPs (S3/CloudFront) support 206 Partial Content.
+// Note: each ReadAt is one request — fine for tests; remote ZIP extract uses batched rangeGET.
 type httpRangeReader struct {
 	ctx    context.Context
 	client *http.Client
@@ -74,7 +149,7 @@ type httpRangeReader struct {
 }
 
 func newHTTPRangeReader(ctx context.Context, url string) (*httpRangeReader, error) {
-	client := &http.Client{Timeout: 0}
+	client := newRemoteHTTPClient()
 	size, err := remoteSize(ctx, client, url)
 	if err != nil {
 		return nil, err
@@ -102,41 +177,11 @@ func (r *httpRangeReader) ReadAt(p []byte, off int64) (int, error) {
 	}
 	end := off + want - 1
 
-	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.url, nil)
+	buf, err := rangeGET(r.ctx, r.client, r.url, off, end)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", off, end))
-
-	resp, err := r.client.Do(req)
-	if err != nil {
-		// Preserve context errors for clean cancel/timeout handling upstream.
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusPartialContent:
-		// expected
-	case http.StatusOK:
-		// Server ignored Range; only usable when reading from the start.
-		if off != 0 {
-			return 0, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", r.url, off, end)
-		}
-	default:
-		return 0, fmt.Errorf("HTTP %s for range %d-%d of %s", resp.Status, off, end, r.url)
-	}
-
-	n, err := io.ReadFull(resp.Body, p[:want])
-	if err == io.ErrUnexpectedEOF || err == io.EOF {
-		if off+int64(n) >= r.size {
-			return n, io.EOF
-		}
-		return n, fmt.Errorf("short range body for %s: got %d want %d: %w", r.url, n, want, err)
-	}
-	if err != nil {
-		return n, err
-	}
+	n := copy(p, buf)
 	if n < len(p) {
 		return n, io.EOF
 	}

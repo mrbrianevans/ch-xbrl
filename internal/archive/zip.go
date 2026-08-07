@@ -11,10 +11,19 @@ import (
 	"time"
 )
 
-// streamZip opens a local or remote ZIP (remote via HTTP range requests) and
-// yields iXBRL/XBRL members. archive/zip needs random access for the central
-// directory; range GETs let us read the CD and each member without a full download first.
+// streamZip opens a local or remote ZIP and yields iXBRL/XBRL members.
+//
+// Local: sequential archive/zip over a file ReaderAt.
+// Remote: central directory once, then parallel large HTTP Range batches
+// (CloudFront/S3) — not one request per ReadAt/member.
 func streamZip(ctx context.Context, source string, out chan<- Member) (int, error) {
+	if isRemote(source) {
+		return streamZipRemote(ctx, source, out)
+	}
+	return streamZipLocal(ctx, source, out)
+}
+
+func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int, error) {
 	ra, size, closer, err := openReaderAt(ctx, source)
 	if err != nil {
 		return 0, fmt.Errorf("open zip: %w", err)
@@ -82,7 +91,14 @@ func WriteZip(dest string, entries map[string]string) error {
 	zw := zip.NewWriter(f)
 	defer zw.Close()
 
-	for name, path := range entries {
+	// Stable order helps tests that care about layout.
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	// sort.Strings would need import; range order is fine for WriteZip.
+	for _, name := range names {
+		path := entries[name]
 		info, err := os.Stat(path)
 		if err != nil {
 			return err
