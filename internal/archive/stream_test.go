@@ -142,10 +142,9 @@ func TestStreamUnsupportedFormat(t *testing.T) {
 	}
 }
 
-// rangeFileServer serves file bytes and honours Range requests (like S3/CloudFront).
-func rangeFileServer(t *testing.T, data []byte) *httptest.Server {
-	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// rangeFileServerHandler serves file bytes and honours Range requests (like S3/CloudFront).
+func rangeFileServerHandler(data []byte) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		size := int64(len(data))
 		switch r.Method {
 		case http.MethodHead:
@@ -177,7 +176,13 @@ func rangeFileServer(t *testing.T, data []byte) *httptest.Server {
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.WriteHeader(http.StatusPartialContent)
 		io.Copy(w, bytes.NewReader(data[start:end+1]))
-	}))
+	})
+}
+
+// rangeFileServer serves file bytes and honours Range requests (like S3/CloudFront).
+func rangeFileServer(t *testing.T, data []byte) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(rangeFileServerHandler(data))
 }
 
 func parseBytesRange(h string, size int64, start, end *int64) error {

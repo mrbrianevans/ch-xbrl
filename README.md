@@ -22,7 +22,7 @@ The pipeline is deliberately split into four stages:
            ▼
   ┌─────────────────────┐
   │  Go extract         │  open archive → worker pool → iXBRL parse
-  │  cmd/extract        │  (zip: HTTP range; tar.zst: stream zstd→tar)
+  │  cmd/extract        │  (zip: batched parallel HTTP ranges; tar.zst: stream zstd→tar)
   └─────────┬───────────┘
             │ long-format facts.csv
             │  (one row per fact)
@@ -110,10 +110,12 @@ Or `make all` if you have Make.
 
 | Input | Local | Remote |
 |-------|-------|--------|
-| `.zip` | file open + random access | HTTP **range** requests (central directory + members) |
+| `.zip` | file open + random access | HTTP **range** requests: central directory once, then **parallel large ranges** for member groups (CloudFront/S3) |
 | `.tar.zst` / `.tar` | stream from disk | single streaming GET |
 
 Format is inferred from the path or URL (query strings ignored). Parsing of iXBRL members is unchanged.
+
+Remote ZIP is optimised for day packs with tens of thousands of ~100 KB accounts: it does **not** issue one request per member. Defaults are ~16 MiB range batches and 16 parallel range workers.
 
 Production extract against a Companies House bulk ZIP:
 
