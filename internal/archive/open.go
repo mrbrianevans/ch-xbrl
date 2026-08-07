@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync/atomic"
 )
 
 // isRemote reports whether source is an http(s) URL.
@@ -35,7 +34,7 @@ func openHTTP(ctx context.Context, source string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, source)
 	}
 	return resp.Body, nil
@@ -61,7 +60,7 @@ func openReaderAt(ctx context.Context, source string) (ra io.ReaderAt, size int6
 	}
 	st, err := f.Stat()
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		return nil, 0, nil, err
 	}
 	return f, st.Size(), f, nil
@@ -95,7 +94,7 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	want := end - start + 1
 	switch resp.StatusCode {
@@ -106,7 +105,7 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 			return nil, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", url, start, end)
 		}
 	default:
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		return nil, fmt.Errorf("HTTP %s for range %d-%d of %s", resp.Status, start, end, url)
 	}
 
@@ -120,23 +119,6 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 	}
 	return buf, nil
 }
-
-// countingTransport wraps a RoundTripper and counts requests (tests / diagnostics).
-type countingTransport struct {
-	base http.RoundTripper
-	n    atomic.Int64
-}
-
-func (c *countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	c.n.Add(1)
-	base := c.base
-	if base == nil {
-		base = http.DefaultTransport
-	}
-	return base.RoundTrip(req)
-}
-
-func (c *countingTransport) Count() int64 { return c.n.Load() }
 
 // httpRangeReader implements io.ReaderAt via HTTP Range requests.
 // Companies House bulk ZIPs (S3/CloudFront) support 206 Partial Content.
@@ -196,7 +178,7 @@ func remoteSize(ctx context.Context, client *http.Client, url string) (int64, er
 	}
 	resp, err := client.Do(req)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 && resp.ContentLength > 0 {
 			return resp.ContentLength, nil
 		}
@@ -212,8 +194,8 @@ func remoteSize(ctx context.Context, client *http.Client, url string) (int64, er
 	if err != nil {
 		return 0, err
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("size probe HTTP %s for %s", resp.Status, url)

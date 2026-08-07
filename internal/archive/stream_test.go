@@ -163,7 +163,7 @@ func rangeFileServerHandler(data []byte) http.Handler {
 		if rng == "" {
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
-			w.Write(data)
+			_, _ = w.Write(data)
 			return
 		}
 		var start, end int64
@@ -175,7 +175,7 @@ func rangeFileServerHandler(data []byte) http.Handler {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, size))
 		w.Header().Set("Content-Length", strconv.FormatInt(end-start+1, 10))
 		w.WriteHeader(http.StatusPartialContent)
-		io.Copy(w, bytes.NewReader(data[start:end+1]))
+		_, _ = io.Copy(w, bytes.NewReader(data[start:end+1]))
 	})
 }
 
@@ -257,7 +257,7 @@ func TestStreamRemoteTarZst(t *testing.T) {
 	// Full GET (no range required for tar.zst stream).
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Write(data)
+		_, _ = w.Write(data)
 	}))
 	defer srv.Close()
 

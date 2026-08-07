@@ -320,7 +320,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				curFact = nil
 			}
 
-			if captureText && !(isIX(space) && (local == "nonFraction" || local == "nonNumeric")) {
+			if captureText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
 				// keep capturing until fact ends; for other fields stop
 				if curFact == nil {
 					captureText = false
@@ -371,10 +371,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				dimsJSON = string(b)
 			}
 		}
-		if company == "" {
-			// last resort: UKCompaniesHouseRegisteredNumber fact is handled later
-			// as a normal fact; leave empty for now
-		}
+		// company may still be empty; UKCompaniesHouseRegisteredNumber is backfilled later.
 
 		unit := ""
 		if pf.UnitRef != "" {
@@ -616,9 +613,7 @@ func normaliseNumeric(val, scale, sign, format string) string {
 		neg = !neg
 		v = strings.TrimPrefix(v, "-")
 	}
-	if strings.HasPrefix(v, "+") {
-		v = strings.TrimPrefix(v, "+")
-	}
+	v = strings.TrimPrefix(v, "+")
 
 	if v == "" {
 		return ""
