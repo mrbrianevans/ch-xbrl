@@ -109,11 +109,11 @@ func TestCompanyFromFilename(t *testing.T) {
 		"path/to/09652677_aa_2026-03-25.xhtml": "09652677",
 		"13566765_aa_2026-03-26.xhtml":         "13566765",
 		// Bulk / historic: Prod{run}_{batch}_{company}_{yyyymmdd}.html
-		"Prod224_9956_04944372_20100331.xml":       "04944372",
-		"Prod223_4203_00134794_20250927.html":      "00134794",
-		"Prod223_4203_15145702_20251231.html":      "15145702",
-		"Prod223_4203_10941963_20250930.html":      "10941963",
-		"dir/Prod223_4203_08798715_20250331.html":  "08798715",
+		"Prod224_9956_04944372_20100331.xml":      "04944372",
+		"Prod223_4203_00134794_20250927.html":     "00134794",
+		"Prod223_4203_15145702_20251231.html":     "15145702",
+		"Prod223_4203_10941963_20250930.html":     "10941963",
+		"dir/Prod223_4203_08798715_20250331.html": "08798715",
 	}
 	for in, want := range cases {
 		if got := companyFromFilename(in); got != want {

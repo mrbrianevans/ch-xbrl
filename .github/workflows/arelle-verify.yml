@@ -63,8 +63,7 @@ jobs:
           restore-keys: |
             arelle-xdg-${{ runner.os }}-
 
-      - name: Go unit tests
-        run: go test ./...
+      # Go format/lint/test: see go.yml (runs on every branch)
 
       - name: Extract sample archive → facts.csv
         run: |

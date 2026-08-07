@@ -28,14 +28,14 @@ import (
 
 // Concept is one taxonomy concept definition.
 type Concept struct {
-	QName      string
-	LocalName  string
-	Namespace  string
-	Balance    string
-	PeriodType string
-	ItemType   string
-	Abstract   string
-	Nillable   string
+	QName             string
+	LocalName         string
+	Namespace         string
+	Balance           string
+	PeriodType        string
+	ItemType          string
+	Abstract          string
+	Nillable          string
 	SubstitutionGroup string
 }
 
@@ -115,20 +115,20 @@ func defaultEntries() []string {
 // --- XSD parsing -------------------------------------------------------------
 
 type xsdSchema struct {
-	XMLName        xml.Name      `xml:"http://www.w3.org/2001/XMLSchema schema"`
-	TargetNS       string        `xml:"targetNamespace,attr"`
-	Elements       []xsdElement  `xml:"http://www.w3.org/2001/XMLSchema element"`
-	Imports        []xsdImport   `xml:"http://www.w3.org/2001/XMLSchema import"`
-	Includes       []xsdInclude  `xml:"http://www.w3.org/2001/XMLSchema include"`
+	XMLName  xml.Name     `xml:"http://www.w3.org/2001/XMLSchema schema"`
+	TargetNS string       `xml:"targetNamespace,attr"`
+	Elements []xsdElement `xml:"http://www.w3.org/2001/XMLSchema element"`
+	Imports  []xsdImport  `xml:"http://www.w3.org/2001/XMLSchema import"`
+	Includes []xsdInclude `xml:"http://www.w3.org/2001/XMLSchema include"`
 	// Some taxonomies use default ns without prefix; catch both via loose decode.
 }
 
 type xsdElement struct {
-	Name               string `xml:"name,attr"`
-	Type               string `xml:"type,attr"`
-	Abstract           string `xml:"abstract,attr"`
-	Nillable           string `xml:"nillable,attr"`
-	SubstitutionGroup  string `xml:"substitutionGroup,attr"`
+	Name              string `xml:"name,attr"`
+	Type              string `xml:"type,attr"`
+	Abstract          string `xml:"abstract,attr"`
+	Nillable          string `xml:"nillable,attr"`
+	SubstitutionGroup string `xml:"substitutionGroup,attr"`
 	// XBRL attributes (may be in xbrli namespace)
 	Attrs []xml.Attr `xml:",any,attr"`
 }
