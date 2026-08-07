@@ -2,6 +2,8 @@
 
 Sanity-check **one** iXBRL instance against `cmd/extract` using Arelle as a slow full-DTS oracle.
 
+**Full instructions, lessons learned, and sample-run results:** [`VERIFY_GUIDE.md`](./VERIFY_GUIDE.md).
+
 Soft match only — not byte-identical. Whitespace, thousands separators, `(reported)` empties, and common date displays are normalised. **Dimensions, units, and taxonomy are ignored.**
 
 ## Setup
