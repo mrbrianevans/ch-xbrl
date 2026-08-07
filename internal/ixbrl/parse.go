@@ -41,6 +41,31 @@ type unitInfo struct {
 	Measure string
 }
 
+// continuationPart is one ix:continuation fragment in a continuedAt chain.
+type continuationPart struct {
+	Text        string
+	ContinuedAt string
+}
+
+// joinContinuation concatenates base fact text with the continuedAt chain.
+// Segments are joined without inserting separators (matches Arelle fact-list
+// behaviour; presentation spaces outside ix tags are not part of the fact).
+func joinContinuation(base, nextID string, conts map[string]*continuationPart) string {
+	var b strings.Builder
+	b.WriteString(base)
+	seen := map[string]bool{}
+	for nextID != "" && !seen[nextID] {
+		seen[nextID] = true
+		p, ok := conts[nextID]
+		if !ok {
+			break
+		}
+		b.WriteString(p.Text)
+		nextID = p.ContinuedAt
+	}
+	return strings.TrimSpace(b.String())
+}
+
 // Parse reads an iXBRL/XHTML document and returns long-format facts.
 // sourceFile is recorded on every row (archive member name).
 func Parse(r io.Reader, sourceFile string) ([]fact.Fact, error) {
@@ -77,17 +102,25 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 	var lastStart xml.StartElement
 	var explicitDim string // dimension attr while reading explicitMember text
 
+	// ix:continuation fragments (id → text + next continuedAt).
+	// Used to reassemble nonNumeric/nonFraction values split across the document.
+	continuations := map[string]*continuationPart{}
+	var curContID, curContNext string
+	var contBuf strings.Builder
+	var captureCont bool
+
 	// Facts collected as we stream (ix:nonFraction / ix:nonNumeric).
 	type pendingFact struct {
-		Name       string
-		ContextRef string
-		UnitRef    string
-		Scale      string
-		Sign       string
-		Format     string
-		Decimals   string
-		IsNumeric  bool
-		Value      string
+		Name        string
+		ContextRef  string
+		UnitRef     string
+		Scale       string
+		Sign        string
+		Format      string
+		Decimals    string
+		IsNumeric   bool
+		Value       string
+		ContinuedAt string // head of ix:continuation chain, if any
 	}
 	var facts []pendingFact
 	var curFact *pendingFact
@@ -157,14 +190,15 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 
 			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
 				pf := &pendingFact{
-					Name:       attrAny(t, "name"),
-					ContextRef: attrAny(t, "contextRef"),
-					UnitRef:    attrAny(t, "unitRef"),
-					Scale:      attrAny(t, "scale"),
-					Sign:       attrAny(t, "sign"),
-					Format:     attrAny(t, "format"),
-					Decimals:   attrAny(t, "decimals"),
-					IsNumeric:  local == "nonFraction",
+					Name:        attrAny(t, "name"),
+					ContextRef:  attrAny(t, "contextRef"),
+					UnitRef:     attrAny(t, "unitRef"),
+					Scale:       attrAny(t, "scale"),
+					Sign:        attrAny(t, "sign"),
+					Format:      attrAny(t, "format"),
+					Decimals:    attrAny(t, "decimals"),
+					IsNumeric:   local == "nonFraction",
+					ContinuedAt: attrAny(t, "continuedAt"),
 				}
 				// nilled / empty elements still count as facts
 				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
@@ -173,10 +207,22 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				curFact = pf
 				captureText = true
 				textBuf.Reset()
+
+			case isIX(space) && local == "continuation":
+				// Continuation of a prior fact (continuedAt chain).
+				curContID = attrAny(t, "id")
+				curContNext = attrAny(t, "continuedAt")
+				captureCont = true
+				contBuf.Reset()
 			}
 
 		case xml.CharData:
-			if captureText && excludeDepth == 0 {
+			if excludeDepth > 0 {
+				break
+			}
+			if captureCont {
+				contBuf.Write(t)
+			} else if captureText {
 				textBuf.Write(t)
 			}
 
@@ -187,6 +233,18 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				if excludeDepth > 0 {
 					excludeDepth--
 				}
+				continue
+			}
+			if isIX(space) && local == "continuation" {
+				if curContID != "" {
+					continuations[curContID] = &continuationPart{
+						Text:        contBuf.String(),
+						ContinuedAt: curContNext,
+					}
+				}
+				curContID, curContNext = "", ""
+				captureCont = false
+				contBuf.Reset()
 				continue
 			}
 			text := strings.TrimSpace(textBuf.String())
@@ -256,7 +314,8 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				curUnit = nil
 
 			case isIX(space) && (local == "nonFraction" || local == "nonNumeric") && curFact != nil:
-				curFact.Value = strings.TrimSpace(textBuf.String())
+				// Keep raw text; continuations are appended before normalisation.
+				curFact.Value = textBuf.String()
 				facts = append(facts, *curFact)
 				curFact = nil
 			}
@@ -272,6 +331,15 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				captureText = false
 				textBuf.Reset()
 			}
+		}
+	}
+
+	// Reassemble continued facts (ix:continuation chains).
+	for i := range facts {
+		if facts[i].ContinuedAt != "" {
+			facts[i].Value = joinContinuation(facts[i].Value, facts[i].ContinuedAt, continuations)
+		} else {
+			facts[i].Value = strings.TrimSpace(facts[i].Value)
 		}
 	}
 
@@ -642,6 +710,7 @@ var (
 	reNonNumeric  = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)>(.*?)</(?:[\w.]+:)?nonNumeric>`)
 	reNonFractionEmpty = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonFraction\b([^>]*)/>`)
 	reNonNumericEmpty  = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)/>`)
+	reContinuation     = regexp.MustCompile(`(?is)<(?:[\w.]+:)?continuation\b([^>]*)>(.*?)</(?:[\w.]+:)?continuation>`)
 	reAttr = regexp.MustCompile(`(?i)([:\w]+)\s*=\s*["']([^"']*)["']`)
 )
 
@@ -697,6 +766,26 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	fileCompany := companyFromFilename(sourceFile)
 	var out []fact.Fact
 
+	// Index ix:continuation fragments for continuedAt chains.
+	continuations := map[string]*continuationPart{}
+	for _, m := range reContinuation.FindAllStringSubmatch(s, -1) {
+		am := parseAttrs(m[1])
+		id := am["id"]
+		if id == "" {
+			continue
+		}
+		next := ""
+		for k, v := range am {
+			if strings.EqualFold(k, "continuedAt") {
+				next = v
+			}
+		}
+		continuations[id] = &continuationPart{
+			Text:        xmlUnescape(stripTags(m[2])),
+			ContinuedAt: next,
+		}
+	}
+
 	collect := func(attrs, body string, numeric bool) {
 		am := parseAttrs(attrs)
 		name := am["name"]
@@ -714,17 +803,24 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 			}
 		}
 		unitRef := ""
+		continuedAt := ""
 		for k, v := range am {
 			if strings.EqualFold(k, "unitRef") {
 				unitRef = v
+			}
+			if strings.EqualFold(k, "continuedAt") {
+				continuedAt = v
 			}
 		}
 		scale, sign, format := am["scale"], am["sign"], am["format"]
 
 		// strip nested tags from body for text value
-		val := stripTags(body)
-		val = strings.TrimSpace(val)
-		val = xmlUnescape(val)
+		val := xmlUnescape(stripTags(body))
+		if continuedAt != "" {
+			val = joinContinuation(val, continuedAt, continuations)
+		} else {
+			val = strings.TrimSpace(val)
+		}
 
 		ctx := contexts[ctxRef]
 		company := fileCompany

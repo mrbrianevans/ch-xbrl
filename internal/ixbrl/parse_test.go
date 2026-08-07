@@ -138,3 +138,77 @@ func TestQNameLocal(t *testing.T) {
 		t.Fatal(qnameLocal("{http://example}Foo"))
 	}
 }
+
+// Policy / narrative text is often split with ix:continuation + continuedAt.
+// Reassembly must concatenate segments without inventing separators (Arelle-compatible).
+func TestContinuationChain(t *testing.T) {
+	// Markup mirrors CH dumps: no whitespace text nodes inside ix elements
+	// (presentation spaces sit outside, between tags).
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink">
+<body>
+<link:schemaRef xlink:href="https://example.com/t.xsd"/>
+<ix:nonNumeric name="core:CashCashEquivalentsPolicy" contextRef="c1" continuedAt="c0"><span>Cash and cash equivalents</span></ix:nonNumeric>
+<span> </span>
+<ix:continuation id="c0" continuedAt="c1"><span>are basic financial assets</span></ix:continuation>
+<span> </span>
+<ix:continuation id="c1" continuedAt="c2"><span> and</span></ix:continuation>
+<ix:continuation id="c2" continuedAt="c3"><span>comprise cash at bank</span></ix:continuation>
+<ix:continuation id="c3"><span>.</span></ix:continuation>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">09652677</xbrli:identifier></xbrli:entity>
+  <xbrli:period>
+    <xbrli:startDate>2024-07-01</xbrli:startDate>
+    <xbrli:endDate>2025-06-30</xbrli:endDate>
+  </xbrli:period>
+</xbrli:context>
+</body>
+</html>`
+
+	facts, err := ParseBytes([]byte(doc), "test.xhtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	for _, f := range facts {
+		if f.Concept == "CashCashEquivalentsPolicy" {
+			got = f.Value
+			break
+		}
+	}
+	// Matches Arelle fact-list joining (no space inserted between segments).
+	want := "Cash and cash equivalentsare basic financial assets andcomprise cash at bank."
+	if got != want {
+		t.Fatalf("value=%q want %q", got, want)
+	}
+}
+
+func TestContinuationOnSample09652677(t *testing.T) {
+	path := filepath.Join("..", "..", "samples", "09652677_aa_2026-03-25.xhtml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Skip(err)
+	}
+	facts, err := ParseBytes(data, filepath.Base(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	for _, f := range facts {
+		if f.Concept == "CashCashEquivalentsPolicy" {
+			got = f.Value
+			break
+		}
+	}
+	want := "Cash and cash equivalentsare basic financial assets andcomprise cash at bank."
+	if got != want {
+		t.Fatalf("CashCashEquivalentsPolicy=%q want %q", got, want)
+	}
+	// Truncation bug was only the first span; full text is longer than the head.
+	if len(got) < 40 {
+		t.Fatalf("still truncated: %q", got)
+	}
+}
