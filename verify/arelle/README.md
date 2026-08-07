@@ -1,18 +1,10 @@
 # Arelle verify — fact oracle for ch-xbrl
 
-Use [Arelle](https://arelle.org/) as a **slow, full-DTS** reference exporter to check that `cmd/extract` fact values/periods/units/dimensions are correct.
+Use [Arelle](https://arelle.org/) as a **slow, full-DTS** reference on **one iXBRL instance at a time**, transform its fact list into this repo’s long-format columns, and compare against `cmd/extract`.
 
-Arelle resolves schemas and linkbases (labels, calculations, dimensions, etc.). That makes it a good correctness check and a poor bulk extractor — which matches this repo’s split: **fast long-format extract in Go**, semantic shaping later.
+Docs: [install](https://arelle.readthedocs.io/en/latest/install.html) · [CLI](https://arelle.readthedocs.io/en/latest/command_line.html) · PyPI `arelle-release`
 
-Docs:
-
-- Install: <https://arelle.readthedocs.io/en/latest/install.html>
-- CLI: <https://arelle.readthedocs.io/en/latest/command_line.html>
-- PyPI: `arelle-release` → `arelleCmdLine` on PATH after install
-
-## Setup (uv)
-
-Requires [uv](https://docs.astral.sh/uv/).
+## Setup
 
 ```bash
 cd verify/arelle
@@ -20,156 +12,108 @@ uv sync
 uv run arelleCmdLine --version
 ```
 
-## Easiest way to run on inputs
-
-### 1. Single iXBRL / XBRL file (recommended for smoke tests)
-
-No zip involved. CLI is enough:
+## End-to-end verify (recommended)
 
 ```bash
-uv run arelleCmdLine \
-  -f ../../samples/03024914_aa_2023-03-13.xhtml \
-  --facts out/sample_facts.csv \
-  --factListCols Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions
+# from repo root — extract all samples (or any archive that includes the file)
+go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
+
+cd verify/arelle
+uv run python verify_instance.py \
+  -i ../../samples/03024914_aa_2023-03-13.xhtml \
+  --extract ../../data/facts.csv \
+  --offline
 ```
 
-Or the wrapper (adds `source_file`, multi-file/zip iteration):
+What it does:
+
+1. Runs `arelleCmdLine -f <instance> --facts … --factListCols …`
+2. Maps Arelle columns → ch-xbrl long format (`company_id`, `period_start`, …)
+3. Filters the extract CSV to the same `source_file` basename
+4. Compares **fact counts**, **keys** `(concept, period_start, period_end, dimensions)`, and **values**
+5. Writes intermediates under `out/` (raw Arelle CSV, long CSV, mismatches CSV)
+
+Exit code:
+
+| Code | Meaning |
+|------|---------|
+| 0 | Counts match and every Arelle fact has a key partner (value string diffs allowed with a note) |
+| 1 | Count or key mismatch (missing/extra facts) |
+
+## Step by step
+
+### Export only (Arelle → long format)
 
 ```bash
 uv run python export_facts.py \
   -i ../../samples/03024914_aa_2023-03-13.xhtml \
-  -o out/sample_facts.csv
+  -o out/arelle_long.csv \
+  --raw out/arelle_raw.csv \
+  --offline
 ```
 
-### 2. Path into a zip (no full decompress)
+### Compare only
 
-Arelle accepts **entry points inside a zip**:
-
-```text
-archive.zip/member.html
+```bash
+uv run python compare_facts.py \
+  --arelle out/arelle_long.csv \
+  --extract ../../data/facts.csv \
+  --source-file 03024914_aa_2023-03-13.xhtml \
+  --mismatches-out out/mismatches.csv
 ```
 
-Example:
+### Raw Arelle CLI
 
 ```bash
 uv run arelleCmdLine \
-  -f "out/sample_two.zip/03024914_aa_2023-03-13.xhtml" \
-  --facts out/from_member.csv \
+  -f ../../samples/03024914_aa_2023-03-13.xhtml \
+  --facts out/raw.csv \
   --factListCols Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions
 ```
 
-You do **not** need to unzip the archive to disk first for that form.
+## Transform rules (Arelle → long)
 
-### 3. Companies House bulk zip (many independent instances)
-
-CH daily bulk zips are **not** a single XBRL report package. They are a flat archive of many ~100 KB iXBRL files.
-
-| Approach | Result |
-|----------|--------|
-| `-f bulk.zip` alone | Arelle treats the archive as one openable source; you typically do **not** get a clean multi-instance fact dump of every member. Unsuitable for bulk verification. |
-| `-f bulk.zip/member.html` per member | Correct. No full extract required. |
-| Unzip everything then process files | Works, but wastes disk/time versus path-into-zip. |
-
-The wrapper iterates zip members and uses path-into-zip:
-
-```bash
-# first N members only — Arelle is slow
-uv run python export_facts.py -i path/to/Accounts_Bulk_Data-….zip -o out/bulk_n.csv --limit 10
-
-# keep one Arelle CSV per member
-uv run python export_facts.py -i path/to/archive.zip -o out/combined.csv --per-file-dir out/per_file --limit 5
-```
-
-### 4. Directory of samples
-
-```bash
-uv run python export_facts.py -i ../../samples -o out/samples.csv --limit 5
-```
-
-### 5. `tar.zst`
-
-Arelle has **no** native tar.zst reader. Either:
-
-- extract members first, or
-- convert a small subset to zip / loose files, then use steps above.
-
-For this repo’s `samples/sample.tar.zst`, prefer the loose files under `samples/` or rebuild a tiny zip of the members you care about.
-
-## Fact columns
-
-Default `--factListCols` (wrapper and examples):
-
-```text
-Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions
-```
-
-Arelle expands `Period` to **`Start`** and **`End/Instant`** in the CSV header.
-
-Rough mapping to ch-xbrl long facts:
-
-| Arelle | ch-xbrl `facts.csv` |
-|--------|---------------------|
+| Arelle | ch-xbrl long |
+|--------|----------------|
 | `EntityIdentifier` | `company_id` |
-| `Name` (QName local part after `:`) | `concept` |
-| `Start` / `End/Instant` | `period_start` / `period_end` |
-| `Value` | `value` |
-| `unitRef` | `unit` (measure may differ in form) |
-| `Dimensions` | `dimensions` (encoding differs; compare carefully) |
-| (wrapper) `source_file` | `source_file` |
+| `Name` local part (`ns6:FixedAssets` → `FixedAssets`) | `concept` |
+| `Start` / `End/Instant` (if Start empty → instant: start=end) | `period_start` / `period_end` |
+| `Value` (`(reported)` → empty; whitespace collapsed) | `value` |
+| `unitRef` (`GBP` → `iso4217:GBP`, `pure` → `xbrli:pure`) | `unit` |
+| `Dimensions` (`ns:Dim,ns:Mem` → JSON local names) | `dimensions` |
+| — | `taxonomy` left empty (not in fact-list export) |
+| instance basename | `source_file` |
 
-Labels need a loaded DTS; first online run caches FRC/UK taxonomy files under Arelle’s config/cache directory.
+## Value comparison
 
-## Internet / taxonomy packages
+On key-matched pairs, values are equal if any of:
 
-- **First run** usually needs network so Arelle can fetch schemaRefs (FRC taxonomy).
-- Later runs can use cache:
+- exact string match after whitespace collapse / `(reported)`→empty
+- numeric equality after stripping thousands separators (`26,574` == `26574`)
+- both parse as the same calendar date (`2022-03-31` == `31.3.22` == `20 January 2023` forms)
 
-  ```bash
-  uv run python export_facts.py -i FILE -o out/f.csv --offline
-  ```
+**Expected residual diffs:** long policy text may still differ slightly; Arelle often applies iXT date formats that this extractor still stores as display text. Counts and keys are the primary correctness signal.
 
-- Optional local taxonomy packages:
+## Zip / bulk archives
 
-  ```bash
-  uv run python export_facts.py -i FILE -o out/f.csv --packages path/to/frc-package.zip
-  ```
+Not supported here. Arelle is too slow for bulk; point `-i` at a **single** loose sample under `samples/`, or extract one member from an archive yourself first.
 
-  (passed through as Arelle `--packages`)
-
-## Direct CLI flags (reference)
-
-Same shape as typical CH tooling:
-
-```text
-arelleCmdLine -f "<xbrlFilename>" --facts "<csvFilename>" --factListCols Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec
-```
-
-Extra useful flags:
-
-| Flag | Purpose |
-|------|---------|
-| `--logLevel error` | Quieter logs |
-| `--internetConnectivity offline` | Cache-only |
-| `--packages <zip\|dir>` | Local taxonomy packages |
-| `-v` / `--validate` | Full validation (slower; not required for fact export) |
-| `--hmrc` | UK HMRC disclosure system validation |
-
-## Performance expectations
-
-On a warm cache, one sample file is on the order of a few seconds. Cold cache (taxonomy download) is tens of seconds per first taxonomy. A full CH bulk day is **not** practical with Arelle — use `--limit` and sample by concept/file for oracle checks.
+`cmd/extract` still reads zip/tar.zst for producing the reference `facts.csv`.
 
 ## Layout
 
 ```text
 verify/arelle/
-  pyproject.toml    # uv project; depends on arelle-release
+  pyproject.toml       # uv + arelle-release
   uv.lock
-  export_facts.py   # thin multi-file/zip wrapper around arelleCmdLine
+  export_facts.py      # one instance → long CSV
+  compare_facts.py     # long Arelle vs extract
+  verify_instance.py   # export + compare
   README.md
-  out/              # local outputs (gitignored)
+  out/                 # gitignored
 ```
 
-## Not in scope (yet)
+## Notes
 
-- Automated diff against `data/facts.csv` (column normalisation + numeric compare).
-- Streaming remote CH zips (download a local zip or use loose samples first).
+- First Arelle run downloads FRC taxonomy files (needs network). Later runs can use `--offline`.
+- Optional `--packages path/to/taxonomy.zip` if you mirror taxonomies locally.
