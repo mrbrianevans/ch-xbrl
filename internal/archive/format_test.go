@@ -1,0 +1,29 @@
+package archive
+
+import "testing"
+
+func TestDetectFormat(t *testing.T) {
+	cases := []struct {
+		in   string
+		want Format
+	}{
+		{"samples/sample.tar.zst", FormatTarZst},
+		{`C:\data\sample.tar.zst`, FormatTarZst},
+		{"https://example.com/Accounts_Bulk_Data.tar.zst", FormatTarZst},
+		{"https://example.com/a.tar.zst?x=1", FormatTarZst},
+		{"file.tzst", FormatTarZst},
+		{"archive.tar", FormatTar},
+		{"https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip", FormatZip},
+		{"local/data.zip", FormatZip},
+		{"https://example.com/x.zip#frag", FormatZip},
+		{"plain.zst", FormatTarZst},
+		{"no-extension", FormatUnknown},
+		{"https://example.com/download?name=file.zip", FormatZip},
+	}
+	for _, tc := range cases {
+		got := DetectFormat(tc.in)
+		if got != tc.want {
+			t.Errorf("DetectFormat(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
