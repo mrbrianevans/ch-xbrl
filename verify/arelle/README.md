@@ -23,6 +23,8 @@ uv run python run_batch.py \
   --summary-md out/ci_summary.md
 ```
 
+The first sample runs **serially** (warms Arelle taxonomy cache, ~30s online); the rest run in parallel (`--workers`, default `min(8, CPUs)`).
+
 ## Setup
 
 ```bash

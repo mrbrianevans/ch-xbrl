@@ -13,7 +13,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -257,6 +259,15 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--limit", type=int, default=None, help="Max instances (for smoke runs)")
     p.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help=(
+            "Parallel workers after the first (warm-up) instance "
+            f"(default: min(8, CPU count); use 1 for fully serial)"
+        ),
+    )
+    p.add_argument(
         "--summary-md",
         type=Path,
         default=None,
@@ -280,21 +291,69 @@ def main(argv: list[str] | None = None) -> None:
     if not instances:
         raise SystemExit(f"no instances under {args.samples_dir}")
 
-    args.out_dir.mkdir(parents=True, exist_ok=True)
-    print(f"verifying {len(instances)} instance(s)…", file=sys.stderr)
+    cpu = os.cpu_count() or 4
+    workers = args.workers if args.workers is not None else min(8, max(1, cpu))
+    workers = max(1, workers)
 
-    rows: list[Row] = []
-    for i, inst in enumerate(instances, 1):
-        print(f"[{i}/{len(instances)}] {inst.name}", file=sys.stderr)
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    print(
+        f"verifying {len(instances)} instance(s) "
+        f"(warm-up serial, then up to {workers} worker(s))…",
+        file=sys.stderr,
+    )
+
+    # First instance runs alone so Arelle can download/cache taxonomies (~30s online).
+    # Remaining instances use the warm cache and run concurrently (~4s each).
+    print_lock = threading.Lock()
+    results: dict[str, Row] = {}
+
+    def run_and_log(inst: Path, *, offline: bool, index: str) -> Row:
+        with print_lock:
+            print(f"[{index}] {inst.name}", file=sys.stderr)
         row = verify_one(
             inst,
             args.extract,
             args.out_dir,
-            offline=args.offline,
+            offline=offline,
             skip_arelle=args.skip_arelle,
         )
-        print(f"  → {row.status}", file=sys.stderr)
-        rows.append(row)
+        with print_lock:
+            print(f"  → {row.status}  {inst.name}", file=sys.stderr)
+        return row
+
+    def run_parallel(batch: list[Path], *, start_index: int) -> None:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {
+                pool.submit(
+                    run_and_log,
+                    inst,
+                    offline=args.offline,
+                    index=f"{start_index + j}/{len(instances)}",
+                ): inst
+                for j, inst in enumerate(batch)
+            }
+            for fut in as_completed(futs):
+                inst = futs[fut]
+                results[inst.name] = fut.result()
+
+    if workers == 1 or len(instances) == 1:
+        for i, inst in enumerate(instances, 1):
+            results[inst.name] = run_and_log(
+                inst, offline=args.offline, index=f"{i}/{len(instances)}"
+            )
+    elif args.skip_arelle:
+        # Reusing CSVs — no taxonomy warm-up needed.
+        run_parallel(instances, start_index=1)
+    else:
+        first, rest = instances[0], instances[1:]
+        results[first.name] = run_and_log(
+            first, offline=args.offline, index=f"1/{len(instances)} warm-up"
+        )
+        if rest:
+            run_parallel(rest, start_index=2)
+
+    # Preserve sample directory order in the report.
+    rows = [results[inst.name] for inst in instances]
 
     md = render_markdown(rows, title=args.title, offline=args.offline)
     print(md)
