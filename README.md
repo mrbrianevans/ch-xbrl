@@ -98,6 +98,8 @@ AGENTS.md          instructions for contributors and coding agents
 
 Requires **Go** (see `go.mod`) and optionally the **DuckDB** CLI.
 
+**Prebuilt binaries** for Linux, macOS, and Windows (amd64/arm64) are attached to each [GitHub Release](https://github.com/mrbrianevans/ch-xbrl/releases/latest). Download the archive for your platform, extract it, and run `extract` (plus `taxonomy` / `mksample` as needed).
+
 ```bash
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference

@@ -1,0 +1,144 @@
+# Build multi-platform CLI binaries and attach them to a GitHub Release.
+#
+# Trigger: create a semver release in the GitHub UI (Releases → Draft a new release).
+# Tag format: vMAJOR.MINOR.PATCH (optional pre-release / build metadata, e.g. v1.2.0-rc.1).
+#
+# Platforms: linux/darwin/windows × amd64/arm64 (no wasm).
+# Assets: one archive per platform (extract, taxonomy, mksample) + SHA256SUMS.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Validate semver tag
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.release.tag_name }}"
+          # SemVer 2.0 with required leading "v" (vMAJOR.MINOR.PATCH + optional pre-release/build).
+          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$tag' is not valid semver. Use e.g. v1.0.0 or v1.2.0-rc.1"
+            exit 1
+          fi
+          echo "VERSION=$tag" >> "$GITHUB_ENV"
+          echo "Building release $tag for ${{ matrix.goos }}/${{ matrix.goarch }}"
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          ext=""
+          if [ "$GOOS" = "windows" ]; then
+            ext=".exe"
+          fi
+          for cmd in extract taxonomy mksample; do
+            echo "Building $cmd for ${GOOS}/${GOARCH}..."
+            go build -trimpath -ldflags="-s -w" \
+              -o "dist/${cmd}${ext}" "./cmd/${cmd}"
+          done
+          ls -la dist/
+
+      - name: Package archive
+        run: |
+          set -euo pipefail
+          asset="ch-xbrl_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p packages
+          (
+            cd dist
+            if [ "${{ matrix.goos }}" = "windows" ]; then
+              zip -9 "../packages/${asset}.zip" ./*
+            else
+              tar -czf "../packages/${asset}.tar.gz" ./*
+            fi
+          )
+          ls -la packages/
+
+      - name: Upload platform artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ch-xbrl-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: packages/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attach assets to release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          set -euo pipefail
+          cd artifacts
+          shopt -s nullglob
+          files=(ch-xbrl_*.tar.gz ch-xbrl_*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::No release archives found"
+            exit 1
+          fi
+          ls -la "${files[@]}"
+          sha256sum "${files[@]}" | tee SHA256SUMS
+          echo "---- SHA256SUMS ----"
+          cat SHA256SUMS
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: |
+            artifacts/ch-xbrl_*.tar.gz
+            artifacts/ch-xbrl_*.zip
+            artifacts/SHA256SUMS
+          fail_on_unmatched_files: true
