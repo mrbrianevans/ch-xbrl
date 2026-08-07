@@ -21,8 +21,8 @@ The pipeline is deliberately split into four stages:
            │
            ▼
   ┌─────────────────────┐
-  │  Go extract         │  open archive → worker pool → iXBRL parse
-  │  cmd/extract        │  (zip: batched parallel HTTP ranges; tar.zst: stream zstd→tar)
+  │  ch-xbrl (Go)       │  open archive → worker pool → iXBRL parse
+  │  cmd/ch-xbrl        │  (zip: batched parallel HTTP ranges; tar.zst: stream zstd→tar)
   └─────────┬───────────┘
             │ long-format facts.csv
             │  (one row per fact)
@@ -56,9 +56,9 @@ A contrasting approach (wide rows and hard-coded concept priority *inside* the p
 
 ### Stages in brief
 
-1. **Extract (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET). For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
+1. **ch-xbrl (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET). For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
 
-2. **Taxonomy (Go, infrequent)** — Download or seed FRC (and related) schemas; write small static reference CSVs (`concepts.csv`, optionally labels/calculations later).
+2. **ch-xbrl-taxonomy (Go, infrequent)** — Download or seed FRC (and related) schemas; write small static reference CSVs (`concepts.csv`, optionally labels/calculations later).
 
 3. **Concept map (git)** — Hand-curated `canonical,concept,priority,cast_type`. Only listed concepts become wide columns; lower `priority` wins per company-period.
 
@@ -81,9 +81,9 @@ A contrasting approach (wide rows and hard-coded concept priority *inside* the p
 ## Repository layout
 
 ```text
-cmd/extract/       streaming extractor (zip / tar.zst, local or remote)
-cmd/taxonomy/      taxonomy → reference CSVs
-cmd/mksample/      build sample.tar.zst from samples/
+cmd/ch-xbrl/       main CLI — streaming extract (zip / tar.zst, local or remote)
+cmd/taxonomy/      ch-xbrl-taxonomy → reference CSVs
+cmd/mksample/      ch-xbrl-mksample — build sample.tar.zst from samples/
 internal/          shared Go packages (ixbrl, archive, fact, csvout)
 mapping/           concept_map.csv
 reference/         concepts.csv
@@ -98,12 +98,12 @@ AGENTS.md          instructions for contributors and coding agents
 
 Requires **Go** (see `go.mod`) and optionally the **DuckDB** CLI.
 
-**Prebuilt binaries** for Linux, macOS, and Windows (amd64/arm64) are attached to each [GitHub Release](https://github.com/mrbrianevans/ch-xbrl/releases/latest). Download the archive for your platform, extract it, and run `extract` (plus `taxonomy` / `mksample` as needed).
+**Prebuilt binaries** for Linux, macOS, and Windows (amd64/arm64) are attached to each [GitHub Release](https://github.com/mrbrianevans/ch-xbrl/releases/latest). Download the archive for your platform, unpack it, and run `ch-xbrl` (plus `ch-xbrl-taxonomy` / `ch-xbrl-mksample` as needed).
 
 ```bash
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
-go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
+go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv -workers 4
 duckdb -c ".read sql/transform.sql"
 ```
 
@@ -123,7 +123,7 @@ Remote ZIP is optimised for day packs with tens of thousands of ~100 KB accoun
 Production extract against a Companies House bulk ZIP:
 
 ```bash
-go run ./cmd/extract \
+go run ./cmd/ch-xbrl \
   -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" \
   -out data/facts.csv -workers 16
 ```
@@ -131,8 +131,8 @@ go run ./cmd/extract \
 Or a remote / local `tar.zst`:
 
 ```bash
-go run ./cmd/extract -in "https://example/Accounts_Bulk_Data.tar.zst" -out data/facts.csv -workers 16
-go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
+go run ./cmd/ch-xbrl -in "https://example/Accounts_Bulk_Data.tar.zst" -out data/facts.csv -workers 16
+go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
 ```
 
 ## Design constraints

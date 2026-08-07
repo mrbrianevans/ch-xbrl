@@ -243,7 +243,7 @@ def main(argv: list[str] | None = None) -> None:
         "--extract",
         type=Path,
         required=True,
-        help="Long-format facts.csv from cmd/extract",
+        help="Long-format facts.csv from cmd/ch-xbrl",
     )
     p.add_argument(
         "--out-dir",

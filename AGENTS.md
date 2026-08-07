@@ -25,8 +25,8 @@ Typical loop:
 
 High-volume **Companies House iXBRL** extraction into an analytics-ready form:
 
-1. **Go extractor** — stream remote/local `.zip` or `tar.zst` → long-format fact CSV.
-2. **Go taxonomy tool** — infrequent FRC/UK taxonomy parse → reference CSVs.
+1. **ch-xbrl** — stream remote/local `.zip` or `tar.zst` → long-format fact CSV.
+2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → reference CSVs.
 3. **Hand-curated map** — `mapping/concept_map.csv` in git.
 4. **DuckDB SQL** — normalise, priority-pick, pivot, cast → wide Parquet.
 
@@ -36,9 +36,9 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 
 | Rule | Rationale |
 |------|-----------|
-| Extract emits **long-format** facts (one row per fact) | Taxonomies evolve; new concepts stay available without re-extract rules |
+| ch-xbrl emits **long-format** facts (one row per fact) | Taxonomies evolve; new concepts stay available without re-extract rules |
 | Keep **dimensional** facts in the long CSV | Filter to non-dimensional in DuckDB |
-| Values stay **strings** through extract | Robustness; cast explicitly in SQL |
+| Values stay **strings** through ch-xbrl | Robustness; cast explicitly in SQL |
 | Intermediate Go ↔ DuckDB is **CSV** | Simple, debuggable |
 | Final artefact is **Parquet** | Analytics-ready |
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
@@ -49,9 +49,9 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 ## Layout
 
 ```text
-cmd/extract/      stream zip or tar.zst (local/remote) → facts.csv
-cmd/taxonomy/     taxonomy packages → reference/concepts.csv
-cmd/mksample/     samples/*.xhtml → samples/sample.tar.zst
+cmd/ch-xbrl/      main CLI — stream zip or tar.zst (local/remote) → facts.csv
+cmd/taxonomy/     ch-xbrl-taxonomy — packages → reference/concepts.csv
+cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst
 internal/ixbrl/   iXBRL parser
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
@@ -60,7 +60,7 @@ mapping/          concept_map.csv (curated)
 reference/        concepts.csv (generated seed / downloads)
 sql/              DuckDB transforms
 samples/          example iXBRL + sample.tar.zst
-verify/arelle/    Arelle (uv + arelle-release) fact oracle for extract checks
+verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 data/             runtime outputs (gitignored)
 AGENTS.md         this file
 README.md         goals and design overview
@@ -77,7 +77,7 @@ README.md         goals and design overview
 
   ```bash
   go test ./...
-  go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
+  go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
   ```
 
 - CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `go test -race`, build).
@@ -113,14 +113,14 @@ README.md         goals and design overview
 go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
-go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
+go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv -workers 4
 # remote CH bulk zip (batched parallel HTTP ranges via CloudFront):
-# go run ./cmd/extract -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" -out data/facts.csv -workers 16
+# go run ./cmd/ch-xbrl -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" -out data/facts.csv -workers 16
 duckdb -c ".read sql/transform.sql"
 # or: make all
 # optional live zip smoke: CH_XBR_INTEGRATION=1 go test ./internal/archive/ -tags=integration -run TestIntegrationRemoteCHZip -v
 # Arelle oracle (minimal soft check): see verify/arelle/README.md / VERIFY_GUIDE.md
-# go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
+# go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
 # cd verify/arelle && uv sync && uv run python verify_instance.py -i ../../samples/FILE.xhtml --extract ../../data/facts.csv --offline
 # batch + markdown: uv run python run_batch.py --extract ../../data/facts.csv --summary-md out/report.md
 # CI: .github/workflows/arelle-verify.yml (push master/main + workflow_dispatch)

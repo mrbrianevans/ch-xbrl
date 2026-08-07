@@ -4,7 +4,7 @@
 # Tag format: vMAJOR.MINOR.PATCH (optional pre-release / build metadata, e.g. v1.2.0-rc.1).
 #
 # Platforms: linux/darwin/windows × amd64/arm64 (no wasm).
-# Assets: one archive per platform (extract, taxonomy, mksample) + SHA256SUMS.
+# Assets: one archive per platform (ch-xbrl, ch-xbrl-taxonomy, ch-xbrl-mksample) + SHA256SUMS.
 name: Release
 
 on:
@@ -75,10 +75,18 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             ext=".exe"
           fi
-          for cmd in extract taxonomy mksample; do
-            echo "Building $cmd for ${GOOS}/${GOARCH}..."
+          # name | package path
+          builds=(
+            "ch-xbrl:./cmd/ch-xbrl"
+            "ch-xbrl-taxonomy:./cmd/taxonomy"
+            "ch-xbrl-mksample:./cmd/mksample"
+          )
+          for entry in "${builds[@]}"; do
+            name="${entry%%:*}"
+            pkg="${entry#*:}"
+            echo "Building $name for ${GOOS}/${GOARCH}..."
             go build -trimpath -ldflags="-s -w" \
-              -o "dist/${cmd}${ext}" "./cmd/${cmd}"
+              -o "dist/${name}${ext}" "$pkg"
           done
           ls -la dist/
 

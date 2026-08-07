@@ -1,6 +1,7 @@
-// Command mksample packs sample iXBRL files into a .tar.zst for local testing.
+// Command ch-xbrl-mksample packs sample iXBRL files into a .tar.zst for local testing.
 // Includes modern {company}_aa_*.xhtml and bulk Prod*_*.html naming conventions.
 //
+//	ch-xbrl-mksample -out samples/sample.tar.zst
 //	go run ./cmd/mksample -out samples/sample.tar.zst
 package main
 

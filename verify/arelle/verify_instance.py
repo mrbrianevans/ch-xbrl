@@ -2,7 +2,7 @@
 """Minimal Arelle oracle check for one iXBRL instance.
 
 1. arelleCmdLine → raw fact CSV
-2. DuckDB soft-compare vs cmd/extract facts for the same source_file
+2. DuckDB soft-compare vs cmd/ch-xbrl facts for the same source_file
 3. Report counts, missing/extra concepts, soft value mismatches
 
 Not byte-identical: whitespace, thousands separators, and common date
@@ -183,7 +183,7 @@ def main(argv: list[str] | None = None) -> None:
         "--extract",
         type=Path,
         required=True,
-        help="cmd/extract long-format facts.csv",
+        help="cmd/ch-xbrl long-format facts.csv",
     )
     p.add_argument(
         "-o",

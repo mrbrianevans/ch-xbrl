@@ -68,7 +68,7 @@ jobs:
       - name: Extract sample archive → facts.csv
         run: |
           mkdir -p data
-          go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
+          go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv -workers 4
 
       - name: Install Arelle verify deps
         working-directory: verify/arelle

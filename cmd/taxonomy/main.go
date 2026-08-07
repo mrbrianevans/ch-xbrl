@@ -1,12 +1,12 @@
-// Command taxonomy downloads / parses FRC (and related) taxonomy packages and
+// Command ch-xbrl-taxonomy downloads / parses FRC (and related) taxonomy packages and
 // emits reference CSVs: concepts.csv, and optionally labels.csv / calculations.csv.
 //
-//	taxonomy -out reference
-//	taxonomy -entry https://xbrl.frc.org.uk/FRS-102/2021-01-01/FRS-102-2021-01-01.xsd -out reference
-//	taxonomy -zip path/to/taxonomy.zip -out reference
+//	ch-xbrl-taxonomy -out reference
+//	ch-xbrl-taxonomy -entry https://xbrl.frc.org.uk/FRS-102/2021-01-01/FRS-102-2021-01-01.xsd -out reference
+//	ch-xbrl-taxonomy -zip path/to/taxonomy.zip -out reference
 //
 // When no remote/local source succeeds, a curated seed concepts.csv is still written
-// so the DuckDB pipeline can run offline against the sample extract.
+// so the DuckDB pipeline can run offline against a sample ch-xbrl extract.
 package main
 
 import (

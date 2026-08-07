@@ -1,4 +1,4 @@
-// Command extract streams a remote or local archive of Companies House iXBRL
+// Command ch-xbrl streams a remote or local archive of Companies House iXBRL
 // accounts and writes a long-format fact CSV.
 //
 // Supported inputs (local path or http(s) URL):
@@ -8,9 +8,9 @@
 //
 // Examples:
 //
-//	extract -in samples/sample.tar.zst -out data/facts.csv
-//	extract -in https://example.com/Accounts_Bulk_Data.tar.zst -out facts.csv -workers 16
-//	extract -in https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip -out facts.csv
+//	ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+//	ch-xbrl -in https://example.com/Accounts_Bulk_Data.tar.zst -out facts.csv -workers 16
+//	ch-xbrl -in https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip -out facts.csv
 package main
 
 import (
@@ -39,7 +39,7 @@ func main() {
 	flag.Parse()
 
 	if *in == "" {
-		fmt.Fprintln(os.Stderr, "usage: extract -in <path|url> [-out facts.csv] [-workers N]")
+		fmt.Fprintln(os.Stderr, "usage: ch-xbrl -in <path|url> [-out facts.csv] [-workers N]")
 		fmt.Fprintln(os.Stderr, "  -in accepts local or remote .zip / .tar.zst / .tar")
 		flag.PrintDefaults()
 		os.Exit(2)
