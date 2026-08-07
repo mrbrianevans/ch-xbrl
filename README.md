@@ -89,6 +89,7 @@ mapping/           concept_map.csv
 reference/         concepts.csv
 sql/               DuckDB transforms
 samples/           example iXBRL + sample archive
+verify/arelle/     Arelle (uv) fact export for correctness checks
 data/              runtime outputs (not committed)
 AGENTS.md          instructions for contributors and coding agents
 ```

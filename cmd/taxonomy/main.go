@@ -28,14 +28,14 @@ import (
 
 // Concept is one taxonomy concept definition.
 type Concept struct {
-	QName      string
-	LocalName  string
-	Namespace  string
-	Balance    string
-	PeriodType string
-	ItemType   string
-	Abstract   string
-	Nillable   string
+	QName             string
+	LocalName         string
+	Namespace         string
+	Balance           string
+	PeriodType        string
+	ItemType          string
+	Abstract          string
+	Nillable          string
 	SubstitutionGroup string
 }
 
@@ -114,34 +114,6 @@ func defaultEntries() []string {
 
 // --- XSD parsing -------------------------------------------------------------
 
-type xsdSchema struct {
-	XMLName        xml.Name      `xml:"http://www.w3.org/2001/XMLSchema schema"`
-	TargetNS       string        `xml:"targetNamespace,attr"`
-	Elements       []xsdElement  `xml:"http://www.w3.org/2001/XMLSchema element"`
-	Imports        []xsdImport   `xml:"http://www.w3.org/2001/XMLSchema import"`
-	Includes       []xsdInclude  `xml:"http://www.w3.org/2001/XMLSchema include"`
-	// Some taxonomies use default ns without prefix; catch both via loose decode.
-}
-
-type xsdElement struct {
-	Name               string `xml:"name,attr"`
-	Type               string `xml:"type,attr"`
-	Abstract           string `xml:"abstract,attr"`
-	Nillable           string `xml:"nillable,attr"`
-	SubstitutionGroup  string `xml:"substitutionGroup,attr"`
-	// XBRL attributes (may be in xbrli namespace)
-	Attrs []xml.Attr `xml:",any,attr"`
-}
-
-type xsdImport struct {
-	Namespace      string `xml:"namespace,attr"`
-	SchemaLocation string `xml:"schemaLocation,attr"`
-}
-
-type xsdInclude struct {
-	SchemaLocation string `xml:"schemaLocation,attr"`
-}
-
 func loadSchema(client *http.Client, ref string, concepts map[string]Concept, seen map[string]bool, depth int) error {
 	if depth > 40 {
 		return fmt.Errorf("schema include depth exceeded at %s", ref)
@@ -172,7 +144,7 @@ func fetch(client *http.Client, ref string) (data []byte, base string, err error
 		if err != nil {
 			return nil, "", err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != 200 {
 			return nil, "", fmt.Errorf("%s: HTTP %s", ref, resp.Status)
 		}
@@ -332,13 +304,6 @@ func loadFromZip(zipPath string, concepts map[string]Concept) error {
 }
 
 func loadZipGo(zipPath string, concepts map[string]Concept) error {
-	// implemented in zip.go style inline
-	f, err := os.Open(zipPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	// use archive/zip
 	return scanZipFile(zipPath, concepts)
 }
 
@@ -347,7 +312,7 @@ func writeConcepts(path string, list []Concept) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	_ = w.Write([]string{
 		"concept_qname", "local_name", "namespace", "balance", "period_type", "item_type",

@@ -14,7 +14,7 @@ func scanZipFile(zipPath string, concepts map[string]Concept) error {
 	if err != nil {
 		return err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	for _, f := range r.File {
 		name := path.Clean(strings.ReplaceAll(f.Name, "\\", "/"))
@@ -27,7 +27,7 @@ func scanZipFile(zipPath string, concepts map[string]Concept) error {
 			continue
 		}
 		data, err := io.ReadAll(io.LimitReader(rc, 32<<20))
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			log.Printf("zip read %s: %v", name, err)
 			continue
