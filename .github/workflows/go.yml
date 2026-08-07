@@ -1,0 +1,55 @@
+# General Go CI: format, vet/lint, test, build — every push/PR on every branch.
+name: Go CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: go-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Format · Vet · Test · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting (gofmt)
+        run: |
+          set -euo pipefail
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            echo ""
+            echo "Run: gofmt -w ."
+            exit 1
+          fi
+          echo "gofmt: OK"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -count=1 -race
+
+      - name: Build
+        run: |
+          go build -o /tmp/extract ./cmd/extract
+          go build -o /tmp/taxonomy ./cmd/taxonomy
+          go build -o /tmp/mksample ./cmd/mksample

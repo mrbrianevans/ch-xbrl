@@ -274,9 +274,9 @@ func extractMemberFromRange(data []byte, rangeStart int64, e cdEntry) ([]byte, e
 		copy(raw, comp)
 	case methodDeflate:
 		fr := flate.NewReader(bytes.NewReader(comp))
-		defer fr.Close()
 		var err error
 		raw, err = io.ReadAll(io.LimitReader(fr, int64(maxMemberSize)+1))
+		_ = fr.Close()
 		if err != nil {
 			return nil, err
 		}

@@ -33,9 +33,9 @@ func main() {
 			return nil
 		}
 		// .html = bulk Prod* dumps; .xhtml = newer accounts packages
-		if !(strings.HasSuffix(low, ".xhtml") || strings.HasSuffix(low, ".html") ||
-			strings.HasSuffix(low, ".htm") || strings.HasSuffix(low, ".xbrl") ||
-			strings.HasSuffix(low, ".xml")) {
+		if !strings.HasSuffix(low, ".xhtml") && !strings.HasSuffix(low, ".html") &&
+			!strings.HasSuffix(low, ".htm") && !strings.HasSuffix(low, ".xbrl") &&
+			!strings.HasSuffix(low, ".xml") {
 			return nil
 		}
 		// archive member name = basename (flat layout, typical of CH bulk dumps)

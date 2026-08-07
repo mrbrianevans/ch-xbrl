@@ -18,7 +18,7 @@ func streamTar(ctx context.Context, source string, out chan<- Member) (int, erro
 	if err != nil {
 		return 0, fmt.Errorf("open archive: %w", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	var r io.Reader = rc
 	if DetectFormat(source) == FormatTarZst {
@@ -43,7 +43,7 @@ func streamTar(ctx context.Context, source string, out chan<- Member) (int, erro
 		if err != nil {
 			return n, fmt.Errorf("tar: %w", err)
 		}
-		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
 		name := filepath.ToSlash(hdr.Name)
@@ -75,16 +75,16 @@ func WriteTarZst(dest string, entries map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	zw, err := zstd.NewWriter(f, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {
 		return err
 	}
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	tw := tar.NewWriter(zw)
-	defer tw.Close()
+	defer func() { _ = tw.Close() }()
 
 	for name, path := range entries {
 		info, err := os.Stat(path)

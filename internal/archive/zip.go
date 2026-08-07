@@ -29,7 +29,7 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 		return 0, fmt.Errorf("open zip: %w", err)
 	}
 	if closer != nil {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 
 	zr, err := zip.NewReader(ra, size)
@@ -60,7 +60,7 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 			return n, fmt.Errorf("open member %s: %w", name, err)
 		}
 		content, err := io.ReadAll(io.LimitReader(rc, maxMemberSize+1))
-		rc.Close()
+		_ = rc.Close()
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				return n, err
@@ -86,10 +86,10 @@ func WriteZip(dest string, entries map[string]string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	zw := zip.NewWriter(f)
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	// Stable order helps tests that care about layout.
 	names := make([]string, 0, len(entries))

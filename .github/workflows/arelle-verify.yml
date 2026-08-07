@@ -1,0 +1,114 @@
+# Soft-verify sample iXBRL against Arelle (full DTS) and write Markdown to the job summary.
+name: Arelle verify
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max samples to verify (empty = all under samples/)"
+        required: false
+        default: ""
+        type: string
+      offline:
+        description: "Arelle offline (only after taxonomy cache is warm)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: arelle-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Arelle + tools honour XDG; keep under workspace so actions/cache is simple.
+  XDG_CONFIG_HOME: ${{ github.workspace }}/.ci-xdg/config
+  XDG_CACHE_HOME: ${{ github.workspace }}/.ci-xdg/cache
+
+jobs:
+  verify:
+    name: Extract + Arelle soft compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: verify/arelle/uv.lock
+
+      - name: Set up Python (via uv)
+        working-directory: verify/arelle
+        run: uv python install 3.12
+
+      - name: Cache Arelle taxonomy / web files
+        uses: actions/cache@v4
+        with:
+          path: .ci-xdg
+          key: arelle-xdg-${{ runner.os }}-${{ hashFiles('verify/arelle/uv.lock') }}
+          restore-keys: |
+            arelle-xdg-${{ runner.os }}-
+
+      # Go format/lint/test: see go.yml (runs on every branch)
+
+      - name: Extract sample archive → facts.csv
+        run: |
+          mkdir -p data
+          go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
+
+      - name: Install Arelle verify deps
+        working-directory: verify/arelle
+        run: uv sync --frozen
+
+      - name: Arelle verify samples
+        working-directory: verify/arelle
+        run: |
+          set -euo pipefail
+          mkdir -p "${XDG_CONFIG_HOME}" "${XDG_CACHE_HOME}" out
+
+          LIMIT_ARGS=()
+          if [ -n "${{ inputs.limit }}" ]; then
+            LIMIT_ARGS=(--limit "${{ inputs.limit }}")
+          fi
+
+          OFFLINE_ARGS=()
+          # Push always uses online so first-time taxonomy download works.
+          # workflow_dispatch may opt into offline when cache is already warm.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.offline }}" = "true" ]; then
+            OFFLINE_ARGS=(--offline)
+          fi
+
+          uv run python run_batch.py \
+            --samples-dir ../../samples \
+            --extract ../../data/facts.csv \
+            --out-dir out \
+            --summary-md out/ci_summary.md \
+            --title "Arelle soft verification (samples/)" \
+            "${LIMIT_ARGS[@]+"${LIMIT_ARGS[@]}"}" \
+            "${OFFLINE_ARGS[@]+"${OFFLINE_ARGS[@]}"}"
+
+      - name: Upload verify artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arelle-verify-${{ github.run_id }}
+          path: |
+            verify/arelle/out/ci_summary.md
+            verify/arelle/out/*.arelle_raw.csv
+            data/facts.csv
+          if-no-files-found: warn
+          retention-days: 14

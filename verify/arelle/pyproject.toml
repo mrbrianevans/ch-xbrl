@@ -1,0 +1,10 @@
+[project]
+name = "arelle-verify"
+version = "0.1.0"
+description = "Minimal Arelle oracle check for ch-xbrl extract"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "arelle-release>=2.44.0",
+    "duckdb>=1.5.0",
+]

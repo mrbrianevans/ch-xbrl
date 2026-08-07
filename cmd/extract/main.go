@@ -57,7 +57,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("create output: %v", err)
 		}
-		defer outW.Close()
+		defer func() { _ = outW.Close() }()
 	}
 	csvW := csvout.New(outW)
 
