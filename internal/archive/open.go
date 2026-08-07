@@ -110,6 +110,7 @@ func (r *httpRangeReader) ReadAt(p []byte, off int64) (int, error) {
 
 	resp, err := r.client.Do(req)
 	if err != nil {
+		// Preserve context errors for clean cancel/timeout handling upstream.
 		return 0, err
 	}
 	defer resp.Body.Close()

@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -136,7 +137,7 @@ func main() {
 			log.Printf("  %s", e)
 		}
 	}
-	if streamErr != nil && streamErr != context.Canceled {
+	if streamErr != nil && !errors.Is(streamErr, context.Canceled) {
 		log.Fatalf("stream: %v", streamErr)
 	}
 	if filesOK.Load() == 0 {

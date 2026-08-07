@@ -3,6 +3,7 @@ package archive
 import (
 	"archive/zip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -44,11 +45,17 @@ func streamZip(ctx context.Context, source string, out chan<- Member) (int, erro
 		}
 		rc, err := f.Open()
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return n, err
+			}
 			return n, fmt.Errorf("open member %s: %w", name, err)
 		}
 		content, err := io.ReadAll(io.LimitReader(rc, maxMemberSize+1))
 		rc.Close()
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return n, err
+			}
 			return n, fmt.Errorf("read %s: %w", name, err)
 		}
 		if len(content) > maxMemberSize {
