@@ -116,9 +116,9 @@ go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv -workers 4
 duckdb -c ".read sql/transform.sql"
 # or: make all
 # optional live zip smoke: CH_XBR_INTEGRATION=1 go test ./internal/archive/ -tags=integration -run TestIntegrationRemoteCHZip -v
-# Arelle oracle (slow; one instance; full DTS): see verify/arelle/README.md
+# Arelle oracle (minimal soft check): see verify/arelle/README.md
 # go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
-# cd verify/arelle && uv sync && uv run python verify_instance.py -i ../../samples/FILE.xhtml --extract ../../data/facts.csv
+# cd verify/arelle && uv sync && uv run python verify_instance.py -i ../../samples/FILE.xhtml --extract ../../data/facts.csv --offline
 ```
 
 ## Communication

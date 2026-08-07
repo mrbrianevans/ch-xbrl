@@ -1,12 +1,10 @@
 [project]
 name = "arelle-verify"
 version = "0.1.0"
-description = "Arelle-based fact export for verifying ch-xbrl extract output"
+description = "Minimal Arelle oracle check for ch-xbrl extract"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "arelle-release>=2.44.0",
+    "duckdb>=1.5.0",
 ]
-
-# Runnable as: uv run python export_facts.py …
-# Arelle CLI:   uv run arelleCmdLine …

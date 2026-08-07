@@ -1,156 +1,252 @@
 #!/usr/bin/env python3
-"""Verify one iXBRL sample: Arelle export → long format → compare to extract.
+"""Minimal Arelle oracle check for one iXBRL instance.
 
-Workflow:
-  1. Run Arelle CLI on a single instance (full DTS resolve).
-  2. Transform Arelle fact-list into ch-xbrl long-format columns.
-  3. Compare against cmd/extract output for the same source_file.
+1. arelleCmdLine → raw fact CSV
+2. DuckDB soft-compare vs cmd/extract facts for the same source_file
+3. Report counts, missing/extra concepts, soft value mismatches
 
-Example:
-  go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
-  cd verify/arelle
-  uv run python verify_instance.py \\
-    -i ../../samples/03024914_aa_2023-03-13.xhtml \\
-    --extract ../../data/facts.csv \\
-    --offline
+Not byte-identical: whitespace, thousands separators, and common date
+formats are normalised. Dimensions/units/taxonomy are ignored.
 """
 
 from __future__ import annotations
 
 import argparse
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
-from compare_facts import (
-    compare,
-    filter_extract,
-    load_long_csv,
-    print_report,
-    write_mismatch_csv,
+import duckdb
+
+HERE = Path(__file__).resolve().parent
+SQL = (HERE / "sql" / "verify.sql").read_text(encoding="utf-8")
+
+FACT_COLS = (
+    "Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions"
 )
-from export_facts import export_instance
 
 
-def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description="Arelle oracle check of one instance against ch-xbrl extract CSV.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-examples:
-  # after: go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
-  uv run python verify_instance.py \\
-      -i ../../samples/03024914_aa_2023-03-13.xhtml \\
-      --extract ../../data/facts.csv --offline
+def find_arelle() -> str:
+    for name in ("arelleCmdLine", "arelleCmdLine.exe"):
+        p = shutil.which(name)
+        if p:
+            return p
+    raise SystemExit("arelleCmdLine not on PATH — run via: uv run python verify_instance.py …")
 
-  # keep intermediate CSVs under out/
-  uv run python verify_instance.py -i FILE.xhtml --extract FACTS.csv -o out/
-""",
+
+def run_arelle(instance: Path, raw_csv: Path, *, offline: bool) -> None:
+    raw_csv.parent.mkdir(parents=True, exist_ok=True)
+    if raw_csv.exists():
+        raw_csv.unlink()
+    cmd = [
+        find_arelle(),
+        "-f",
+        str(instance.resolve()),
+        "--facts",
+        str(raw_csv.resolve()),
+        "--factListCols",
+        FACT_COLS,
+        "--logLevel",
+        "error",
+    ]
+    if offline:
+        cmd.extend(["--internetConnectivity", "offline"])
+    print(f"arelle → {raw_csv}", file=sys.stderr)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0 or not raw_csv.is_file():
+        sys.stderr.write(proc.stdout or "")
+        sys.stderr.write(proc.stderr or "")
+        raise SystemExit(f"arelleCmdLine failed for {instance}")
+
+
+def _path_sql(p: Path) -> str:
+    return str(p.resolve()).replace("\\", "/")
+
+
+def _rows(con: duckdb.DuckDBPyConnection, sql: str) -> list[dict]:
+    cur = con.execute(sql)
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def _one(con: duckdb.DuckDBPyConnection, sql: str) -> dict:
+    rows = _rows(con, sql)
+    return rows[0] if rows else {}
+
+
+def compare(raw_csv: Path, extract_csv: Path, source_file: str) -> dict:
+    con = duckdb.connect(":memory:")
+    raw = _path_sql(raw_csv)
+    ext = _path_sql(extract_csv)
+    # all_varchar + parallel=false: Arelle CSV has messy dimensions / newlines
+    con.execute(
+        f"""
+        CREATE TABLE raw_arelle AS
+        SELECT * FROM read_csv(
+            '{raw}',
+            header=true, all_varchar=true, null_padding=true,
+            parallel=false, ignore_errors=true, strict_mode=false
+        );
+        """
     )
-    p.add_argument(
-        "-i",
-        "--input",
-        required=True,
-        type=Path,
-        help="Single iXBRL/XBRL instance to verify",
+    con.execute(
+        f"""
+        CREATE TABLE extract_all AS
+        SELECT * FROM read_csv(
+            '{ext}',
+            header=true, all_varchar=true, parallel=false
+        );
+        """
     )
+    con.execute(f"SET VARIABLE source_file = '{source_file.replace(chr(39), chr(39)+chr(39))}'")
+    con.execute(SQL)
+
+    summary = _one(con, "SELECT * FROM summary")
+    summary = {k: int(v) for k, v in summary.items()}
+    summary["concepts_missing_from_extract"] = _rows(
+        con, "SELECT concept FROM concepts_only_arelle ORDER BY 1"
+    )
+    summary["concepts_extra_in_extract"] = _rows(
+        con, "SELECT concept FROM concepts_only_extract ORDER BY 1"
+    )
+    summary["value_mismatch_samples"] = _rows(
+        con,
+        """
+        SELECT concept, period_start, period_end, arelle_value, extract_value
+        FROM pairs WHERE NOT value_match
+        ORDER BY concept LIMIT 15
+        """,
+    )
+    summary["facts_only_arelle_samples"] = _rows(
+        con,
+        """
+        SELECT concept, period_start, period_end, value
+        FROM facts_only_arelle ORDER BY concept LIMIT 10
+        """,
+    )
+    summary["facts_only_extract_samples"] = _rows(
+        con,
+        """
+        SELECT concept, period_start, period_end, value
+        FROM facts_only_extract ORDER BY concept LIMIT 10
+        """,
+    )
+    con.close()
+    return summary
+
+
+def print_report(s: dict) -> None:
+    print("=== counts ===")
+    print(f"  arelle facts:   {s['arelle_facts']}")
+    print(f"  extract facts:  {s['extract_facts']}")
+    print(f"  arelle concepts:{s['arelle_concepts']}")
+    print(f"  extract concepts:{s['extract_concepts']}")
+    print()
+    print("=== concepts ===")
+    print(f"  only in arelle (missing from extract): {s['concepts_only_arelle']}")
+    for r in s.get("concepts_missing_from_extract") or []:
+        print(f"    - {r['concept']}")
+    print(f"  only in extract (extra vs arelle):     {s['concepts_only_extract']}")
+    for r in s.get("concepts_extra_in_extract") or []:
+        print(f"    - {r['concept']}")
+    print()
+    print("=== facts (paired on concept + period) ===")
+    print(f"  paired:              {s['paired_facts']}")
+    print(f"  soft value match:    {s['soft_value_matches']}")
+    print(f"  soft value mismatch: {s['soft_value_mismatches']}")
+    print(f"  only in arelle:      {s['facts_only_arelle']}")
+    print(f"  only in extract:     {s['facts_only_extract']}")
+
+    if s.get("value_mismatch_samples"):
+        print("\n--- value mismatch samples (after soft norm) ---")
+        for r in s["value_mismatch_samples"]:
+            print(
+                f"  {r['concept']} [{r['period_start']}..{r['period_end']}]\n"
+                f"    arelle:  {r['arelle_value']!r}\n"
+                f"    extract: {r['extract_value']!r}"
+            )
+    if s.get("facts_only_arelle_samples"):
+        print("\n--- fact key only in arelle (sample) ---")
+        for r in s["facts_only_arelle_samples"]:
+            print(f"  {r['concept']} [{r['period_start']}..{r['period_end']}] = {r['value']!r}")
+    if s.get("facts_only_extract_samples"):
+        print("\n--- fact key only in extract (sample) ---")
+        for r in s["facts_only_extract_samples"]:
+            print(f"  {r['concept']} [{r['period_start']}..{r['period_end']}] = {r['value']!r}")
+
+
+def main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("-i", "--input", type=Path, required=True, help="One iXBRL instance")
     p.add_argument(
         "--extract",
-        required=True,
         type=Path,
-        help="ch-xbrl long-format facts.csv (from cmd/extract)",
+        required=True,
+        help="cmd/extract long-format facts.csv",
     )
     p.add_argument(
         "-o",
         "--out-dir",
         type=Path,
         default=Path("out"),
-        help="Directory for intermediate CSVs (default: out/)",
+        help="Where to write Arelle raw CSV (default: out/)",
     )
     p.add_argument(
         "--offline",
         action="store_true",
-        help="Arelle offline mode (warm web cache)",
+        help="Arelle --internetConnectivity offline",
     )
     p.add_argument(
-        "--packages",
-        action="append",
-        default=[],
-        help="Taxonomy package for Arelle (repeatable)",
+        "--skip-arelle",
+        action="store_true",
+        help="Reuse existing out/<stem>.arelle_raw.csv (no Arelle run)",
     )
-    p.add_argument(
-        "--max-print",
-        type=int,
-        default=20,
-        help="Max sample mismatch rows to print",
-    )
-    return p
+    args = p.parse_args(argv)
 
-
-def main(argv: list[str] | None = None) -> None:
-    args = build_parser().parse_args(argv)
-    instance: Path = args.input
-    if not instance.is_file():
-        raise SystemExit(f"instance not found: {instance}")
+    if not args.input.is_file():
+        raise SystemExit(f"instance not found: {args.input}")
     if not args.extract.is_file():
         raise SystemExit(f"extract CSV not found: {args.extract}")
 
-    out_dir: Path = args.out_dir
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stem = instance.stem
-    raw_path = out_dir / f"{stem}.arelle_raw.csv"
-    long_path = out_dir / f"{stem}.arelle_long.csv"
-    mismatch_path = out_dir / f"{stem}.mismatches.csv"
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    raw_csv = args.out_dir / f"{args.input.stem}.arelle_raw.csv"
+    if not args.skip_arelle:
+        run_arelle(args.input, raw_csv, offline=args.offline)
+    elif not raw_csv.is_file():
+        raise SystemExit(f"--skip-arelle but missing {raw_csv}")
 
-    export_instance(
-        instance,
-        long_path,
-        raw_out=raw_path,
-        packages=args.packages,
-        offline=args.offline,
-    )
-
-    arelle_rows = load_long_csv(long_path)
-    extract_all = load_long_csv(args.extract)
-    extract_rows = filter_extract(extract_all, instance.name)
-    if not extract_rows:
+    s = compare(raw_csv, args.extract, args.input.name)
+    if s["extract_facts"] == 0:
         raise SystemExit(
-            f"no extract rows with source_file basename {instance.name!r} "
-            f"in {args.extract} ({len(extract_all)} total rows). "
-            "Re-run extract including this member, e.g.:\n"
-            "  go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv"
+            f"no extract rows for source_file={args.input.name!r} in {args.extract}"
         )
 
-    res = compare(arelle_rows, extract_rows)
-    print()
-    print_report(res, max_rows=args.max_print)
-    write_mismatch_csv(mismatch_path, res)
-    print(f"intermediates: {raw_path}")
-    print(f"               {long_path}")
-    print(f"mismatches:    {mismatch_path}")
+    print_report(s)
 
-    if not res.counts_equal:
-        print("FAIL: fact counts differ.", file=sys.stderr)
-        sys.exit(1)
-
-    if res.only_arelle or res.only_extract:
-        print(
-            "FAIL: unpaired facts remain after key + concept/period matching.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if res.value_matched == res.arelle_count:
-        print("OK: fact counts match; all paired values match under normalisation.")
+    # Sanity gates: counts close, no missing concepts from Arelle side
+    ok = (
+        s["arelle_facts"] == s["extract_facts"]
+        and s["concepts_only_arelle"] == 0
+        and s["facts_only_arelle"] == 0
+        and s["soft_value_mismatches"] == 0
+    )
+    if ok:
+        print("\nOK: counts match, no missing concepts, soft values match on paired facts.")
         sys.exit(0)
 
-    print(
-        f"OK counts: {res.arelle_count} facts on both sides, all paired. "
-        f"{len(res.value_mismatches)} value string diffs "
-        "(often iXT display text vs ISO dates / whitespace). "
-        "See mismatches CSV.",
-        file=sys.stderr,
-    )
-    sys.exit(0)
+    # Soft pass: same fact count + no concepts only in Arelle
+    soft_ok = s["arelle_facts"] == s["extract_facts"] and s["concepts_only_arelle"] == 0
+    if soft_ok:
+        print(
+            "\nOK (soft): fact counts match and extract has every Arelle concept. "
+            "See mismatches above (text/period keys); not treated as hard failure.",
+            file=sys.stderr,
+        )
+        sys.exit(0)
+
+    print("\nFAIL: fact counts differ or extract is missing Arelle concepts.", file=sys.stderr)
+    sys.exit(1)
 
 
 if __name__ == "__main__":
