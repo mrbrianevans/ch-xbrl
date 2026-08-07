@@ -1,4 +1,4 @@
-// Package fact defines the long-format fact row emitted by the extractor.
+// Package fact defines the long-format fact row emitted by ch-xbrl.
 package fact
 
 // Fact is one XBRL fact in long format.

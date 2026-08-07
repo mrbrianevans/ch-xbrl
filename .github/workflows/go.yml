@@ -50,6 +50,6 @@ jobs:
 
       - name: Build
         run: |
-          go build -o /tmp/extract ./cmd/extract
-          go build -o /tmp/taxonomy ./cmd/taxonomy
-          go build -o /tmp/mksample ./cmd/mksample
+          go build -o /tmp/ch-xbrl ./cmd/ch-xbrl
+          go build -o /tmp/ch-xbrl-taxonomy ./cmd/taxonomy
+          go build -o /tmp/ch-xbrl-mksample ./cmd/mksample

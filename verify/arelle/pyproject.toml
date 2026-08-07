@@ -1,7 +1,7 @@
 [project]
 name = "arelle-verify"
 version = "0.1.0"
-description = "Minimal Arelle oracle check for ch-xbrl extract"
+description = "Minimal Arelle oracle check for ch-xbrl"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -1,6 +1,6 @@
 # Arelle verify (minimal)
 
-Sanity-check **one** iXBRL instance against `cmd/extract` using Arelle as a slow full-DTS oracle.
+Sanity-check **one** iXBRL instance against `cmd/ch-xbrl` using Arelle as a slow full-DTS oracle.
 
 **Full instructions, lessons learned, and sample-run results:** [`VERIFY_GUIDE.md`](./VERIFY_GUIDE.md).
 
@@ -11,7 +11,7 @@ Soft match only — not byte-identical. Whitespace, thousands separators, `(repo
 GitHub Actions workflow [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle-verify.yml):
 
 - **Triggers:** push to `master` / `main`, and **workflow_dispatch** (optional sample limit / offline)
-- Runs `go test`, `cmd/extract` on `samples/sample.tar.zst`, then Arelle soft-compare of every sample
+- Runs `go test`, `cmd/ch-xbrl` on `samples/sample.tar.zst`, then Arelle soft-compare of every sample
 - Writes a Markdown report to the **job summary** (and `out/ci_summary.md` artefact)
 
 Local batch (same reporter as CI):
@@ -35,8 +35,8 @@ uv sync
 ## Run
 
 ```bash
-# repo root — build extract facts (includes the sample you care about)
-go run ./cmd/extract -in samples/sample.tar.zst -out data/facts.csv
+# repo root — produce ch-xbrl facts (includes the sample you care about)
+go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
 
 cd verify/arelle
 uv run python verify_instance.py \
