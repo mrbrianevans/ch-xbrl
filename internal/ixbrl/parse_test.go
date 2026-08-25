@@ -130,6 +130,49 @@ func TestStripXMLPreamble(t *testing.T) {
 	}
 }
 
+func TestDecimalsAttribute(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink">
+<body>
+<link:schemaRef xlink:href="https://example.com/t.xsd"/>
+<ix:nonFraction name="core:FixedAssets" contextRef="c1" unitRef="GBP" decimals="0">100</ix:nonFraction>
+<ix:nonFraction name="core:NumberSharesIssuedFullyPaid" contextRef="c1" unitRef="shares" decimals="INF">100</ix:nonFraction>
+<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="pure">12</ix:nonFraction>
+<ix:nonNumeric name="core:EntityCurrentLegalOrRegisteredName" contextRef="c1">Acme Ltd</ix:nonNumeric>
+<xbrli:unit id="GBP"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+<xbrli:unit id="shares"><xbrli:measure>shares</xbrli:measure></xbrli:unit>
+<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">12345678</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</body>
+</html>`
+
+	facts, err := ParseBytes([]byte(doc), "test.xhtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range facts {
+		got[f.Concept] = f.Decimals
+	}
+	want := map[string]string{
+		"FixedAssets":                        "0",
+		"NumberSharesIssuedFullyPaid":        "INF",
+		"AverageNumberEmployeesDuringPeriod": "",
+		"EntityCurrentLegalOrRegisteredName": "",
+	}
+	for concept, dec := range want {
+		if got[concept] != dec {
+			t.Errorf("%s decimals=%q want %q", concept, got[concept], dec)
+		}
+	}
+}
+
 func TestQNameLocal(t *testing.T) {
 	if qnameLocal("ns6:FixedAssets") != "FixedAssets" {
 		t.Fatal(qnameLocal("ns6:FixedAssets"))

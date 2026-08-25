@@ -107,7 +107,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 
 ### Parser
 
-- [ ] Emit `decimals` on `Fact` and in CSV (tenth column). Raw attribute, including `INF`.
+- [x] Emit `decimals` on `Fact` and in CSV (tenth column). Raw attribute, including `INF`.
 - [ ] Fix `Prod223_4203_14256400_20250923.html`: extract `DirectorSigningDirectorsReport` and `EndDateForPeriodCoveredByReport` (52 vs 49 facts vs Arelle). Cause: nested Workiva `ix:nonNumeric` (outer facts wrap inner ones; decoder keeps only the innermost). No new sample required for this fix.
 - [ ] Remove `Prod223_4203_00781277_20251231.html` and `Prod223_4203_00506170_20251231.html` from `samples/` / `sample.tar.zst` / the Arelle batch (Arelle CSV / DuckDB tooling, not extract verdicts).
 - [ ] Add further edge-case filings per the hunt list in section 5 (not tuples) and re-score vs Arelle.
@@ -157,7 +157,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 
 - [x] `--version` + ldflags on release workflow
 - [x] Fail-closed exits + interrupt 130
-- [ ] `decimals` column
+- [x] `decimals` column
 - [ ] Remove leftover `extract` product names
 - [ ] `docs/cli-contract.md`
 

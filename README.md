@@ -77,6 +77,7 @@ A contrasting approach (wide rows and hard-coded concept priority *inside* the p
 | `dimensions` | JSON map dimension → member; empty if none |
 | `taxonomy` | Primary schemaRef href |
 | `source_file` | Archive member name |
+| `decimals` | Raw iXBRL `decimals` attribute (`INF` stays `INF`); empty when absent or non-numeric |
 
 ## Repository layout
 

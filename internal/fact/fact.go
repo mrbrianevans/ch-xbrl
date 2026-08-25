@@ -12,6 +12,7 @@ type Fact struct {
 	Dimensions  string // JSON object dimension→member; empty if none
 	Taxonomy    string // schemaRef href
 	SourceFile  string // archive member name
+	Decimals    string // raw iXBRL decimals attribute (INF stays INF); empty if absent / non-numeric
 }
 
 // CSVHeader is the column order for long-format fact CSV.
@@ -25,6 +26,7 @@ var CSVHeader = []string{
 	"dimensions",
 	"taxonomy",
 	"source_file",
+	"decimals",
 }
 
 // Record returns fields in CSVHeader order.
@@ -39,5 +41,6 @@ func (f Fact) Record() []string {
 		f.Dimensions,
 		f.Taxonomy,
 		f.SourceFile,
+		f.Decimals,
 	}
 }

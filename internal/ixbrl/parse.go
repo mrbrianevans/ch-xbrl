@@ -392,6 +392,10 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			val = normaliseNonNumeric(val, pf.Format)
 		}
 
+		decimals := ""
+		if pf.IsNumeric {
+			decimals = pf.Decimals
+		}
 		out = append(out, fact.Fact{
 			CompanyID:   company,
 			PeriodStart: periodStart,
@@ -402,6 +406,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			Dimensions:  dimsJSON,
 			Taxonomy:    taxonomy,
 			SourceFile:  sourceFile,
+			Decimals:    decimals,
 		})
 	}
 
@@ -835,7 +840,9 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 		if u, ok := units[unitRef]; ok && u.Measure != "" {
 			unit = u.Measure
 		}
+		decimals := ""
 		if numeric {
+			decimals = am["decimals"]
 			val = normaliseNumeric(val, scale, sign, format)
 		} else {
 			val = normaliseNonNumeric(val, format)
@@ -850,6 +857,7 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 			Dimensions:  dimsJSON,
 			Taxonomy:    taxonomy,
 			SourceFile:  sourceFile,
+			Decimals:    decimals,
 		})
 	}
 
