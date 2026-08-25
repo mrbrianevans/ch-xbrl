@@ -93,6 +93,7 @@ samples/           example iXBRL + sample archive (see samples/NOTICE)
 verify/arelle/     Arelle (uv) fact export for correctness checks
 data/              runtime outputs (not committed)
 LICENSE            MIT (first-party code)
+docs/cli-contract.md  frozen ch-xbrl CLI (flags, CSV, exits)
 AGENTS.md          instructions for contributors and coding agents
 ```
 
@@ -111,7 +112,7 @@ duckdb -c ".read sql/transform.sql"
 
 The archive is a positional path or URL. `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout. `-V` / `--version` prints `ch-xbrl <semver> (<sha>)` and exits 0 (release builds bake this via ldflags; `go run` is `0.0.0-dev` plus the VCS revision when available).
 
-Exit codes are fail-closed: **0** only if the stream finished, `files_err == 0`, and `files_ok >= 1`; **1** on any member parse/write failure, empty extract, or stream/I/O error; **2** usage; **130** interrupt (`Ctrl-C`).
+Exit codes are fail-closed: **0** only if the stream finished, `files_err == 0`, and `files_ok >= 1`; **1** on any member parse/write failure, empty extract, or stream/I/O error; **2** usage; **130** interrupt (`Ctrl-C`). The frozen CLI (argv, columns, exits) is [`docs/cli-contract.md`](./docs/cli-contract.md). `ch-xbrl-taxonomy`, `ch-xbrl-mksample`, and DuckDB SQL are not 1.0-frozen.
 
 Or `make all` if you have Make.
 

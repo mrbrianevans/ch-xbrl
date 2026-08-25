@@ -159,7 +159,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 - [x] Fail-closed exits + interrupt 130
 - [x] `decimals` column
 - [ ] Remove leftover `extract` product names
-- [ ] `docs/cli-contract.md`
+- [x] `docs/cli-contract.md`
 
 ### C. Correctness and CI
 
@@ -247,7 +247,7 @@ Drop extra `.html` / `.xhtml` into `samples/` (or point at paths). Agent packs `
 ## Definition of done for v1.0.0
 
 - [ ] `ch-xbrl --version` prints the release tag
-- [ ] `docs/cli-contract.md` matches flags, ten CSV columns (including `decimals`), fail-closed exits **0 / 1 / 2 / 130**
+- [x] `docs/cli-contract.md` matches flags, ten CSV columns (including `decimals`), fail-closed exits **0 / 1 / 2 / 130**
 - [ ] No leftover `extract` **product name** in the tree (English “extraction” OK)
 - [ ] MIT (`Copyright (c) 2026 Brian Evans`) + OGL sample notice; replica file gone
 - [ ] History has no personal gmail

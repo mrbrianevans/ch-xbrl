@@ -63,6 +63,7 @@ samples/          example iXBRL + sample.tar.zst (OGL; see samples/NOTICE)
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 data/             runtime outputs (gitignored)
 LICENSE           MIT (first-party code; samples are not MIT)
+docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
 AGENTS.md         this file
 README.md         goals and design overview
 ```
