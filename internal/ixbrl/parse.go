@@ -122,8 +122,12 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		Value       string
 		ContinuedAt string // head of ix:continuation chain, if any
 	}
+	type factFrame struct {
+		fact pendingFact
+		buf  strings.Builder
+	}
 	var facts []pendingFact
-	var curFact *pendingFact
+	var factStack []*factFrame
 
 	for {
 		tok, err := dec.Token()
@@ -189,7 +193,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				curUnit = &unitInfo{ID: attrAny(t, "id")}
 
 			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
-				pf := &pendingFact{
+				pf := pendingFact{
 					Name:        attrAny(t, "name"),
 					ContextRef:  attrAny(t, "contextRef"),
 					UnitRef:     attrAny(t, "unitRef"),
@@ -204,9 +208,9 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
 					pf.Value = ""
 				}
-				curFact = pf
-				captureText = true
-				textBuf.Reset()
+				// Nested ix:nonNumeric / ix:nonFraction (Workiva wraps one
+				// fact inside another). Each layer is a separate fact.
+				factStack = append(factStack, &factFrame{fact: pf})
 
 			case isIX(space) && local == "continuation":
 				// Continuation of a prior fact (continuedAt chain).
@@ -222,6 +226,8 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			}
 			if captureCont {
 				contBuf.Write(t)
+			} else if n := len(factStack); n > 0 {
+				factStack[n-1].buf.Write(t)
 			} else if captureText {
 				textBuf.Write(t)
 			}
@@ -313,23 +319,24 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				}
 				curUnit = nil
 
-			case isIX(space) && (local == "nonFraction" || local == "nonNumeric") && curFact != nil:
-				// Keep raw text; continuations are appended before normalisation.
-				curFact.Value = textBuf.String()
-				facts = append(facts, *curFact)
-				curFact = nil
+			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
+				if n := len(factStack); n > 0 {
+					fr := factStack[n-1]
+					factStack = factStack[:n-1]
+					fr.fact.Value = fr.buf.String()
+					facts = append(facts, fr.fact)
+					// Nested fact text is also the parent's visible content.
+					if len(factStack) > 0 {
+						factStack[len(factStack)-1].buf.WriteString(fr.fact.Value)
+					}
+				}
 			}
 
 			if captureText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
-				// keep capturing until fact ends; for other fields stop
-				if curFact == nil {
+				if len(factStack) == 0 {
 					captureText = false
 					textBuf.Reset()
 				}
-			}
-			if isIX(space) && (local == "nonFraction" || local == "nonNumeric") {
-				captureText = false
-				textBuf.Reset()
 			}
 		}
 	}

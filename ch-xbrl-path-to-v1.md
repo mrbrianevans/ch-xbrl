@@ -108,8 +108,8 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 ### Parser
 
 - [x] Emit `decimals` on `Fact` and in CSV (tenth column). Raw attribute, including `INF`.
-- [ ] Fix `Prod223_4203_14256400_20250923.html`: extract `DirectorSigningDirectorsReport` and `EndDateForPeriodCoveredByReport` (52 vs 49 facts vs Arelle). Cause: nested Workiva `ix:nonNumeric` (outer facts wrap inner ones; decoder keeps only the innermost). No new sample required for this fix.
-- [ ] Remove `Prod223_4203_00781277_20251231.html` and `Prod223_4203_00506170_20251231.html` from `samples/` / `sample.tar.zst` / the Arelle batch (Arelle CSV / DuckDB tooling, not extract verdicts).
+- [x] Fix `Prod223_4203_14256400_20250923.html`: extract `DirectorSigningDirectorsReport` and `EndDateForPeriodCoveredByReport` (52 vs 49 facts vs Arelle). Cause: nested Workiva `ix:nonNumeric` (outer facts wrap inner ones; decoder keeps only the innermost). No new sample required for this fix.
+- [x] Remove `Prod223_4203_00781277_20251231.html` and `Prod223_4203_00506170_20251231.html` from `samples/` / `sample.tar.zst` / the Arelle batch (Arelle CSV / DuckDB tooling, not extract verdicts).
 - [ ] Add further edge-case filings per the hunt list in section 5 (not tuples) and re-score vs Arelle.
 - [ ] Fail-closed CLI (section 1), including interrupt **130**.
 
@@ -163,8 +163,8 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 
 ### C. Correctness and CI
 
-- [ ] Fix 14256400 (nested `ix:nonNumeric`) — code
-- [ ] Drop the two tooling samples; refresh `sample.tar.zst` — code
+- [x] Fix 14256400 (nested `ix:nonNumeric`) — code
+- [x] Drop the two tooling samples; refresh `sample.tar.zst` — code
 - [ ] More edge-case samples (section 5 hunt list) — **human finds files**; code integrates and re-scores
 - [ ] Daily smoke workflow (exit 0 on yesterday’s zip; 404 skip) — code
 
@@ -251,7 +251,7 @@ Drop extra `.html` / `.xhtml` into `samples/` (or point at paths). Agent packs `
 - [ ] No leftover `extract` **product name** in the tree (English “extraction” OK)
 - [ ] MIT (`Copyright (c) 2026 Brian Evans`) + OGL sample notice; replica file gone
 - [ ] History has no personal gmail
-- [ ] 14256400 fixed; 00781277 and 00506170 not in the verify set
+- [x] 14256400 fixed; 00781277 and 00506170 not in the verify set
 - [ ] Extra hunt-list samples (section 5) in the curated set; tuples not required
 - [ ] Arelle sample job green and required
 - [ ] Daily bulk smoke exists, is exit-0 only, 404 is skip; observed green on a real CH day

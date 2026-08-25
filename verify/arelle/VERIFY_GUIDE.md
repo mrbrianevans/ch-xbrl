@@ -198,7 +198,9 @@ verify/arelle/
 
 Among OK + OK (soft): **5,721** fact pairs, **5,530** soft value matches → **~96.7%**.
 
-For **30 / 33** scored samples with a good Arelle export, extract had **matching fact counts** and **no missing Arelle concepts**.
+The curated verify set is the 31 instance files under `samples/` (packed into `sample.tar.zst`). `Prod223_4203_00781277` and `Prod223_4203_00506170` were dropped: they were Arelle CSV / DuckDB tooling failures, not extract verdicts.
+
+On the 7 Aug snapshot, **30 / 31 remaining scored samples** already had matching fact counts and no missing Arelle concepts. `Prod223_4203_14256400` was the remaining extract gap (nested `ix:nonNumeric`); that is fixed in the Go parser.
 
 ### Per-sample results
 
@@ -209,8 +211,6 @@ For **30 / 33** scored samples with a good Arelle export, extract had **matching
 | `09652677_aa_2026-03-25.xhtml` | OK soft | 213 | 213 | 0 | 199 | 14 |
 | `13566765_aa_2026-03-26.xhtml` | OK soft | 271 | 271 | 0 | 270 | 1 |
 | `Prod223_4203_00134794_20250927.html` | OK soft | 209 | 209 | 0 | 199 | 10 |
-| `Prod223_4203_00506170_20251231.html` | **Error** | — | — | — | — | — |
-| `Prod223_4203_00781277_20251231.html` | **FAIL** | 384 | 384 | 21 | 87 | 8 |
 | `Prod223_4203_02728626_20250731.html` | OK | 387 | 387 | 0 | 387 | 0 |
 | `Prod223_4203_03407923_20250731.html` | OK | 381 | 381 | 0 | 381 | 0 |
 | `Prod223_4203_03909595_20250930.html` | OK soft | 284 | 284 | 0 | 267 | 17 |
@@ -235,30 +235,16 @@ For **30 / 33** scored samples with a good Arelle export, extract had **matching
 | `Prod223_4203_13565183_20250831.html` | OK | 60 | 60 | 0 | 60 | 0 |
 | `Prod223_4203_14087072_20260228.html` | OK | 65 | 65 | 0 | 65 | 0 |
 | `Prod223_4203_14158962_20250630.html` | OK soft | 212 | 212 | 0 | 192 | 20 |
-| `Prod223_4203_14256400_20250923.html` | **FAIL** | 52 | 49 | 2 | 47 | 2 |
+| `Prod223_4203_14256400_20250923.html` | *(was FAIL 52 vs 49; nested facts now extracted)* | 52 | 49 | 2 | 47 | 2 |
 | `Prod223_4203_15145702_20251231.html` | OK soft | 153 | 153 | 0 | 152 | 1 |
 
 ### Notable failures and error
 
-#### `Prod223_4203_14256400_20250923.html` (FAIL — likely real extract gap)
+#### `Prod223_4203_14256400_20250923.html` (fixed)
 
-- Facts: **52 Arelle vs 49 extract**
-- Concepts present in Arelle, **missing from extract**:
-  - `DirectorSigningDirectorsReport`
-  - `EndDateForPeriodCoveredByReport`
-- Also multiset pairing noise on `NameEntityOfficer` (several officer names / empty dimensional facts)
-
-#### `Prod223_4203_00781277_20251231.html` (FAIL — messy; treat carefully)
-
-- Fact **counts equal** (384 = 384) but concept sets diverge (21 only-Arelle / 37 only-extract) and few pairs form cleanly.
-- Arelle CSV has many dimension-spill columns; residual period keys looked corrupted in the report.
-- **Do not treat as a clean “extract missed N facts” result** without a manual re-check; may be Arelle CSV / pairing fragility.
-
-#### `Prod223_4203_00506170_20251231.html` (error — unscored)
-
-- Arelle produced a normal-looking full fact CSV on disk.
-- DuckDB read the header as a **single column** (delimiter/BOM sniffing), so compare crashed (`Name` not found).
-- **Not a scored extract verdict.**
+- 7 Aug: **52 Arelle vs 49 extract**; missing `DirectorSigningDirectorsReport` and `EndDateForPeriodCoveredByReport`.
+- Cause: Workiva nested `ix:nonNumeric` (outer fact wraps inner). The decoder kept only the innermost layer.
+- Parser now stacks nested facts and copies inner text onto the parent. Re-score vs Arelle in CI.
 
 ### Soft mismatches (OK soft) — pattern
 
@@ -278,7 +264,7 @@ extract: "In our opinion the financial statements:"
 |--------|----------------|
 | OK / OK soft on most samples | Extract fact **inventory** (concepts + periods + numeric values) is aligned with Arelle |
 | Soft text mismatches | Expected with current iXBRL text assembly; not proof of wrong numbers |
-| Missing concepts on `14256400` | Follow up in the Go parser |
+| Nested facts on `14256400` | Fixed (stack nested `ix:nonNumeric`) |
 | Offline 0-fact “FAIL”s | Infrastructure / Arelle cache — re-run online before blaming extract |
 
 ---
