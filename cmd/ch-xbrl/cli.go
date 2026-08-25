@@ -90,6 +90,9 @@ Stream a local or remote Companies House iXBRL archive
 Omit -o to write stdout when it is not a terminal (pipes, files).
 On a TTY, pass -o FILE, or -o - to force stdout.
 
+Exit codes: 0 if the stream finished with files_err=0 and files_ok>=1;
+1 on any member or stream failure; 2 usage; 130 interrupt.
+
 Examples:
   ch-xbrl -o facts.csv samples/sample.tar.zst
   ch-xbrl -o facts.csv https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip

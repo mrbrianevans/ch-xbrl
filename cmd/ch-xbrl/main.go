@@ -41,17 +41,17 @@ func main() {
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printUsage(os.Stderr)
-			os.Exit(0)
+			os.Exit(exitOK)
 		}
 		fmt.Fprintf(os.Stderr, "ch-xbrl: %v\n", err)
 		if !errors.Is(err, errTTYStdout) {
 			printUsage(os.Stderr)
 		}
-		os.Exit(2)
+		os.Exit(exitUsage)
 	}
 	if cfg.showVersion {
 		fmt.Println(versionLine())
-		os.Exit(0)
+		os.Exit(exitOK)
 	}
 
 	var outW *os.File
@@ -145,9 +145,9 @@ func main() {
 		}
 	}
 	if streamErr != nil && !errors.Is(streamErr, context.Canceled) {
-		log.Fatalf("stream: %v", streamErr)
+		log.Printf("stream: %v", streamErr)
 	}
-	if filesOK.Load() == 0 {
-		os.Exit(1)
+	if code := runExitCode(filesOK.Load(), filesErr.Load(), streamErr); code != exitOK {
+		os.Exit(code)
 	}
 }

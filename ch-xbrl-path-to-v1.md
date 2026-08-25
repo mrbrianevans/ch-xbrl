@@ -156,7 +156,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 ### B. CLI and contract — code
 
 - [x] `--version` + ldflags on release workflow
-- [ ] Fail-closed exits + interrupt 130
+- [x] Fail-closed exits + interrupt 130
 - [ ] `decimals` column
 - [ ] Remove leftover `extract` product names
 - [ ] `docs/cli-contract.md`
