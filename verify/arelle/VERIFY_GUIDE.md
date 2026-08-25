@@ -48,7 +48,7 @@ uv run arelleCmdLine --version
 
 ### 1. Produce ch-xbrl long-format facts
 
-From the **repository root**, extract the sample archive (or any archive that contains the instances you will verify):
+From the **repository root**, run ch-xbrl on the sample archive (or any archive that contains the instances you will verify):
 
 ```bash
 go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
@@ -148,9 +148,9 @@ Treat **missing concepts** and **fact-count gaps** as the real signal; treat lon
 - Occasional files (e.g. BOM / delimiter sniffing) can make DuckDB treat the header as a single column → pipeline error, not an extract verdict.
 - Period column from Arelle is `Start` + `End/Instant`; instants leave Start empty (mapped to start = end in SQL).
 
-### Extract baseline must include the member
+### ch-xbrl facts must include the member
 
-If you see “no extract rows for source_file=…”, re-run extract so that archive member is present, or filter the wrong `facts.csv`.
+If you see “no extract rows for source_file=…”, re-run ch-xbrl so that archive member is present, or filter the wrong `facts.csv`.
 
 ### Environment
 
@@ -183,7 +183,7 @@ verify/arelle/
 **Inputs:**
 
 - Instances: all 33 `samples/*.{xhtml,html}`
-- Extract: `data/facts_sample.csv` from `go run ./cmd/ch-xbrl -o data/facts_sample.csv samples/sample.tar.zst`
+- ch-xbrl CSV: `data/facts_sample.csv` from `go run ./cmd/ch-xbrl -o data/facts_sample.csv samples/sample.tar.zst`
 - Procedure: offline batch first (many incomplete Arelle exports) → **re-run online** for files with 0 usable Arelle facts → merge results
 
 ### Summary
@@ -204,7 +204,7 @@ On the 7 Aug snapshot, **30 / 31 remaining scored samples** already had matching
 
 ### Per-sample results
 
-| Sample | Status | Arelle facts | Extract facts | Missing concepts | Soft match | Soft mismatch |
+| Sample | Status | Arelle facts | ch-xbrl facts | Missing concepts | Soft match | Soft mismatch |
 |--------|--------|-------------:|--------------:|-----------------:|-----------:|--------------:|
 | `03024914_aa_2023-03-13.xhtml` | OK | 130 | 130 | 0 | 130 | 0 |
 | `06760773_aa_2025-09-26.xhtml` | OK | 130 | 130 | 0 | 130 | 0 |
@@ -262,7 +262,7 @@ extract: "In our opinion the financial statements:"
 
 | Signal | Interpretation |
 |--------|----------------|
-| OK / OK soft on most samples | Extract fact **inventory** (concepts + periods + numeric values) is aligned with Arelle |
+| OK / OK soft on most samples | ch-xbrl fact **inventory** (concepts + periods + numeric values) is aligned with Arelle |
 | Soft text mismatches | Expected with current iXBRL text assembly; not proof of wrong numbers |
 | Nested facts on `14256400` | Fixed (stack nested `ix:nonNumeric`) |
 | Offline 0-fact “FAIL”s | Infrastructure / Arelle cache — re-run online before blaming extract |
@@ -278,7 +278,7 @@ Workflow: [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle
 | Push to `master` / `main` | Full sample set; Arelle **online** (taxonomies can download) |
 | **workflow_dispatch** | Optional `limit` and `offline`; same report |
 
-Steps: `go test` → extract `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
+Steps: `go test` → ch-xbrl on `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
 
 Local equivalent:
 
@@ -296,4 +296,4 @@ Job fails if any sample is **FAIL** or **ERROR**; **OK** / **OK_SOFT** keep the 
 - Short quick-start: [`README.md`](./README.md)
 - Arelle install: <https://arelle.readthedocs.io/en/latest/install.html>
 - Arelle CLI: <https://arelle.readthedocs.io/en/latest/command_line.html>
-- Repo extract design: root [`README.md`](../../README.md)
+- ch-xbrl design: root [`README.md`](../../README.md)

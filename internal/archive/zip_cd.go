@@ -25,7 +25,7 @@ const (
 	methodDeflate       = 8
 )
 
-// cdEntry is one central-directory record (subset needed for remote batch extract).
+// cdEntry is one central-directory record (subset needed for remote batch reads).
 type cdEntry struct {
 	Name              string
 	Method            uint16

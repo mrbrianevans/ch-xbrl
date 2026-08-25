@@ -1,4 +1,4 @@
-.PHONY: sample taxonomy extract transform all test build
+.PHONY: sample taxonomy facts transform all test build
 
 VERSION ?= 0.0.0-dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null)
@@ -10,13 +10,13 @@ sample:
 taxonomy:
 	go run ./cmd/taxonomy -seed-only -out reference
 
-extract:
+facts:
 	go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 transform:
 	duckdb -c ".read sql/transform.sql"
 
-all: sample taxonomy extract transform
+all: sample taxonomy facts transform
 
 test:
 	go test ./...

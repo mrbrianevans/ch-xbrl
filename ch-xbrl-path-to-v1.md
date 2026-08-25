@@ -135,7 +135,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 - [x] `samples/NOTICE` plus README pointer: CH filings, OGL / public-register notice; not MIT.
 - [ ] Delete `inspiration_stream_read_xbrl.py` (and any import of it / README “reference only” mention).
 - [ ] Rewrite history so author/committer emails are GitHub noreply (`53117772+mrbrianevans@users.noreply.github.com`), not `ebrian101@gmail.com`. Force-push `master` **immediately before** the repo is ever public (after 0.2, before or with `v1.0.0`). Coordinate so no one else has a clone they will re-push.
-- [ ] Strip leftover `extract` **product name** from Makefile, README, VERIFY_GUIDE, comments. Leave the English word “extraction”.
+- [x] Strip leftover `extract` **product name** from Makefile, README, VERIFY_GUIDE, comments. Leave the English word “extraction”.
 - [ ] Professional README: what it is, install from Releases (once public), `-in`/`-out`, `--version`, licence, link to `docs/cli-contract.md`. Status: private 0.x until v1. Taxonomy / DuckDB documented as **not** 1.0-frozen.
 - [ ] GitHub description + topics (even while private).
 - [ ] Empty `v0.1.0` release notes; later tags get real notes.
@@ -158,7 +158,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 - [x] `--version` + ldflags on release workflow
 - [x] Fail-closed exits + interrupt 130
 - [x] `decimals` column
-- [ ] Remove leftover `extract` product names
+- [x] Remove leftover `extract` product names
 - [x] `docs/cli-contract.md`
 
 ### C. Correctness and CI
@@ -248,7 +248,7 @@ Drop extra `.html` / `.xhtml` into `samples/` (or point at paths). Agent packs `
 
 - [ ] `ch-xbrl --version` prints the release tag
 - [x] `docs/cli-contract.md` matches flags, ten CSV columns (including `decimals`), fail-closed exits **0 / 1 / 2 / 130**
-- [ ] No leftover `extract` **product name** in the tree (English “extraction” OK)
+- [x] No leftover `extract` **product name** in the tree (English “extraction” OK)
 - [ ] MIT (`Copyright (c) 2026 Brian Evans`) + OGL sample notice; replica file gone
 - [ ] History has no personal gmail
 - [x] 14256400 fixed; 00781277 and 00506170 not in the verify set

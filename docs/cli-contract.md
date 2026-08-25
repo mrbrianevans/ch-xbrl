@@ -1,6 +1,6 @@
 # ch-xbrl CLI contract
 
-This is the SemVer source of truth for the **`ch-xbrl` extract CLI**. After `v1.0.0`, a **major** is required to break anything marked frozen here. Additive changes are **minor**.
+This is the SemVer source of truth for the **`ch-xbrl` CLI**. After `v1.0.0`, a **major** is required to break anything marked frozen here. Additive changes are **minor**.
 
 Only `ch-xbrl` is frozen. `ch-xbrl-taxonomy`, `ch-xbrl-mksample`, DuckDB SQL, `mapping/concept_map.csv`, Parquet output, Arelle helpers, and HTTP range-batch tunables are **not** in this contract.
 
@@ -42,7 +42,7 @@ Unsupported format, missing file, or stream I/O failure is exit **1**, not usage
 
 ## CSV
 
-UTF-8, RFC 4180-style quoting (`encoding/csv`). Header row, then one row per fact. Values are **strings** through extract; callers cast downstream.
+UTF-8, RFC 4180-style quoting (`encoding/csv`). Header row, then one row per fact. Values are **strings** through ch-xbrl; callers cast downstream.
 
 Column order is frozen:
 

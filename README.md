@@ -8,7 +8,7 @@ System for **high-volume extraction** of Companies House accounts (inline XBRL /
 |------|---------|
 | **Streaming / low memory** | Never materialise a full bulk archive or all facts in RAM |
 | **High throughput** | Multi-core parse of individual instance documents |
-| **Low information loss** | Extract keeps every fact (dimensional and not); values as strings |
+| **Low information loss** | ch-xbrl keeps every fact (dimensional and not); values as strings |
 | **Flexible downstream views** | Semantic shaping, priority, and typing live outside the hot path |
 | **Taxonomy resilience** | New concepts appear in the long table automatically; mapping catches up later |
 
@@ -46,7 +46,7 @@ The pipeline is deliberately split into four stages:
 
 ### Why long-format at extract time?
 
-Extract optimises for **completeness and speed**. Filtering to “main totals”, choosing among synonym concepts, and casting types are deferred to DuckDB so that:
+ch-xbrl optimises for **completeness and speed**. Filtering to “main totals”, choosing among synonym concepts, and casting types are deferred to DuckDB so that:
 
 - Re-extract is rare when analytics columns change.
 - Taxonomy evolution does not require Go releases for every new concept.
@@ -82,7 +82,7 @@ A contrasting approach (wide rows and hard-coded concept priority *inside* the p
 ## Repository layout
 
 ```text
-cmd/ch-xbrl/       main CLI — streaming extract (zip / tar.zst, local or remote)
+cmd/ch-xbrl/       main CLI — stream zip / tar.zst (local or remote) → facts CSV
 cmd/taxonomy/      ch-xbrl-taxonomy → reference CSVs
 cmd/mksample/      ch-xbrl-mksample — build sample.tar.zst from samples/
 internal/          shared Go packages (ixbrl, archive, fact, csvout)
@@ -127,7 +127,7 @@ Format is inferred from the path or URL (query strings ignored). Parsing of iXBR
 
 Remote ZIP is optimised for day packs with tens of thousands of ~100 KB accounts: it does **not** issue one request per member. Defaults are ~16 MiB range batches and 16 parallel range workers.
 
-Production extract against a Companies House bulk ZIP:
+Production run against a Companies House bulk ZIP:
 
 ```bash
 go run ./cmd/ch-xbrl \

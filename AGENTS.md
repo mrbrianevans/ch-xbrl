@@ -16,7 +16,7 @@ Instructions for AI coding agents and humans working in this repository.
 Typical loop:
 
 1. Make the change.
-2. Run relevant checks (`go test ./...`, sample extract if parser-related).
+2. Run relevant checks (`go test ./...`, sample `ch-xbrl` run if parser-related).
 3. `git add` the intended paths.
 4. `git commit` with a good message.
 5. Only then start the next change.
@@ -75,7 +75,7 @@ README.md         goals and design overview
 - Match existing style; prefer small diffs.
 - Format with `gofmt -w .` before commit (enforced by Go CI).
 - Parser / numeric / context behaviour: update or add tests under `internal/ixbrl/`.
-- After parser or extract changes, smoke-test:
+- After parser or CLI changes, smoke-test:
 
   ```bash
   go test ./...
@@ -107,7 +107,7 @@ README.md         goals and design overview
 ### Dependencies
 
 - Go module: pin via `go.mod` / `go.sum`; run `go mod tidy` after import changes and commit both.
-- Prefer pure-Go libraries for extract path (e.g. zstd) so the hot path stays portable.
+- Prefer pure-Go libraries for the ch-xbrl hot path (e.g. zstd) so it stays portable.
 
 ## Commands cheat sheet
 
