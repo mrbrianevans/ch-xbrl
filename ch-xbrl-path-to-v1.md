@@ -46,13 +46,13 @@ Ship this file before the v1 tag. It is the source of truth for SemVer majors.
 
 ```text
 ch-xbrl --version
-ch-xbrl -in <path|url> [-out facts.csv] [-workers N]
+ch-xbrl [-o FILE] [-workers N] <path|url>
 ```
 
 | Flag | Frozen meaning |
 |---|---|
-| `-in` | Required. Local path or `http(s)` URL of `.zip` / `.tar.zst` / `.tar` |
-| `-out` | CSV path. Default `facts.csv`. `-` is stdout |
+| positional `<path\|url>` | Required. Local path or `http(s)` URL of `.zip` / `.tar.zst` / `.tar` |
+| `-o` / `--output` | CSV path. Omit = stdout. On a TTY, refuse unless `-o FILE` or `-o -`. `-` is stdout |
 | `-workers` | Concurrent parse workers. Default `GOMAXPROCS` / `NumCPU`. `<1` clamps to 1 |
 | `--version` / `-version` | Print `ch-xbrl <semver> (<sha>)` and exit 0 |
 
@@ -78,7 +78,7 @@ company_id, period_start, period_end, concept, value, unit, dimensions, taxonomy
 
 **Unstable (must say so in the contract):** row order (worker pool). Exact numeric pretty-print / trailing zeros. Full narrative prose (nested `ix:exclude` may still truncate; inventory must still match).
 
-**Major** if we: rename, reorder, or remove any of these ten columns; change `concept` to a QName; change instant encoding; change `-in` / `-out` meaning.
+**Major** if we: rename, reorder, or remove any of these ten columns; change `concept` to a QName; change instant encoding; change positional input or `-o` / `--output` meaning.
 
 **Minor** if we: append a new column on the right; add a new flag; add an input format.
 
@@ -90,7 +90,7 @@ Today a partial extract can exit 0. That is not trustworthy enough for v1.
 |---|---|
 | `0` | Stream finished, `files_err == 0`, and `files_ok >= 1` |
 | `1` | Any member failed to parse or write, or zero successful members, or fatal I/O / stream error |
-| `2` | Usage (`-in` missing or equivalent) |
+| `2` | Usage (missing input, TTY stdout without `-o FILE` / `-o -`, or equivalent) |
 | `130` | Interrupt (`Ctrl-C` / SIGINT) |
 
 Log per-file errors as now, but they must fail the process (except 130, which is cancel).
@@ -123,7 +123,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 ### Daily smoke (not Arelle)
 
 - Scheduled workflow **every calendar day**: previous day’s `Accounts_Bulk_Data-YYYY-MM-DD.zip` from the public CH download host.
-- Run vanilla `ch-xbrl -in <url-or-local> -out facts.csv` (no extra flag, no error budget).
+- Run vanilla `ch-xbrl -o facts.csv <url-or-local>` (no extra flag, no error budget).
 - Success = **CLI exit 0** (fail-closed). Log `files_ok` / `files_err` / facts in the job summary.
 - HTTP **404** (missing day pack): skip / exit 0 with a note. Not a parser failure. Does not satisfy “observed working”.
 - Keep this **separate** from PR / push `go.yml`. A bad CH file should not block every PR; it should fail the scheduled job so we notice.

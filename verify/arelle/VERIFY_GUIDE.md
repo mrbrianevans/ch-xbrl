@@ -51,7 +51,7 @@ uv run arelleCmdLine --version
 From the **repository root**, extract the sample archive (or any archive that contains the instances you will verify):
 
 ```bash
-go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 ```
 
 Notes:
@@ -183,7 +183,7 @@ verify/arelle/
 **Inputs:**
 
 - Instances: all 33 `samples/*.{xhtml,html}`
-- Extract: `data/facts_sample.csv` from `go run ./cmd/ch-xbrl -in samples/sample.tar.zst`
+- Extract: `data/facts_sample.csv` from `go run ./cmd/ch-xbrl -o data/facts_sample.csv samples/sample.tar.zst`
 - Procedure: offline batch first (many incomplete Arelle exports) → **re-run online** for files with 0 usable Arelle facts → merge results
 
 ### Summary

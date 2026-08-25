@@ -7,7 +7,7 @@ taxonomy:
 	go run ./cmd/taxonomy -seed-only -out reference
 
 extract:
-	go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+	go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 transform:
 	duckdb -c ".read sql/transform.sql"

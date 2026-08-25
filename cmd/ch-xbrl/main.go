@@ -8,9 +8,9 @@
 //
 // Examples:
 //
-//	ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
-//	ch-xbrl -in https://example.com/Accounts_Bulk_Data.tar.zst -out facts.csv -workers 16
-//	ch-xbrl -in https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip -out facts.csv
+//	ch-xbrl -o facts.csv samples/sample.tar.zst
+//	ch-xbrl -o facts.csv -workers 16 https://example.com/Accounts_Bulk_Data.tar.zst
+//	ch-xbrl samples/sample.tar.zst > facts.csv
 package main
 
 import (
@@ -21,7 +21,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -37,27 +36,26 @@ import (
 const memberQueueDepth = 64
 
 func main() {
-	in := flag.String("in", "", "local path or https URL of a .zip, .tar.zst, or .tar archive")
-	out := flag.String("out", "facts.csv", "output CSV path (use - for stdout)")
-	workers := flag.Int("workers", runtime.NumCPU(), "concurrent XBRL parse workers")
-	flag.Parse()
-
-	if *in == "" {
-		fmt.Fprintln(os.Stderr, "usage: ch-xbrl -in <path|url> [-out facts.csv] [-workers N]")
-		fmt.Fprintln(os.Stderr, "  -in accepts local or remote .zip / .tar.zst / .tar")
-		flag.PrintDefaults()
+	cfg, err := parseConfig(os.Args[1:], stdoutIsTerminal())
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printUsage(os.Stderr)
+			os.Exit(0)
+		}
+		fmt.Fprintf(os.Stderr, "ch-xbrl: %v\n", err)
+		if !errors.Is(err, errTTYStdout) {
+			printUsage(os.Stderr)
+		}
 		os.Exit(2)
-	}
-	if *workers < 1 {
-		*workers = 1
 	}
 
 	var outW *os.File
-	var err error
-	if *out == "-" {
+	outName := "-"
+	if cfg.stdout {
 		outW = os.Stdout
 	} else {
-		outW, err = os.Create(*out)
+		outName = cfg.output
+		outW, err = os.Create(cfg.output)
 		if err != nil {
 			log.Fatalf("create output: %v", err)
 		}
@@ -79,7 +77,7 @@ func main() {
 
 	// Workers
 	var wg sync.WaitGroup
-	for i := 0; i < *workers; i++ {
+	for i := 0; i < cfg.workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -122,8 +120,8 @@ func main() {
 	}()
 
 	start := time.Now()
-	log.Printf("input: %s format=%s", *in, archive.DetectFormat(*in))
-	n, streamErr := archive.Stream(ctx, *in, members)
+	log.Printf("input: %s format=%s", cfg.input, archive.DetectFormat(cfg.input))
+	n, streamErr := archive.Stream(ctx, cfg.input, members)
 	wg.Wait()
 	close(done)
 
@@ -133,7 +131,7 @@ func main() {
 
 	elapsed := time.Since(start).Round(time.Millisecond)
 	log.Printf("done: members=%d files_ok=%d files_err=%d facts=%d elapsed=%s out=%s",
-		n, filesOK.Load(), filesErr.Load(), factCount.Load(), elapsed, *out)
+		n, filesOK.Load(), filesErr.Load(), factCount.Load(), elapsed, outName)
 
 	if len(firstErrs) > 0 {
 		log.Printf("sample errors (%d total err files):", filesErr.Load())

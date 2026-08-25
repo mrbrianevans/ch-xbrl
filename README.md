@@ -103,9 +103,11 @@ Requires **Go** (see `go.mod`) and optionally the **DuckDB** CLI.
 ```bash
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
-go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv -workers 4
+go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 duckdb -c ".read sql/transform.sql"
 ```
+
+The archive is a positional path or URL. `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout.
 
 Or `make all` if you have Make.
 
@@ -124,15 +126,15 @@ Production extract against a Companies House bulk ZIP:
 
 ```bash
 go run ./cmd/ch-xbrl \
-  -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" \
-  -out data/facts.csv -workers 16
+  -o data/facts.csv -workers 16 \
+  "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"
 ```
 
 Or a remote / local `tar.zst`:
 
 ```bash
-go run ./cmd/ch-xbrl -in "https://example/Accounts_Bulk_Data.tar.zst" -out data/facts.csv -workers 16
-go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 "https://example/Accounts_Bulk_Data.tar.zst"
+go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 ```
 
 ## Design constraints
