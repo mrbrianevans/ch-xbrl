@@ -89,9 +89,10 @@ internal/          shared Go packages (ixbrl, archive, fact, csvout)
 mapping/           concept_map.csv
 reference/         concepts.csv
 sql/               DuckDB transforms
-samples/           example iXBRL + sample archive
+samples/           example iXBRL + sample archive (see samples/NOTICE)
 verify/arelle/     Arelle (uv) fact export for correctness checks
 data/              runtime outputs (not committed)
+LICENSE            MIT (first-party code)
 AGENTS.md          instructions for contributors and coding agents
 ```
 
@@ -147,6 +148,12 @@ go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 - Taxonomy processing is fully decoupled from the instance parser.
 - Prefer explicit casts in DuckDB over silent type inference.
 - Instant contexts use `period_start = period_end` so rows group cleanly by bounds.
+
+## Licence
+
+First-party source and tools are [MIT](./LICENSE), Copyright (c) 2026 Brian Evans.
+
+iXBRL files under `samples/` are real Companies House filings. They are **not** covered by the MIT grant; see [`samples/NOTICE`](./samples/NOTICE) (Open Government Licence v3.0).
 
 ## Contributing / agents
 

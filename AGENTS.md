@@ -59,9 +59,10 @@ internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
 reference/        concepts.csv (generated seed / downloads)
 sql/              DuckDB transforms
-samples/          example iXBRL + sample.tar.zst
+samples/          example iXBRL + sample.tar.zst (OGL; see samples/NOTICE)
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 data/             runtime outputs (gitignored)
+LICENSE           MIT (first-party code; samples are not MIT)
 AGENTS.md         this file
 README.md         goals and design overview
 ```

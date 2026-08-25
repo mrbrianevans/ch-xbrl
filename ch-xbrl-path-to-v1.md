@@ -131,8 +131,8 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 
 ## 3. Legal, history, presentability (still private)
 
-- [ ] Add root `LICENSE` (MIT, `Copyright (c) 2026 Brian Evans`).
-- [ ] `samples/NOTICE` plus README pointer: CH filings, OGL / public-register notice; not MIT.
+- [x] Add root `LICENSE` (MIT, `Copyright (c) 2026 Brian Evans`).
+- [x] `samples/NOTICE` plus README pointer: CH filings, OGL / public-register notice; not MIT.
 - [ ] Delete `inspiration_stream_read_xbrl.py` (and any import of it / README “reference only” mention).
 - [ ] Rewrite history so author/committer emails are GitHub noreply (`53117772+mrbrianevans@users.noreply.github.com`), not `ebrian101@gmail.com`. Force-push `master` **immediately before** the repo is ever public (after 0.2, before or with `v1.0.0`). Coordinate so no one else has a clone they will re-push.
 - [ ] Strip leftover `extract` **product name** from Makefile, README, VERIFY_GUIDE, comments. Leave the English word “extraction”.
@@ -149,7 +149,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 
 ### A. Legal (do first, while private) — code
 
-- [ ] MIT + `samples/NOTICE`
+- [x] MIT + `samples/NOTICE`
 - [ ] Delete `inspiration_stream_read_xbrl.py`
 - [ ] Confirm no other personal paths or secrets in the tree (history rewrite is stream E, not here)
 

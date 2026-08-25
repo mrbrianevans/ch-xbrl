@@ -94,6 +94,7 @@ jobs:
               -o "dist/${name}${ext}" "$pkg"
           done
           ls -la dist/
+          cp LICENSE dist/LICENSE
 
       - name: Package archive
         run: |

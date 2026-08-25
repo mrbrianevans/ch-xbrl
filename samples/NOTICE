@@ -1,0 +1,22 @@
+Companies House iXBRL samples
+=============================
+
+The instance documents in this directory, and the packed archive
+`sample.tar.zst`, are real company accounts filings taken from the UK
+Companies House public register (Accounts Data Product).
+
+They are not licensed under the MIT licence that covers the ch-xbrl
+source code.
+
+Contains public sector information licensed under the Open Government
+Licence v3.0.
+
+    https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/
+
+Source:
+
+    https://download.companieshouse.gov.uk/en_accountsdata.html
+
+The Open Government Licence does not cover personal data. Do not treat
+these filings as a source of personal data except as permitted by
+data-protection law.
