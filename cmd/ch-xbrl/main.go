@@ -11,6 +11,7 @@
 //	ch-xbrl -o facts.csv samples/sample.tar.zst
 //	ch-xbrl -o facts.csv -workers 16 https://example.com/Accounts_Bulk_Data.tar.zst
 //	ch-xbrl samples/sample.tar.zst > facts.csv
+//	ch-xbrl -V
 package main
 
 import (
@@ -47,6 +48,10 @@ func main() {
 			printUsage(os.Stderr)
 		}
 		os.Exit(2)
+	}
+	if cfg.showVersion {
+		fmt.Println(versionLine())
+		os.Exit(0)
 	}
 
 	var outW *os.File

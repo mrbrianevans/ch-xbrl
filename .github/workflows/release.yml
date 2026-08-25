@@ -81,11 +81,16 @@ jobs:
             "ch-xbrl-taxonomy:./cmd/taxonomy"
             "ch-xbrl-mksample:./cmd/mksample"
           )
+          sha="${GITHUB_SHA:0:7}"
           for entry in "${builds[@]}"; do
             name="${entry%%:*}"
             pkg="${entry#*:}"
             echo "Building $name for ${GOOS}/${GOARCH}..."
-            go build -trimpath -ldflags="-s -w" \
+            ldflags="-s -w"
+            if [ "$name" = "ch-xbrl" ]; then
+              ldflags="${ldflags} -X main.version=${VERSION} -X main.commit=${sha}"
+            fi
+            go build -trimpath -ldflags="${ldflags}" \
               -o "dist/${name}${ext}" "$pkg"
           done
           ls -la dist/

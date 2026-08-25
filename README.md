@@ -107,7 +107,7 @@ go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 duckdb -c ".read sql/transform.sql"
 ```
 
-The archive is a positional path or URL. `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout.
+The archive is a positional path or URL. `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout. `-V` / `--version` prints `ch-xbrl <semver> (<sha>)` and exits 0 (release builds bake this via ldflags; `go run` is `0.0.0-dev` plus the VCS revision when available).
 
 Or `make all` if you have Make.
 

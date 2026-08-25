@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -97,6 +98,28 @@ func TestParseConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("-V without input", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := parseConfig([]string{"-V"}, true)
+		if err != nil {
+			t.Fatalf("parseConfig: %v", err)
+		}
+		if !cfg.showVersion {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
+	t.Run("--version without input", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := parseConfig([]string{"--version"}, false)
+		if err != nil {
+			t.Fatalf("parseConfig: %v", err)
+		}
+		if !cfg.showVersion {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
 	t.Run("old -in flag is rejected", func(t *testing.T) {
 		t.Parallel()
 		_, err := parseConfig([]string{"-in", "a.zip"}, false)
@@ -104,4 +127,22 @@ func TestParseConfig(t *testing.T) {
 			t.Fatal("expected unknown-flag error for -in")
 		}
 	})
+}
+
+func TestVersionLine(t *testing.T) {
+	origV, origC := version, commit
+	t.Cleanup(func() { version, commit = origV, origC })
+
+	version = "v1.2.3"
+	commit = "deadbee"
+	if got := versionLine(); got != "ch-xbrl v1.2.3 (deadbee)" {
+		t.Fatalf("got %q", got)
+	}
+
+	version = "0.0.0-dev"
+	commit = ""
+	got := versionLine()
+	if !strings.HasPrefix(got, "ch-xbrl 0.0.0-dev") {
+		t.Fatalf("got %q", got)
+	}
 }

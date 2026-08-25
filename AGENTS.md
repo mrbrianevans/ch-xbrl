@@ -113,6 +113,7 @@ README.md         goals and design overview
 go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
+go run ./cmd/ch-xbrl -V
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 # remote CH bulk zip (batched parallel HTTP ranges via CloudFront):
 # go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"

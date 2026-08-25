@@ -18,10 +18,11 @@ var (
 )
 
 type config struct {
-	input   string
-	output  string // file path; empty when writing stdout
-	stdout  bool
-	workers int
+	input       string
+	output      string // file path; empty when writing stdout
+	stdout      bool
+	workers     int
+	showVersion bool
 }
 
 func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
@@ -30,11 +31,17 @@ func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
 	fs.Usage = func() {}
 
 	var output string
+	var showVersion bool
 	fs.StringVar(&output, "o", "", "write CSV to `FILE` (default stdout)")
 	fs.StringVar(&output, "output", "", "write CSV to `FILE` (default stdout)")
+	fs.BoolVar(&showVersion, "V", false, "print version and exit")
+	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	workers := fs.Int("workers", runtime.NumCPU(), "concurrent XBRL parse workers")
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
+	}
+	if showVersion {
+		return config{showVersion: true}, nil
 	}
 
 	pos := fs.Args()
@@ -71,12 +78,14 @@ func stdoutIsTerminal() bool {
 
 func printUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: ch-xbrl [-o FILE] [-workers N] <path|url>
+       ch-xbrl -V
 
 Stream a local or remote Companies House iXBRL archive
 (.zip, .tar.zst, or .tar) to a long-format fact CSV.
 
   -o, --output FILE   write CSV to FILE (default: stdout)
   -workers N          concurrent parse workers (default: number of CPUs)
+  -V, --version       print version and exit
 
 Omit -o to write stdout when it is not a terminal (pipes, files).
 On a TTY, pass -o FILE, or -o - to force stdout.

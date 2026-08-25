@@ -54,7 +54,7 @@ ch-xbrl [-o FILE] [-workers N] <path|url>
 | positional `<path\|url>` | Required. Local path or `http(s)` URL of `.zip` / `.tar.zst` / `.tar` |
 | `-o` / `--output` | CSV path. Omit = stdout. On a TTY, refuse unless `-o FILE` or `-o -`. `-` is stdout |
 | `-workers` | Concurrent parse workers. Default `GOMAXPROCS` / `NumCPU`. `<1` clamps to 1 |
-| `--version` / `-version` | Print `ch-xbrl <semver> (<sha>)` and exit 0 |
+| `-V` / `--version` | Print `ch-xbrl <semver> (<sha>)` and exit 0 |
 
 `-h` stays the Go `flag` help. Adding new flags is a **minor**. Renaming or changing the meaning of the flags above is a **major**.
 
@@ -155,7 +155,7 @@ Log per-file errors as now, but they must fail the process (except 130, which is
 
 ### B. CLI and contract — code
 
-- [ ] `--version` + ldflags on release workflow
+- [x] `--version` + ldflags on release workflow
 - [ ] Fail-closed exits + interrupt 130
 - [ ] `decimals` column
 - [ ] Remove leftover `extract` product names
@@ -192,7 +192,7 @@ Parser and CLI (the 1.0 surface):
 
 - Emit `decimals` as the 10th CSV column.
 - Fail-closed exits: `0` only if stream finished, `files_err == 0`, `files_ok >= 1`. Interrupt → 130. Usage → 2.
-- `--version` / `-version` via ldflags; wire the release workflow.
+- `-V` / `--version` via ldflags; wire the release workflow.
 - Fix 14256400 nested `ix:nonNumeric`.
 - Drop the two tooling samples, rebuild `sample.tar.zst`, update Arelle docs.
 - Tests + `gofmt` + sample extract after parser/CLI changes.
