@@ -31,11 +31,15 @@ import (
 	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl"
 )
 
+// memberQueueDepth is the buffered channel size between archive streaming and
+// parse workers. Large enough to keep tar/zip producers from stalling on a
+// busy worker pool; small enough that ~100 KiB CH accounts stay cheap in RAM.
+const memberQueueDepth = 64
+
 func main() {
 	in := flag.String("in", "", "local path or https URL of a .zip, .tar.zst, or .tar archive")
 	out := flag.String("out", "facts.csv", "output CSV path (use - for stdout)")
 	workers := flag.Int("workers", runtime.NumCPU(), "concurrent XBRL parse workers")
-	queue := flag.Int("queue", 64, "member queue depth")
 	flag.Parse()
 
 	if *in == "" {
@@ -64,7 +68,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	members := make(chan archive.Member, *queue)
+	members := make(chan archive.Member, memberQueueDepth)
 	var (
 		filesOK   atomic.Int64
 		filesErr  atomic.Int64

@@ -46,7 +46,7 @@ Ship this file before the v1 tag. It is the source of truth for SemVer majors.
 
 ```text
 ch-xbrl --version
-ch-xbrl -in <path|url> [-out facts.csv] [-workers N] [-queue N]
+ch-xbrl -in <path|url> [-out facts.csv] [-workers N]
 ```
 
 | Flag | Frozen meaning |
@@ -54,7 +54,6 @@ ch-xbrl -in <path|url> [-out facts.csv] [-workers N] [-queue N]
 | `-in` | Required. Local path or `http(s)` URL of `.zip` / `.tar.zst` / `.tar` |
 | `-out` | CSV path. Default `facts.csv`. `-` is stdout |
 | `-workers` | Concurrent parse workers. Default `GOMAXPROCS` / `NumCPU`. `<1` clamps to 1 |
-| `-queue` | Member queue depth. Default 64 |
 | `--version` / `-version` | Print `ch-xbrl <semver> (<sha>)` and exit 0 |
 
 `-h` stays the Go `flag` help. Adding new flags is a **minor**. Renaming or changing the meaning of the flags above is a **major**.
