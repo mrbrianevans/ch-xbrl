@@ -6,7 +6,7 @@
 //	ch-xbrl-taxonomy -zip path/to/taxonomy.zip -out reference
 //
 // When no remote/local source succeeds, a curated seed concepts.csv is still written
-// so the DuckDB pipeline can run offline against a sample ch-xbrl extract.
+// so the DuckDB pipeline can run offline against a sample ch-xbrl facts CSV.
 package main
 
 import (

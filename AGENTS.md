@@ -16,7 +16,7 @@ Instructions for AI coding agents and humans working in this repository.
 Typical loop:
 
 1. Make the change.
-2. Run relevant checks (`go test ./...`, sample extract if parser-related).
+2. Run relevant checks (`go test ./...`, sample `ch-xbrl` run if parser-related).
 3. `git add` the intended paths.
 4. `git commit` with a good message.
 5. Only then start the next change.
@@ -59,9 +59,11 @@ internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
 reference/        concepts.csv (generated seed / downloads)
 sql/              DuckDB transforms
-samples/          example iXBRL + sample.tar.zst
+samples/          example iXBRL + sample.tar.zst (OGL; see samples/NOTICE)
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 data/             runtime outputs (gitignored)
+LICENSE           MIT (first-party code; samples are not MIT)
+docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
 AGENTS.md         this file
 README.md         goals and design overview
 ```
@@ -73,11 +75,11 @@ README.md         goals and design overview
 - Match existing style; prefer small diffs.
 - Format with `gofmt -w .` before commit (enforced by Go CI).
 - Parser / numeric / context behaviour: update or add tests under `internal/ixbrl/`.
-- After parser or extract changes, smoke-test:
+- After parser or CLI changes, smoke-test:
 
   ```bash
   go test ./...
-  go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+  go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
   ```
 
 - CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `go test -race`, build).
@@ -105,7 +107,7 @@ README.md         goals and design overview
 ### Dependencies
 
 - Go module: pin via `go.mod` / `go.sum`; run `go mod tidy` after import changes and commit both.
-- Prefer pure-Go libraries for extract path (e.g. zstd) so the hot path stays portable.
+- Prefer pure-Go libraries for the ch-xbrl hot path (e.g. zstd) so it stays portable.
 
 ## Commands cheat sheet
 
@@ -113,14 +115,15 @@ README.md         goals and design overview
 go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
-go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv -workers 4
+go run ./cmd/ch-xbrl -V
+go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 # remote CH bulk zip (batched parallel HTTP ranges via CloudFront):
-# go run ./cmd/ch-xbrl -in "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip" -out data/facts.csv -workers 16
+# go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"
 duckdb -c ".read sql/transform.sql"
 # or: make all
 # optional live zip smoke: CH_XBR_INTEGRATION=1 go test ./internal/archive/ -tags=integration -run TestIntegrationRemoteCHZip -v
 # Arelle oracle (minimal soft check): see verify/arelle/README.md / VERIFY_GUIDE.md
-# go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+# go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 # cd verify/arelle && uv sync && uv run python verify_instance.py -i ../../samples/FILE.xhtml --extract ../../data/facts.csv --offline
 # batch + markdown: uv run python run_batch.py --extract ../../data/facts.csv --summary-md out/report.md
 # CI: .github/workflows/arelle-verify.yml (push master/main + workflow_dispatch)

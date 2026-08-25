@@ -8,9 +8,10 @@
 //
 // Examples:
 //
-//	ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
-//	ch-xbrl -in https://example.com/Accounts_Bulk_Data.tar.zst -out facts.csv -workers 16
-//	ch-xbrl -in https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip -out facts.csv
+//	ch-xbrl -o facts.csv samples/sample.tar.zst
+//	ch-xbrl -o facts.csv -workers 16 https://example.com/Accounts_Bulk_Data.tar.zst
+//	ch-xbrl samples/sample.tar.zst > facts.csv
+//	ch-xbrl -V
 package main
 
 import (
@@ -21,7 +22,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,29 +31,36 @@ import (
 	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl"
 )
 
-func main() {
-	in := flag.String("in", "", "local path or https URL of a .zip, .tar.zst, or .tar archive")
-	out := flag.String("out", "facts.csv", "output CSV path (use - for stdout)")
-	workers := flag.Int("workers", runtime.NumCPU(), "concurrent XBRL parse workers")
-	queue := flag.Int("queue", 64, "member queue depth")
-	flag.Parse()
+// memberQueueDepth is the buffered channel size between archive streaming and
+// parse workers. Large enough to keep tar/zip producers from stalling on a
+// busy worker pool; small enough that ~100 KiB CH accounts stay cheap in RAM.
+const memberQueueDepth = 64
 
-	if *in == "" {
-		fmt.Fprintln(os.Stderr, "usage: ch-xbrl -in <path|url> [-out facts.csv] [-workers N]")
-		fmt.Fprintln(os.Stderr, "  -in accepts local or remote .zip / .tar.zst / .tar")
-		flag.PrintDefaults()
-		os.Exit(2)
+func main() {
+	cfg, err := parseConfig(os.Args[1:], stdoutIsTerminal())
+	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			printUsage(os.Stderr)
+			os.Exit(exitOK)
+		}
+		fmt.Fprintf(os.Stderr, "ch-xbrl: %v\n", err)
+		if !errors.Is(err, errTTYStdout) {
+			printUsage(os.Stderr)
+		}
+		os.Exit(exitUsage)
 	}
-	if *workers < 1 {
-		*workers = 1
+	if cfg.showVersion {
+		fmt.Println(versionLine())
+		os.Exit(exitOK)
 	}
 
 	var outW *os.File
-	var err error
-	if *out == "-" {
+	outName := "-"
+	if cfg.stdout {
 		outW = os.Stdout
 	} else {
-		outW, err = os.Create(*out)
+		outName = cfg.output
+		outW, err = os.Create(cfg.output)
 		if err != nil {
 			log.Fatalf("create output: %v", err)
 		}
@@ -64,7 +71,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	members := make(chan archive.Member, *queue)
+	members := make(chan archive.Member, memberQueueDepth)
 	var (
 		filesOK   atomic.Int64
 		filesErr  atomic.Int64
@@ -75,7 +82,7 @@ func main() {
 
 	// Workers
 	var wg sync.WaitGroup
-	for i := 0; i < *workers; i++ {
+	for i := 0; i < cfg.workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -118,8 +125,8 @@ func main() {
 	}()
 
 	start := time.Now()
-	log.Printf("input: %s format=%s", *in, archive.DetectFormat(*in))
-	n, streamErr := archive.Stream(ctx, *in, members)
+	log.Printf("input: %s format=%s", cfg.input, archive.DetectFormat(cfg.input))
+	n, streamErr := archive.Stream(ctx, cfg.input, members)
 	wg.Wait()
 	close(done)
 
@@ -129,7 +136,7 @@ func main() {
 
 	elapsed := time.Since(start).Round(time.Millisecond)
 	log.Printf("done: members=%d files_ok=%d files_err=%d facts=%d elapsed=%s out=%s",
-		n, filesOK.Load(), filesErr.Load(), factCount.Load(), elapsed, *out)
+		n, filesOK.Load(), filesErr.Load(), factCount.Load(), elapsed, outName)
 
 	if len(firstErrs) > 0 {
 		log.Printf("sample errors (%d total err files):", filesErr.Load())
@@ -138,9 +145,9 @@ func main() {
 		}
 	}
 	if streamErr != nil && !errors.Is(streamErr, context.Canceled) {
-		log.Fatalf("stream: %v", streamErr)
+		log.Printf("stream: %v", streamErr)
 	}
-	if filesOK.Load() == 0 {
-		os.Exit(1)
+	if code := runExitCode(filesOK.Load(), filesErr.Load(), streamErr); code != exitOK {
+		os.Exit(code)
 	}
 }

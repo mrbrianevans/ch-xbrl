@@ -1,4 +1,8 @@
-.PHONY: sample taxonomy extract transform all test build
+.PHONY: sample taxonomy facts transform all test build
+
+VERSION ?= 0.0.0-dev
+COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null)
+LDFLAGS_CHXBRL := -X main.version=$(VERSION) -X main.commit=$(COMMIT)
 
 sample:
 	go run ./cmd/mksample -out samples/sample.tar.zst
@@ -6,18 +10,18 @@ sample:
 taxonomy:
 	go run ./cmd/taxonomy -seed-only -out reference
 
-extract:
-	go run ./cmd/ch-xbrl -in samples/sample.tar.zst -out data/facts.csv
+facts:
+	go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 transform:
 	duckdb -c ".read sql/transform.sql"
 
-all: sample taxonomy extract transform
+all: sample taxonomy facts transform
 
 test:
 	go test ./...
 
 build:
-	go build -o bin/ch-xbrl$(EXE) ./cmd/ch-xbrl
+	go build -ldflags "$(LDFLAGS_CHXBRL)" -o bin/ch-xbrl$(EXE) ./cmd/ch-xbrl
 	go build -o bin/ch-xbrl-taxonomy$(EXE) ./cmd/taxonomy
 	go build -o bin/ch-xbrl-mksample$(EXE) ./cmd/mksample

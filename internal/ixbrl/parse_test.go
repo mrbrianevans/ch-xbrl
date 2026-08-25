@@ -130,6 +130,120 @@ func TestStripXMLPreamble(t *testing.T) {
 	}
 }
 
+func TestNestedNonNumeric(t *testing.T) {
+	// Workiva nests ix:nonNumeric: outer wraps inner, same visible text.
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink">
+<body>
+<link:schemaRef xlink:href="https://example.com/t.xsd"/>
+<ix:nonNumeric contextRef="c1" name="bus:NameEntityOfficer">
+  <ix:nonNumeric contextRef="c1" name="direp:DirectorSigningDirectorsReport" format="ixt:nocontent">
+    <ix:nonNumeric contextRef="c1" name="core:DirectorSigningFinancialStatements" format="ixt:nocontent">CSC Directors Limited</ix:nonNumeric>
+  </ix:nonNumeric>
+</ix:nonNumeric>
+<ix:nonNumeric contextRef="c1" name="bus:EndDateForPeriodCoveredByReport" format="ixt:datedaymonthyearen">
+  <ix:nonNumeric contextRef="c1" name="bus:BalanceSheetDate" format="ixt:datedaymonthyearen">23 September 2025</ix:nonNumeric>
+</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">14256400</xbrli:identifier></xbrli:entity>
+  <xbrli:period>
+    <xbrli:startDate>2024-09-24</xbrli:startDate>
+    <xbrli:endDate>2025-09-23</xbrli:endDate>
+  </xbrli:period>
+</xbrli:context>
+</body>
+</html>`
+
+	facts, err := ParseBytes([]byte(doc), "test.xhtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range facts {
+		got[f.Concept] = f.Value
+	}
+	want := map[string]string{
+		"NameEntityOfficer":                  "CSC Directors Limited",
+		"DirectorSigningDirectorsReport":     "",
+		"DirectorSigningFinancialStatements": "",
+		"EndDateForPeriodCoveredByReport":    "23 September 2025",
+		"BalanceSheetDate":                   "23 September 2025",
+	}
+	if len(got) != len(want) {
+		t.Errorf("fact count=%d want %d (%v)", len(got), len(want), got)
+	}
+	for concept, val := range want {
+		if got[concept] != val {
+			t.Errorf("%s value=%q want %q", concept, got[concept], val)
+		}
+	}
+}
+
+func TestNestedNonNumeric_14256400(t *testing.T) {
+	facts := loadSample(t, "Prod223_4203_14256400_20250923.html")
+	want := []string{
+		"DirectorSigningDirectorsReport",
+		"EndDateForPeriodCoveredByReport",
+		"DirectorSigningFinancialStatements",
+		"BalanceSheetDate",
+	}
+	have := map[string]bool{}
+	for _, f := range facts {
+		have[f.Concept] = true
+	}
+	for _, c := range want {
+		if !have[c] {
+			t.Errorf("missing concept %s", c)
+		}
+	}
+}
+
+func TestDecimalsAttribute(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink">
+<body>
+<link:schemaRef xlink:href="https://example.com/t.xsd"/>
+<ix:nonFraction name="core:FixedAssets" contextRef="c1" unitRef="GBP" decimals="0">100</ix:nonFraction>
+<ix:nonFraction name="core:NumberSharesIssuedFullyPaid" contextRef="c1" unitRef="shares" decimals="INF">100</ix:nonFraction>
+<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="pure">12</ix:nonFraction>
+<ix:nonNumeric name="core:EntityCurrentLegalOrRegisteredName" contextRef="c1">Acme Ltd</ix:nonNumeric>
+<xbrli:unit id="GBP"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+<xbrli:unit id="shares"><xbrli:measure>shares</xbrli:measure></xbrli:unit>
+<xbrli:unit id="pure"><xbrli:measure>xbrli:pure</xbrli:measure></xbrli:unit>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">12345678</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</body>
+</html>`
+
+	facts, err := ParseBytes([]byte(doc), "test.xhtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range facts {
+		got[f.Concept] = f.Decimals
+	}
+	want := map[string]string{
+		"FixedAssets":                        "0",
+		"NumberSharesIssuedFullyPaid":        "INF",
+		"AverageNumberEmployeesDuringPeriod": "",
+		"EntityCurrentLegalOrRegisteredName": "",
+	}
+	for concept, dec := range want {
+		if got[concept] != dec {
+			t.Errorf("%s decimals=%q want %q", concept, got[concept], dec)
+		}
+	}
+}
+
 func TestQNameLocal(t *testing.T) {
 	if qnameLocal("ns6:FixedAssets") != "FixedAssets" {
 		t.Fatal(qnameLocal("ns6:FixedAssets"))

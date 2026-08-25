@@ -122,7 +122,7 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 
 // httpRangeReader implements io.ReaderAt via HTTP Range requests.
 // Companies House bulk ZIPs (S3/CloudFront) support 206 Partial Content.
-// Note: each ReadAt is one request — fine for tests; remote ZIP extract uses batched rangeGET.
+// Note: each ReadAt is one request — fine for tests; ch-xbrl remote ZIP uses batched rangeGET.
 type httpRangeReader struct {
 	ctx    context.Context
 	client *http.Client

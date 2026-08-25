@@ -17,7 +17,8 @@ SELECT
   unit,
   dimensions,
   taxonomy,
-  source_file
+  source_file,
+  decimals
 FROM read_csv(
   'data/facts.csv',
   header = true,

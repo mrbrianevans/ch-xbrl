@@ -80,7 +80,7 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 
 // WriteZip packs files into a .zip archive at dest.
 // entries maps archive member name → local filesystem path.
-// Intended for tests and local sample packs (not the hot extract path).
+// Intended for tests and local sample packs (not the ch-xbrl hot path).
 func WriteZip(dest string, entries map[string]string) error {
 	f, err := os.Create(dest)
 	if err != nil {

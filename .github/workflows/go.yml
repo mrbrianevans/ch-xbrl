@@ -50,6 +50,18 @@ jobs:
 
       - name: Build
         run: |
-          go build -o /tmp/ch-xbrl ./cmd/ch-xbrl
+          set -euo pipefail
+          go build -ldflags="-X main.version=ci -X main.commit=testsha" -o /tmp/ch-xbrl ./cmd/ch-xbrl
           go build -o /tmp/ch-xbrl-taxonomy ./cmd/taxonomy
           go build -o /tmp/ch-xbrl-mksample ./cmd/mksample
+          got="$(/tmp/ch-xbrl -V)"
+          want="ch-xbrl ci (testsha)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::-V printed '$got', want '$want'"
+            exit 1
+          fi
+          got="$(/tmp/ch-xbrl --version)"
+          if [ "$got" != "$want" ]; then
+            echo "::error::--version printed '$got', want '$want'"
+            exit 1
+          fi
