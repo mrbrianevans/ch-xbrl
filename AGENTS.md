@@ -44,7 +44,7 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
 | Concept priority lives in **`concept_map.csv`**, not hard-coded Go | Curated in git; change without rebuild |
 
-`inspiration_stream_read_xbrl.py` is **reference only** (wide-at-parse Python approach). Borrow ideas (formats, filenames, edge cases); do not port its architecture unless the user asks.
+`inspiration_stream_read_xbrl.py` is a shim to the **38-column wide-row oracle** under `verify/inspiration/` (converted stream-read-xbrl parser + DuckDB pivot of the long fact table). Do not port its wide-at-parse architecture into `cmd/ch-xbrl`.
 
 ## Layout
 
@@ -61,6 +61,7 @@ reference/        concepts.csv (generated seed / downloads)
 sql/              DuckDB transforms
 samples/          example iXBRL + sample.tar.zst (OGL; see samples/NOTICE)
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
+verify/inspiration/  stream-read-xbrl 38-column oracle vs DuckDB-pivoted facts
 data/             runtime outputs (gitignored)
 LICENSE           MIT (first-party code; samples are not MIT)
 docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
@@ -127,6 +128,10 @@ duckdb -c ".read sql/transform.sql"
 # cd verify/arelle && uv sync && uv run python verify_instance.py -i ../../samples/FILE.xhtml --extract ../../data/facts.csv --offline
 # batch + markdown: uv run python run_batch.py --extract ../../data/facts.csv --summary-md out/report.md
 # CI: .github/workflows/arelle-verify.yml (push master/main + workflow_dispatch)
+# 38-column inspiration oracle (wide pivot of long facts):
+# cd verify/inspiration && uv sync
+# uv run python verify_wide.py -i ../../samples/FILE.html --extract ../../data/facts.csv
+# uv run python run_batch.py --extract ../../data/facts.csv --summary-md out/report.md
 ```
 
 ## Communication
