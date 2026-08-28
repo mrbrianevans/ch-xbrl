@@ -15,6 +15,16 @@ The package is built to stream a zip of many instances, so the verifier does
 the same: one zip of `samples/`, one `stream_read_xbrl_zip` call, one `ch-xbrl`
 call, one DuckDB compare.
 
+## CI
+
+GitHub Actions workflow [`.github/workflows/stream-read-xbrl-verify.yml`](../../.github/workflows/stream-read-xbrl-verify.yml):
+
+- **Triggers:** push to `master` / `main`, pull requests, and **workflow_dispatch** (optional sample limit)
+- Zips `samples/`, runs stream-read-xbrl and `cmd/ch-xbrl` once each, then DuckDB soft-compare
+- Writes a Markdown report to the **job summary** (and `out/ci_summary.md` artefact)
+
+Job fails if any sample is **FAIL** or **ERROR**; **OK** / **OK_SOFT** keep the job green.
+
 ## Setup
 
 ```bash

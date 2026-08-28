@@ -1,0 +1,81 @@
+# Soft-verify sample iXBRL against stream-read-xbrl and write Markdown to the job summary.
+name: stream-read-xbrl verify
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max samples to verify (empty = all under samples/)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: stream-read-xbrl-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Extract + stream-read-xbrl soft compare
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: verify/stream-read-xbrl/uv.lock
+
+      - name: Set up Python (via uv)
+        working-directory: verify/stream-read-xbrl
+        run: uv python install 3.12
+
+      - name: Install stream-read-xbrl verify deps
+        working-directory: verify/stream-read-xbrl
+        run: uv sync --frozen
+
+      - name: stream-read-xbrl verify samples
+        working-directory: verify/stream-read-xbrl
+        run: |
+          set -euo pipefail
+          mkdir -p out
+
+          LIMIT_ARGS=()
+          if [ -n "${{ inputs.limit }}" ]; then
+            LIMIT_ARGS=(--limit "${{ inputs.limit }}")
+          fi
+
+          uv run python run_batch.py \
+            --samples-dir ../../samples \
+            --out-dir out \
+            --summary-md out/ci_summary.md \
+            --title "stream-read-xbrl soft verification (samples/)" \
+            "${LIMIT_ARGS[@]+"${LIMIT_ARGS[@]}"}"
+
+      - name: Upload verify artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stream-read-xbrl-verify-${{ github.run_id }}
+          path: |
+            verify/stream-read-xbrl/out/ci_summary.md
+            verify/stream-read-xbrl/out/srx_wide.csv
+            verify/stream-read-xbrl/out/facts.csv
+          if-no-files-found: warn
+          retention-days: 14

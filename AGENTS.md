@@ -131,6 +131,7 @@ duckdb -c ".read sql/transform.sql"
 # stream-read-xbrl soft oracle (one zip of samples, DuckDB pivot of long facts):
 # cd verify/stream-read-xbrl && uv sync
 # uv run python run_batch.py --summary-md out/report.md
+# CI: .github/workflows/stream-read-xbrl-verify.yml (push master/main + pull_request + workflow_dispatch)
 ```
 
 ## Communication
