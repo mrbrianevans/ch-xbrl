@@ -3,7 +3,7 @@ name: stream-read-xbrl verify
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
   pull_request:
   workflow_dispatch:
     inputs:

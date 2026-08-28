@@ -19,7 +19,7 @@ call, one DuckDB compare.
 
 GitHub Actions workflow [`.github/workflows/stream-read-xbrl-verify.yml`](../../.github/workflows/stream-read-xbrl-verify.yml):
 
-- **Triggers:** push to `master` / `main`, pull requests, and **workflow_dispatch** (optional sample limit)
+- **Triggers:** push to `master`, pull requests, and **workflow_dispatch** (optional sample limit)
 - Zips `samples/`, runs stream-read-xbrl and `cmd/ch-xbrl` once each, then DuckDB soft-compare
 - Writes a Markdown report to the **job summary** (and `out/ci_summary.md` artefact)
 

@@ -10,7 +10,7 @@ Instructions for AI coding agents and humans working in this repository.
 - One logical unit per commit (e.g. “fix numeric format handling”, “expand concept map”, “docs: AGENTS.md”).
 - Use a clear commit message: short summary in the imperative, optional body for why.
 - Stage only relevant files; do not commit secrets, credentials, or large regenerated dumps under `data/`.
-- Do **not** force-push, amend published history, or rewrite `master`/`main` unless the user explicitly asks.
+- Do **not** force-push, amend published history, or rewrite `master` unless the user explicitly asks.
 - Do **not** skip the commit because the change “is small” or “docs only”.
 
 Typical loop:
@@ -127,11 +127,11 @@ duckdb -c ".read sql/transform.sql"
 # go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 # cd verify/arelle && uv sync && uv run python verify_instance.py -i ../../samples/FILE.xhtml --extract ../../data/facts.csv --offline
 # batch + markdown: uv run python run_batch.py --extract ../../data/facts.csv --summary-md out/report.md
-# CI: .github/workflows/arelle-verify.yml (push master/main + workflow_dispatch)
+# CI: .github/workflows/arelle-verify.yml (push master + workflow_dispatch)
 # stream-read-xbrl soft oracle (one zip of samples, DuckDB pivot of long facts):
 # cd verify/stream-read-xbrl && uv sync
 # uv run python run_batch.py --summary-md out/report.md
-# CI: .github/workflows/stream-read-xbrl-verify.yml (push master/main + pull_request + workflow_dispatch)
+# CI: .github/workflows/stream-read-xbrl-verify.yml (push master + pull_request + workflow_dispatch)
 ```
 
 ## Communication
