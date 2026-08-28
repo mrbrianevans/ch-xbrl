@@ -83,7 +83,7 @@ README.md         goals and design overview
   go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml
   ```
 
-- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `staticcheck`, `go test -race`, build).
+- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `staticcheck`, `go test -race`, build, input-method DuckDB compare).
 
 - After concept map or SQL changes, run DuckDB when available:
 
@@ -124,6 +124,7 @@ go run ./cmd/ch-xbrl -o data/facts.csv samples/
 # remote CH bulk zip (batched parallel HTTP ranges via CloudFront):
 # go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"
 duckdb -c ".read sql/transform.sql"
+# four CSVs (dir/zip/tar/stdin_tar) then: duckdb -c ".read sql/compare_input_methods.sql"
 # or: make all
 # optional live zip smoke: CH_XBR_INTEGRATION=1 go test ./internal/archive/ -tags=integration -run TestIntegrationRemoteCHZip -v
 # Arelle oracle (minimal soft check): see verify/arelle/README.md / VERIFY_GUIDE.md

@@ -167,3 +167,48 @@ PY
             cat "$out/help.err"
             exit 1
           fi
+
+      - name: Install DuckDB CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/duckdb.zip \
+            "https://github.com/duckdb/duckdb/releases/download/v1.5.5/duckdb_cli-linux-amd64.zip"
+          mkdir -p "$HOME/.local/bin"
+          unzip -o /tmp/duckdb.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/duckdb"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/duckdb" --version
+
+      - name: Input-method consistency (DuckDB)
+        run: |
+          set -euo pipefail
+          bin=/tmp/ch-xbrl
+          fx=/tmp/ch-xbrl-input-fx
+          mkdir -p "$fx/dir"
+          cp samples/03024914_aa_2023-03-13.xhtml "$fx/dir/"
+          cp samples/Prod223_4203_00134794_20250927.html "$fx/dir/"
+
+          python3 - <<'PY'
+import os, zipfile
+root = "/tmp/ch-xbrl-input-fx"
+d = os.path.join(root, "dir")
+with zipfile.ZipFile(os.path.join(root, "sample.zip"), "w") as z:
+    for name in sorted(os.listdir(d)):
+        z.write(os.path.join(d, name), arcname=name)
+PY
+          /tmp/ch-xbrl-mksample -dir "$fx/dir" -out "$fx/sample.tar.zst"
+
+          echo "dir"
+          "$bin" -o "$fx/dir.csv" -workers 2 "$fx/dir"
+          echo "zip"
+          "$bin" -o "$fx/zip.csv" -workers 2 "$fx/sample.zip"
+          echo "tar.zst"
+          "$bin" -o "$fx/tar.csv" -workers 2 "$fx/sample.tar.zst"
+          echo "stdin tar.zst"
+          "$bin" -o "$fx/stdin_tar.csv" -workers 2 - < "$fx/sample.tar.zst"
+
+          for f in dir.csv zip.csv tar.csv stdin_tar.csv; do
+            test -s "$fx/$f"
+          done
+
+          (cd "$fx" && duckdb -c ".read '${GITHUB_WORKSPACE}/sql/compare_input_methods.sql'")
