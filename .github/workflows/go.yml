@@ -1,8 +1,9 @@
-# General Go CI: format, vet, staticcheck, test, build — every push/PR on every branch.
+# General Go CI: format, vet, staticcheck, test, build.
 name: Go CI
 
 on:
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -30,17 +31,7 @@ jobs:
           cache: true
 
       - name: Check formatting (gofmt)
-        run: |
-          set -euo pipefail
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::The following files are not gofmt-formatted:"
-            echo "$unformatted"
-            echo ""
-            echo "Run: gofmt -w ."
-            exit 1
-          fi
-          echo "gofmt: OK"
+        run: test -z "$(gofmt -l .)"
 
       - name: Vet
         run: go vet ./...
@@ -91,13 +82,7 @@ jobs:
           test -s "$out/tar.csv"
 
           echo "local zip"
-          python3 - <<'PY'
-import zipfile, os
-out = "/tmp/ch-xbrl-smoke/sample.zip"
-xhtml = "samples/03024914_aa_2023-03-13.xhtml"
-with zipfile.ZipFile(out, "w") as z:
-    z.write(xhtml, arcname=os.path.basename(xhtml))
-PY
+          zip -j "$out/sample.zip" "$xhtml"
           "$bin" -o "$out/zip.csv" -workers 1 "$out/sample.zip"
           test -s "$out/zip.csv"
 
@@ -188,14 +173,7 @@ PY
           cp samples/03024914_aa_2023-03-13.xhtml "$fx/dir/"
           cp samples/Prod223_4203_00134794_20250927.html "$fx/dir/"
 
-          python3 - <<'PY'
-import os, zipfile
-root = "/tmp/ch-xbrl-input-fx"
-d = os.path.join(root, "dir")
-with zipfile.ZipFile(os.path.join(root, "sample.zip"), "w") as z:
-    for name in sorted(os.listdir(d)):
-        z.write(os.path.join(d, name), arcname=name)
-PY
+          zip -j "$fx/sample.zip" "$fx/dir"/*
           /tmp/ch-xbrl-mksample -dir "$fx/dir" -out "$fx/sample.tar.zst"
 
           echo "dir"

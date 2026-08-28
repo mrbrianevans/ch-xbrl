@@ -11,7 +11,7 @@ Soft match only — not byte-identical. Whitespace, thousands separators, `(repo
 GitHub Actions workflow [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle-verify.yml):
 
 - **Triggers:** push to `master`, and **workflow_dispatch** (optional sample limit / offline)
-- Runs `go test`, packs `samples/sample.tar.zst`, extracts with `cmd/ch-xbrl`, then Arelle soft-compare of every sample
+- Runs `go test`, extracts `samples/` with `cmd/ch-xbrl`, then Arelle soft-compare of every sample
 - Writes a Markdown report to the **job summary** (and `out/ci_summary.md` artefact)
 
 Local batch (same reporter as CI):

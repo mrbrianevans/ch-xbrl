@@ -279,7 +279,7 @@ Workflow: [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle
 | Push to `master` | Full sample set; Arelle **online** (taxonomies can download) |
 | **workflow_dispatch** | Optional `limit` and `offline`; same report |
 
-Steps: `go test` → `mksample` → ch-xbrl on `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
+Steps: `go test` → ch-xbrl on `samples/` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
 
 Local equivalent:
 

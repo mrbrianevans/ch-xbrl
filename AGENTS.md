@@ -83,7 +83,7 @@ README.md         goals and design overview
   go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml
   ```
 
-- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `staticcheck`, `go test -race`, build, input-method DuckDB compare).
+- CI: `.github/workflows/go.yml` runs on **push to master**, **pull_request**, and `workflow_dispatch` (`gofmt`, `go vet`, `staticcheck`, `go test -race`, build, input-method DuckDB compare).
 
 - After concept map or SQL changes, run DuckDB when available:
 
