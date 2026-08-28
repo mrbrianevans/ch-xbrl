@@ -85,9 +85,8 @@ Stream Companies House iXBRL to a long-format fact CSV.
 Inputs (one positional):
   archive     local or http(s) .zip, .tar.zst, or .tar
   instance    local or http(s) .xhtml, .html, .htm, .xbrl, or .xml
-  remote      URL with no recognised extension: GET, then filename from
-              Content-Disposition / response-content-disposition; sniff if none
-              (XML/XHTML, tar, tar.zst; zip still needs a .zip URL)
+  remote      URL with no recognised extension: GET, then Content-Disposition
+              filename; sniff if none (zip still needs a .zip URL)
   directory   non-recursive; top-level instance files only
   stdin       pass - ; XML/XHTML, tar, or tar.zst (zip needs seek: refused)
 

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"mime"
-	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -114,26 +113,26 @@ func streamStdin(ctx context.Context, in io.Reader, out chan<- Member) (int, err
 // Known extensions never reach here: DetectFormat still selects zip ranges,
 // tar stream, or instance GET with no extra sniff.
 //
-// After the GET (redirects followed), format is taken from a filename in
-// Content-Disposition or the S3 response-content-disposition query, then
-// magic sniff only if that is absent or unrecognised.
+// After the GET (redirects followed), format is taken from the filename in
+// Content-Disposition (S3 sets this from response-content-disposition). Magic
+// sniff only if that is absent or unrecognised.
 func streamRemoteUnknown(ctx context.Context, source string, out chan<- Member) (int, error) {
-	s, err := openHTTPStream(ctx, source)
+	rc, hdr, err := openHTTPStream(ctx, source)
 	if err != nil {
 		return 0, fmt.Errorf("open remote: %w", err)
 	}
-	defer func() { _ = s.Body.Close() }()
+	defer func() { _ = rc.Close() }()
 
 	zipErr := fmt.Errorf("cannot read zip from %q: zip requires a .zip URL for HTTP range requests", source)
 	gzipErr := fmt.Errorf("cannot read gzip from %q: .tar.gz is not supported", source)
 
-	name := remoteFilenameHint(s.Header, s.FinalURL, source)
+	name := filenameFromDisposition(hdr.Get("Content-Disposition"))
 	if name != "" {
 		switch DetectFormat(name) {
 		case FormatInstance:
-			return streamInstanceReader(ctx, s.Body, name, out)
+			return streamInstanceReader(ctx, rc, name, out)
 		case FormatTar, FormatTarZst:
-			return streamTarReader(ctx, s.Body, DetectFormat(name) == FormatTarZst, out)
+			return streamTarReader(ctx, rc, DetectFormat(name) == FormatTarZst, out)
 		case FormatZip:
 			return 0, zipErr
 		}
@@ -141,32 +140,7 @@ func streamRemoteUnknown(ctx context.Context, source string, out chan<- Member) 
 	if name == "" {
 		name = instanceName(source)
 	}
-	return streamPeeked(ctx, s.Body, name, zipErr, gzipErr, out)
-}
-
-// remoteFilenameHint prefers Content-Disposition, then the final URL's
-// response-content-disposition query (presigned S3), then the original URL.
-func remoteFilenameHint(hdr http.Header, finalURL, source string) string {
-	if hdr != nil {
-		if n := filenameFromDisposition(hdr.Get("Content-Disposition")); n != "" {
-			return n
-		}
-	}
-	if n := filenameFromQueryDisposition(finalURL); n != "" {
-		return n
-	}
-	return filenameFromQueryDisposition(source)
-}
-
-func filenameFromQueryDisposition(rawURL string) string {
-	if rawURL == "" {
-		return ""
-	}
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
-	}
-	return filenameFromDisposition(u.Query().Get("response-content-disposition"))
+	return streamPeeked(ctx, rc, name, zipErr, gzipErr, out)
 }
 
 func streamPeeked(ctx context.Context, r io.Reader, instanceName string, zipErr, gzipErr error, out chan<- Member) (int, error) {

@@ -19,41 +19,28 @@ func isRemote(source string) bool {
 // Suitable for streamable formats (tar / tar.zst). The caller must Close the result.
 func Open(ctx context.Context, source string) (io.ReadCloser, error) {
 	if isRemote(source) {
-		s, err := openHTTPStream(ctx, source)
-		if err != nil {
-			return nil, err
-		}
-		return s.Body, nil
+		rc, _, err := openHTTPStream(ctx, source)
+		return rc, err
 	}
 	return os.Open(source)
 }
 
-type httpStream struct {
-	Body     io.ReadCloser
-	Header   http.Header
-	FinalURL string
-}
-
-// openHTTPStream GETs source (following redirects) and returns the final body,
-// headers, and effective URL (query includes S3 response-content-disposition).
-func openHTTPStream(ctx context.Context, source string) (*httpStream, error) {
+// openHTTPStream GETs source (following redirects) and returns the final body
+// plus response headers (Content-Disposition after an S3 override query).
+func openHTTPStream(ctx context.Context, source string) (io.ReadCloser, http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resp, err := newRemoteHTTPClient().Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, source)
+		return nil, nil, fmt.Errorf("HTTP %s for %s", resp.Status, source)
 	}
-	final := source
-	if resp.Request != nil && resp.Request.URL != nil {
-		final = resp.Request.URL.String()
-	}
-	return &httpStream{Body: resp.Body, Header: resp.Header.Clone(), FinalURL: final}, nil
+	return resp.Body, resp.Header.Clone(), nil
 }
 
 // openReaderAt returns random-access bytes for a local file or remote object
