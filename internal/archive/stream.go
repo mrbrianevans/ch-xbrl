@@ -60,7 +60,11 @@ func StreamFrom(ctx context.Context, source string, in io.Reader, out chan<- Mem
 		}
 	}
 
-	return streamIdentified(ctx, source, DetectFormat(source), out)
+	format := DetectFormat(source)
+	if format == FormatUnknown && isRemote(source) {
+		return streamRemoteUnknown(ctx, source, out)
+	}
+	return streamIdentified(ctx, source, format, out)
 }
 
 func streamIdentified(ctx context.Context, source string, format Format, out chan<- Member) (int, error) {
@@ -86,7 +90,11 @@ func Describe(source string) string {
 			return FormatDir.String()
 		}
 	}
-	return DetectFormat(source).String()
+	f := DetectFormat(source)
+	if f == FormatUnknown && isRemote(source) {
+		return "remote"
+	}
+	return f.String()
 }
 
 // isXBRLName reports whether an archive member looks like an iXBRL/XBRL instance.

@@ -19,25 +19,28 @@ func isRemote(source string) bool {
 // Suitable for streamable formats (tar / tar.zst). The caller must Close the result.
 func Open(ctx context.Context, source string) (io.ReadCloser, error) {
 	if isRemote(source) {
-		return openHTTP(ctx, source)
+		rc, _, err := openHTTPStream(ctx, source)
+		return rc, err
 	}
 	return os.Open(source)
 }
 
-func openHTTP(ctx context.Context, source string) (io.ReadCloser, error) {
+// openHTTPStream GETs source (following redirects) and returns the final body
+// plus response headers (Content-Disposition, Content-Type, …).
+func openHTTPStream(ctx context.Context, source string) (io.ReadCloser, http.Header, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resp, err := newRemoteHTTPClient().Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, source)
+		return nil, nil, fmt.Errorf("HTTP %s for %s", resp.Status, source)
 	}
-	return resp.Body, nil
+	return resp.Body, resp.Header.Clone(), nil
 }
 
 // openReaderAt returns random-access bytes for a local file or remote object

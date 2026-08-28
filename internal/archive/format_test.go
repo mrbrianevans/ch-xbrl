@@ -29,6 +29,7 @@ func TestDetectFormat(t *testing.T) {
 		{"https://example.com/accounts.xhtml", FormatInstance},
 		{"https://example.com/a.xbrl?token=1", FormatInstance},
 		{"https://example.com/download?name=file.xhtml", FormatUnknown}, // instance: path suffix only, not query
+		{"https://find-and-update.company-information.service.gov.uk/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document?format=xhtml&download=1", FormatUnknown},
 		{"nested.zip", FormatZip},
 		{"file.xml.zip", FormatZip},
 	}

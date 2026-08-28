@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -102,27 +105,78 @@ func readLimitedFile(path string) ([]byte, error) {
 }
 
 func streamStdin(ctx context.Context, in io.Reader, out chan<- Member) (int, error) {
-	br := bufio.NewReader(in)
+	return streamPeeked(ctx, in, "-", ErrZipStdin, ErrGzipStdin, out)
+}
+
+// streamRemoteUnknown GETs a remote URL whose path has no recognised archive
+// or instance extension (e.g. Companies House /document?format=xhtml).
+// Known extensions never reach here: DetectFormat still selects zip ranges,
+// tar stream, or instance GET with no extra sniff.
+func streamRemoteUnknown(ctx context.Context, source string, out chan<- Member) (int, error) {
+	rc, hdr, err := openHTTPStream(ctx, source)
+	if err != nil {
+		return 0, fmt.Errorf("open remote: %w", err)
+	}
+	defer func() { _ = rc.Close() }()
+	name := filenameFromDisposition(hdr.Get("Content-Disposition"))
+	if name == "" {
+		name = instanceName(source)
+	}
+	return streamPeeked(ctx, rc, name,
+		fmt.Errorf("cannot read zip from %q: zip requires a .zip URL for HTTP range requests", source),
+		fmt.Errorf("cannot read gzip from %q: .tar.gz is not supported", source),
+		out)
+}
+
+func streamPeeked(ctx context.Context, r io.Reader, instanceName string, zipErr, gzipErr error, out chan<- Member) (int, error) {
+	br := bufio.NewReader(r)
 	head, err := br.Peek(sniffLen)
 	if len(head) == 0 {
 		if err != nil {
-			return 0, fmt.Errorf("read stdin: %w", err)
+			return 0, fmt.Errorf("read: %w", err)
 		}
-		return 0, fmt.Errorf("empty stdin")
+		return 0, fmt.Errorf("empty input")
 	}
 	if isGzipMagic(head) {
-		return 0, ErrGzipStdin
+		return 0, gzipErr
 	}
 	switch Sniff(head) {
 	case FormatZip:
-		return 0, ErrZipStdin
+		return 0, zipErr
 	case FormatTarZst:
 		return streamTarReader(ctx, br, true, out)
 	case FormatTar:
 		return streamTarReader(ctx, br, false, out)
 	case FormatInstance:
-		return streamInstanceReader(ctx, br, "-", out)
+		return streamInstanceReader(ctx, br, instanceName, out)
 	default:
-		return 0, fmt.Errorf("unsupported stdin format (want XML/XHTML, tar, or tar.zst; zip requires a seekable path or URL)")
+		return 0, fmt.Errorf("unsupported format (want XML/XHTML, tar, or tar.zst; zip requires a seekable .zip path or URL)")
 	}
+}
+
+// filenameFromDisposition returns the basename in a Content-Disposition header.
+func filenameFromDisposition(v string) string {
+	if v == "" {
+		return ""
+	}
+	_, params, err := mime.ParseMediaType(v)
+	if err != nil {
+		return ""
+	}
+	name := params["filename"]
+	if name == "" {
+		name = params["filename*"]
+		if i := strings.Index(name, "''"); i >= 0 {
+			name = name[i+2:]
+			if u, err := url.QueryUnescape(name); err == nil {
+				name = u
+			}
+		}
+	}
+	name = strings.ReplaceAll(name, "\\", "/")
+	name = path.Base(name)
+	if name == "." || name == "/" || name == "" {
+		return ""
+	}
+	return name
 }

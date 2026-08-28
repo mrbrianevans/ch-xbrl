@@ -269,6 +269,86 @@ func TestStreamRemoteInstance(t *testing.T) {
 	}
 }
 
+func TestStreamRemoteUnknownExtensionRedirect(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("format") != "xhtml" {
+			http.Error(w, "want format=xhtml", http.StatusBadRequest)
+			return
+		}
+		http.Redirect(w, r, "/docs/blob", http.StatusFound)
+	})
+	mux.HandleFunc("/docs/blob", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xhtml+xml")
+		w.Header().Set("Content-Disposition", `attachment;filename="14503021_aa_2026-08-28.xhtml"`)
+		_, _ = w.Write(data)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	url := srv.URL + "/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document?format=xhtml&download=1"
+	if DetectFormat(url) != FormatUnknown {
+		t.Fatalf("DetectFormat = %s, want unknown (sniff path, not extension)", DetectFormat(url))
+	}
+	got := collect(t, url)
+	if len(got) != 1 {
+		t.Fatalf("got %d members, want 1", len(got))
+	}
+	if got[0].Name != "14503021_aa_2026-08-28.xhtml" {
+		t.Fatalf("name %q, want Content-Disposition filename", got[0].Name)
+	}
+	if len(got[0].Content) != len(data) {
+		t.Fatalf("content len %d want %d", len(got[0].Content), len(data))
+	}
+}
+
+func TestStreamRemoteUnknownZipRefused(t *testing.T) {
+	entries := sampleEntries(t)
+	zipPath := filepath.Join(t.TempDir(), "in.zip")
+	if err := WriteZip(zipPath, entries); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	url := srv.URL + "/document?download=1"
+	ch := make(chan Member, 1)
+	_, err = Stream(context.Background(), url, ch)
+	for range ch {
+	}
+	if err == nil || !strings.Contains(err.Error(), "zip") {
+		t.Fatalf("err = %v, want zip range-URL error", err)
+	}
+}
+
+func TestFilenameFromDisposition(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{`attachment;filename="14503021_aa_2026-08-28.xhtml"`, "14503021_aa_2026-08-28.xhtml"},
+		{`attachment; filename=accounts.xhtml`, "accounts.xhtml"},
+		{"", ""},
+		{`inline`, ""},
+	}
+	for _, tc := range cases {
+		if got := filenameFromDisposition(tc.in); got != tc.want {
+			t.Errorf("filenameFromDisposition(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestStreamStdinInstance(t *testing.T) {
 	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
 	data, err := os.ReadFile(src)
@@ -374,6 +454,9 @@ func TestDescribe(t *testing.T) {
 	}
 	if got := Describe("accounts.xhtml"); got != "instance" {
 		t.Fatalf("Describe(xhtml) = %q", got)
+	}
+	if got := Describe("https://example.com/company/1/document?format=xhtml"); got != "remote" {
+		t.Fatalf("Describe(unknown remote) = %q", got)
 	}
 }
 
