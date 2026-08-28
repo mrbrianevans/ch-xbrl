@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	errMissingInput = errors.New("missing input path or URL")
+	errMissingInput = errors.New("missing input path, URL, or - for stdin")
 	errTTYStdout    = errors.New("refusing to write CSV to the terminal; use -o FILE or -o -")
 )
 
@@ -77,11 +77,16 @@ func stdoutIsTerminal() bool {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: ch-xbrl [-o FILE] [-workers N] <path|url>
+	fmt.Fprint(w, `usage: ch-xbrl [-o FILE] [-workers N] <path|url|->
        ch-xbrl -V
 
-Stream a local or remote Companies House iXBRL archive
-(.zip, .tar.zst, or .tar) to a long-format fact CSV.
+Stream Companies House iXBRL to a long-format fact CSV.
+
+Inputs (one positional):
+  archive     local or http(s) .zip, .tar.zst, or .tar
+  instance    local or http(s) .xhtml, .html, .htm, .xbrl, or .xml
+  directory   non-recursive; top-level instance files only
+  stdin       pass - ; XML/XHTML, tar, or tar.zst (zip needs seek: refused)
 
   -o, --output FILE   write CSV to FILE (default: stdout)
   -workers N          concurrent parse workers (default: number of CPUs)
@@ -95,7 +100,11 @@ Exit codes: 0 if the stream finished with files_err=0 and files_ok>=1;
 
 Examples:
   ch-xbrl -o facts.csv samples/sample.tar.zst
+  ch-xbrl -o facts.csv samples/03024914_aa_2023-03-13.xhtml
+  ch-xbrl -o facts.csv samples/
   ch-xbrl -o facts.csv https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip
   ch-xbrl samples/sample.tar.zst > facts.csv
+  cat accounts.xhtml | ch-xbrl -o facts.csv -
+  cat sample.tar.zst | ch-xbrl -o facts.csv -
 `)
 }

@@ -127,6 +127,28 @@ func TestParseConfig(t *testing.T) {
 			t.Fatal("expected unknown-flag error for -in")
 		}
 	})
+
+	t.Run("stdin dash", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := parseConfig([]string{"-o", "facts.csv", "-"}, true)
+		if err != nil {
+			t.Fatalf("parseConfig: %v", err)
+		}
+		if cfg.input != "-" || cfg.output != "facts.csv" || cfg.stdout {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
+	t.Run("stdin dash with -o -", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := parseConfig([]string{"-o", "-", "-"}, true)
+		if err != nil {
+			t.Fatalf("parseConfig: %v", err)
+		}
+		if cfg.input != "-" || !cfg.stdout {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
 }
 
 func TestVersionLine(t *testing.T) {
