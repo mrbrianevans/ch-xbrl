@@ -3,7 +3,7 @@ name: Arelle verify
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       limit:
