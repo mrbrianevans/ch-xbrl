@@ -25,7 +25,7 @@ Typical loop:
 
 High-volume **Companies House iXBRL** extraction into an analytics-ready form:
 
-1. **ch-xbrl** — stream remote/local `.zip` or `tar.zst` → long-format fact CSV.
+1. **ch-xbrl** — stream remote/local `.zip` or `tar.zst`, a single instance, a directory of instances, or stdin → long-format fact CSV.
 2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → reference CSVs.
 3. **Hand-curated map** — `mapping/concept_map.csv` in git.
 4. **DuckDB SQL** — normalise, priority-pick, pivot, cast → wide Parquet.
@@ -49,7 +49,7 @@ Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Us
 ## Layout
 
 ```text
-cmd/ch-xbrl/      main CLI — stream zip or tar.zst (local/remote) → facts.csv
+cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdin → facts.csv
 cmd/taxonomy/     ch-xbrl-taxonomy — packages → reference/concepts.csv
 cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst
 internal/ixbrl/   iXBRL parser
@@ -118,6 +118,8 @@ go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -seed-only -out reference
 go run ./cmd/ch-xbrl -V
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
+go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml
+go run ./cmd/ch-xbrl -o data/facts.csv samples/
 # remote CH bulk zip (batched parallel HTTP ranges via CloudFront):
 # go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"
 duckdb -c ".read sql/transform.sql"
