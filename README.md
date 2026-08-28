@@ -15,14 +15,14 @@ Extracts Companies House iXBRL accounts to a **long-format fact CSV** (one row p
 ```bash
 # Linux / macOS
 tar -xzf ch-xbrl_vX.Y.Z_linux_amd64.tar.gz    # or darwin_* / linux_arm64
-./ch-xbrl -h
+ch-xbrl -h
 
 # Windows (PowerShell)
 Expand-Archive .\ch-xbrl_vX.Y.Z_windows_amd64.zip -DestinationPath .
-.\ch-xbrl.exe -h
+ch-xbrl -h
 ```
 
-You only need `ch-xbrl` (`.exe` on Windows). Daily packs: [`Accounts_Bulk_Data-YYYY-MM-DD.zip`](https://download.companieshouse.gov.uk/en_accountsdata.html).
+Daily packs: [`Accounts_Bulk_Data-YYYY-MM-DD.zip`](https://download.companieshouse.gov.uk/en_accountsdata.html).
 
 **Flags must come before the positional.**
 
