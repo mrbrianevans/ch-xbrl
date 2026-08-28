@@ -1,6 +1,76 @@
 # ch-xbrl — Companies House XBRL extraction
 
-System for **high-volume extraction** of Companies House accounts (inline XBRL / iXBRL) into an **analytics-ready** form.
+**ch-xbrl** extracts facts from Companies House accounts (inline XBRL / iXBRL) into a **long-format CSV** (one row per fact). It streams a local or remote bulk archive without loading the whole zip into memory.
+
+If you only want the extractor, install a GitHub Release binary and stop at [Getting started](#getting-started). The rest of this file is for people working in the source tree (taxonomy map, DuckDB, layout, `go run`).
+
+## Getting started
+
+A GitHub **release archive** is the binaries plus `LICENSE`. It has **no** `samples/` tree, **no** `go run` workflow, and **no** DuckDB pipeline. You need an accounts zip (or another iXBRL input) of your own.
+
+### Install from GitHub Releases
+
+Prebuilt binaries for **Linux**, **macOS**, and **Windows** (amd64 and arm64) are attached to each [GitHub Release](https://github.com/mrbrianevans/ch-xbrl/releases/latest). Download the asset that matches your OS and CPU, then unpack it.
+
+| Platform | Asset |
+|----------|--------|
+| Linux x86_64 | `ch-xbrl_<version>_linux_amd64.tar.gz` |
+| Linux ARM64 | `ch-xbrl_<version>_linux_arm64.tar.gz` |
+| macOS Intel | `ch-xbrl_<version>_darwin_amd64.tar.gz` |
+| macOS Apple Silicon | `ch-xbrl_<version>_darwin_arm64.tar.gz` |
+| Windows x86_64 | `ch-xbrl_<version>_windows_amd64.zip` |
+| Windows ARM64 | `ch-xbrl_<version>_windows_arm64.zip` |
+
+Each archive contains `ch-xbrl` (`.exe` on Windows). It may also include `ch-xbrl-taxonomy` and `ch-xbrl-mksample`; those are maintainer tools. You only need `ch-xbrl` to extract facts. Optional `SHA256SUMS` is on the release page.
+
+**Linux / macOS:**
+
+```bash
+tar -xzf ch-xbrl_vX.Y.Z_linux_amd64.tar.gz   # or darwin_arm64 / darwin_amd64 / linux_arm64
+./ch-xbrl -h
+```
+
+On macOS, if Gatekeeper blocks the binary: allow it under System Settings → Privacy & Security, or run `xattr -d com.apple.quarantine ch-xbrl`.
+
+**Windows** (PowerShell):
+
+```powershell
+Expand-Archive .\ch-xbrl_vX.Y.Z_windows_amd64.zip -DestinationPath .
+.\ch-xbrl.exe -h
+```
+
+Put the unpack directory on your `PATH` if you want to type `ch-xbrl` without `./` or `.\`.
+
+### Quick start
+
+Daily Companies House packs are named `Accounts_Bulk_Data-YYYY-MM-DD.zip` ([index](https://download.companieshouse.gov.uk/en_accountsdata.html)). After unpacking the release, print help, then write a CSV from a **local** zip or a **remote** URL.
+
+**Flags must come before the positional path or URL** (Go’s `flag` package). `-o` / `--output` writes the CSV.
+
+```bash
+ch-xbrl -h
+
+# local zip you already downloaded
+ch-xbrl -o facts.csv Accounts_Bulk_Data-2026-05-09.zip
+
+# remote zip (HTTP range reads; does not download the whole archive first)
+ch-xbrl -o facts.csv "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"
+```
+
+Windows: `.\ch-xbrl.exe -h` then `.\ch-xbrl.exe -o facts.csv …`.
+
+```text
+ch-xbrl -o facts.csv archive.zip     # correct
+ch-xbrl archive.zip -o facts.csv     # wrong — usage error (exit 2)
+```
+
+On a terminal you must pass `-o FILE` (or `-o -` to force stdout). Omit `-o` only when stdout is a pipe or a redirected file. Logs go to stderr. `-V` / `--version` prints the version baked into the release binary.
+
+The positional is a path, URL, or `-` (stdin). Besides a bulk `.zip`, that can be a `.tar.zst` / `.tar`, a single instance (`.xhtml`, `.html`, `.htm`, `.xbrl`, `.xml`), a directory of instances, or a remote filing URL. Details are under [Input formats](#input-formats). Output columns are under [Fact CSV columns](#fact-csv-columns).
+
+Exit codes are fail-closed: **0** only if the stream finished, `files_err == 0`, and `files_ok >= 1`; **1** on any member parse/write failure, empty extract, or stream/I/O error; **2** usage; **130** interrupt (`Ctrl-C`). The frozen CLI is [`docs/cli-contract.md`](./docs/cli-contract.md) in the repository; on a machine with only the release binary, `ch-xbrl -h` is the usage text.
+
+---
 
 ## Goals
 
@@ -98,11 +168,9 @@ docs/cli-contract.md  frozen ch-xbrl CLI (flags, CSV, exits)
 AGENTS.md          instructions for contributors and coding agents
 ```
 
-## Quick start
+## Build from source
 
-Requires **Go** (see `go.mod`) and optionally the **DuckDB** CLI.
-
-**Prebuilt binaries** for Linux, macOS, and Windows (amd64/arm64) are attached to each [GitHub Release](https://github.com/mrbrianevans/ch-xbrl/releases/latest). Download the archive for your platform, unpack it, and run `ch-xbrl` (plus `ch-xbrl-taxonomy` / `ch-xbrl-mksample` as needed).
+Requires **Go** (see `go.mod`) and optionally the **DuckDB** CLI. This is the contributor path: clone the repository, then `go run` against `samples/` and the DuckDB SQL under `sql/`.
 
 ```bash
 go run ./cmd/mksample -out samples/sample.tar.zst
@@ -111,7 +179,7 @@ go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 duckdb -c ".read sql/transform.sql"
 ```
 
-The positional is a path, URL, or `-` (stdin). `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout. `-V` / `--version` prints `ch-xbrl <semver> (<sha>)` and exits 0 (release builds bake this via ldflags; `go run` is `0.0.0-dev` plus the VCS revision when available).
+The positional is a path, URL, or `-` (stdin). `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout. Flags must appear **before** the positional. `-V` / `--version` prints `ch-xbrl <semver> (<sha>)` and exits 0 (release builds bake this via ldflags; `go run` is `0.0.0-dev` plus the VCS revision when available).
 
 Exit codes are fail-closed: **0** only if the stream finished, `files_err == 0`, and `files_ok >= 1`; **1** on any member parse/write failure, empty extract, or stream/I/O error; **2** usage; **130** interrupt (`Ctrl-C`). The frozen CLI (argv, columns, exits) is [`docs/cli-contract.md`](./docs/cli-contract.md). `ch-xbrl-taxonomy`, `ch-xbrl-mksample`, and DuckDB SQL are not 1.0-frozen.
 
@@ -169,7 +237,7 @@ go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 First-party source and tools are [MIT](./LICENSE), Copyright (c) 2026 Brian Evans.
 
-iXBRL files under `samples/` are real Companies House filings. They are **not** covered by the MIT grant; see [`samples/NOTICE`](./samples/NOTICE) (Open Government Licence v3.0).
+iXBRL files under `samples/` are real Companies House filings. They are **not** covered by the MIT grant; see [`samples/NOTICE`](./samples/NOTICE) (Open Government Licence v3.0). Release archives do not include `samples/`; bulk data you download from Companies House is likewise not MIT.
 
 ## Contributing / agents
 
