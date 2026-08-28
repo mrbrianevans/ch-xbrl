@@ -210,6 +210,46 @@ func TestGolden_09652677_Azets(t *testing.T) {
 	})
 }
 
+// One real filing per common accounts-production vendor. IRIS / CCH / Digita /
+// Caseware were already in the golden set; the rest were fetched from a CH
+// bulk day (Content-Disposition names). Acorah is TaxCalc.
+func TestVendorSoftwareSamples(t *testing.T) {
+	cases := []struct {
+		file, vendor string
+	}{
+		{"00410149_aa_2026-08-14.xhtml", "Companies House"},
+		{"00383317_aa_2026-08-14.xhtml", "Acorah"}, // TaxCalc
+		{"03024914_aa_2023-03-13.xhtml", "IRIS"},
+		{"09652677_aa_2026-03-25.xhtml", "CCH"},
+		{"00543529_aa_2026-08-14.xhtml", "Taxfiler"},
+		{"00311870_aa_2026-08-14.xhtml", "VT Final"},
+		{"Prod223_4203_08798715_20250331.html", "Digita"},
+		{"Prod223_4203_00134794_20250927.html", "Caseware"},
+		{"00274745_aa_2026-08-14.xhtml", "Sage"},
+		{"00528415_aa_2026-08-14.xhtml", "Silverfin"},
+		{"01156878_aa_2026-08-14.xhtml", "BTCSoftware"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.vendor, func(t *testing.T) {
+			facts := loadSample(t, tc.file)
+			var software string
+			for _, f := range facts {
+				if f.Concept == "NameProductionSoftware" && f.Value != "" {
+					software = f.Value
+					break
+				}
+			}
+			if software == "" {
+				t.Fatalf("%s: no NameProductionSoftware fact", tc.file)
+			}
+			if !containsFold(software, tc.vendor) {
+				t.Errorf("%s: software=%q want substring %q", tc.file, software, tc.vendor)
+			}
+		})
+	}
+}
+
 // Taxonomy / schemaRef on the three small files (hand-checked schemaRef href).
 func TestGolden_SchemaRefs(t *testing.T) {
 	cases := map[string]string{
