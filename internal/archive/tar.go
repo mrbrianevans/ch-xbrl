@@ -20,9 +20,14 @@ func streamTar(ctx context.Context, source string, out chan<- Member) (int, erro
 	}
 	defer func() { _ = rc.Close() }()
 
-	var r io.Reader = rc
-	if DetectFormat(source) == FormatTarZst {
-		zr, err := zstd.NewReader(rc)
+	return streamTarReader(ctx, rc, DetectFormat(source) == FormatTarZst, out)
+}
+
+// streamTarReader yields iXBRL/XBRL members from an already-open tar stream.
+// When zstdCompressed is true, r is zstd-wrapped (tar.zst).
+func streamTarReader(ctx context.Context, r io.Reader, zstdCompressed bool, out chan<- Member) (int, error) {
+	if zstdCompressed {
+		zr, err := zstd.NewReader(r)
 		if err != nil {
 			return 0, fmt.Errorf("zstd reader: %w", err)
 		}
