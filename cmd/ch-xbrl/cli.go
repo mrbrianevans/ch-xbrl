@@ -85,6 +85,8 @@ Stream Companies House iXBRL to a long-format fact CSV.
 Inputs (one positional):
   archive     local or http(s) .zip, .tar.zst, or .tar
   instance    local or http(s) .xhtml, .html, .htm, .xbrl, or .xml
+  remote      URL with no recognised extension is sniffed after GET
+              (XML/XHTML, tar, tar.zst; zip still needs a .zip URL)
   directory   non-recursive; top-level instance files only
   stdin       pass - ; XML/XHTML, tar, or tar.zst (zip needs seek: refused)
 
@@ -103,6 +105,7 @@ Examples:
   ch-xbrl -o facts.csv samples/03024914_aa_2023-03-13.xhtml
   ch-xbrl -o facts.csv samples/
   ch-xbrl -o facts.csv https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip
+  ch-xbrl -o facts.csv 'https://find-and-update.company-information.service.gov.uk/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document?format=xhtml&download=1'
   ch-xbrl samples/sample.tar.zst > facts.csv
   cat accounts.xhtml | ch-xbrl -o facts.csv -
   cat sample.tar.zst | ch-xbrl -o facts.csv -

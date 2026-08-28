@@ -5,6 +5,7 @@
 //
 //	.zip / .tar.zst / .tar  — local or http(s); remote zip uses HTTP ranges
 //	.xhtml .html .htm .xbrl .xml — single instance, local or http(s)
+//	http(s) URL with no known extension — GET, follow redirects, sniff body
 //	directory               — non-recursive; top-level instance files only
 //	-                       — stdin; XML/XHTML, tar, or tar.zst (not zip)
 //

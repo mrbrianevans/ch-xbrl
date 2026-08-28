@@ -186,6 +186,34 @@ func TestRun_RemoteInstance(t *testing.T) {
 	}
 }
 
+func TestRun_RemoteDocumentNoExtension(t *testing.T) {
+	data, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/company/14503021/filing-history/x/document", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/blob", http.StatusFound)
+	})
+	mux.HandleFunc("/blob", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xhtml+xml")
+		w.Header().Set("Content-Disposition", `attachment;filename="14503021_aa_2026-08-28.xhtml"`)
+		_, _ = w.Write(data)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	url := srv.URL + "/company/14503021/filing-history/x/document?format=xhtml&download=1"
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", url}, nil)
+	if code != exitOK {
+		t.Fatalf("exit %d stderr=%s", code, stderr)
+	}
+	assertCSV(t, stdout)
+	if !strings.Contains(stdout, "14503021_aa_2026-08-28.xhtml") {
+		t.Fatalf("source_file should come from Content-Disposition, got CSV without it")
+	}
+}
+
 func TestRun_RemoteTarZst(t *testing.T) {
 	data, err := os.ReadFile(sampleTarZst(t))
 	if err != nil {
