@@ -309,4 +309,4 @@ Job fails if any sample is **FAIL** or **ERROR**; **OK** / **OK_SOFT** keep the 
 - Frozen CLI (inputs, columns, exits): [`docs/cli-contract.md`](../../docs/cli-contract.md)
 - Arelle install: <https://arelle.readthedocs.io/en/latest/install.html>
 - Arelle CLI: <https://arelle.readthedocs.io/en/latest/command_line.html>
-- ch-xbrl design: root [`README.md`](../../README.md)
+- ch-xbrl design: [`docs/design.md`](../../docs/design.md)
