@@ -33,9 +33,12 @@ func sampleHTML(t *testing.T) string {
 
 func sampleTarZst(t *testing.T) string {
 	t.Helper()
-	p := filepath.Join("..", "..", "samples", "sample.tar.zst")
-	if _, err := os.Stat(p); err != nil {
-		t.Fatalf("sample.tar.zst: %v", err)
+	xhtml := sampleXHTML(t)
+	p := filepath.Join(t.TempDir(), "sample.tar.zst")
+	if err := archive.WriteTarZst(p, map[string]string{
+		filepath.Base(xhtml): xhtml,
+	}); err != nil {
+		t.Fatal(err)
 	}
 	return p
 }

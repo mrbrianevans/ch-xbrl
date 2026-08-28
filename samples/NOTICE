@@ -1,9 +1,9 @@
 Companies House iXBRL samples
 =============================
 
-The instance documents in this directory, and the packed archive
-`sample.tar.zst`, are real company accounts filings taken from the UK
-Companies House public register (Accounts Data Product).
+The instance documents in this directory (and `sample.tar.zst` when
+packed with `ch-xbrl-mksample`) are real company accounts filings
+taken from the UK Companies House public register (Accounts Data Product).
 
 They are not licensed under the MIT licence that covers the ch-xbrl
 source code.

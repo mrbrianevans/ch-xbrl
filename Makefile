@@ -10,13 +10,13 @@ sample:
 taxonomy:
 	go run ./cmd/taxonomy -seed-only -out reference
 
-facts:
+facts: sample
 	go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 transform:
 	duckdb -c ".read sql/transform.sql"
 
-all: sample taxonomy facts transform
+all: taxonomy facts transform
 
 test:
 	go test ./...

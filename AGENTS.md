@@ -51,7 +51,7 @@ Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Us
 ```text
 cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdin → facts.csv
 cmd/taxonomy/     ch-xbrl-taxonomy — packages → reference/concepts.csv
-cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst
+cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst (gitignored)
 internal/ixbrl/   iXBRL parser
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
@@ -59,7 +59,7 @@ internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
 reference/        concepts.csv (generated seed / downloads)
 sql/              DuckDB transforms
-samples/          example iXBRL + sample.tar.zst (OGL; see samples/NOTICE)
+samples/          example iXBRL (OGL; see samples/NOTICE); pack sample.tar.zst with mksample
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 verify/stream-read-xbrl/  published stream-read-xbrl package vs DuckDB-pivoted facts
 data/             runtime outputs (gitignored)
@@ -80,7 +80,7 @@ README.md         goals and design overview
 
   ```bash
   go test ./...
-  go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
+  go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml
   ```
 
 - CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `staticcheck`, `go test -race`, build).
@@ -102,8 +102,9 @@ README.md         goals and design overview
 - `data/facts.csv`, `data/*.parquet` (runtime).
 - Secrets, API keys, `.env` with credentials.
 - Accidental binary dumps or full CH bulk archives.
+- `samples/sample.tar.zst` (generated; `go run ./cmd/mksample`).
 
-`samples/sample.tar.zst` and seed `reference/concepts.csv` **may** be committed when intentionally refreshed.
+Seed `reference/concepts.csv` **may** be committed when intentionally refreshed.
 
 ### Dependencies
 

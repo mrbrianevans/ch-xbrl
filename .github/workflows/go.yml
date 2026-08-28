@@ -77,12 +77,14 @@ jobs:
           set -euo pipefail
           bin=/tmp/ch-xbrl
           xhtml=samples/03024914_aa_2023-03-13.xhtml
-          tar=samples/sample.tar.zst
           out=/tmp/ch-xbrl-smoke
-          mkdir -p "$out/dir/nested"
+          mkdir -p "$out/dir/nested" "$out/tarin"
           cp "$xhtml" "$out/dir/"
+          cp "$xhtml" "$out/tarin/"
           printf 'not xbrl\n' > "$out/dir/readme.txt"
           cp "$xhtml" "$out/dir/nested/hidden.xhtml"
+          /tmp/ch-xbrl-mksample -dir "$out/tarin" -out "$out/sample.tar.zst"
+          tar=$out/sample.tar.zst
 
           echo "local tar.zst"
           "$bin" -o "$out/tar.csv" -workers 1 "$tar"

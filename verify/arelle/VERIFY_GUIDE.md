@@ -51,13 +51,14 @@ uv run arelleCmdLine --version
 From the **repository root**, run ch-xbrl on the sample archive (or any archive that contains the instances you will verify):
 
 ```bash
+go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 ```
 
 Notes:
 
 - `cmd/ch-xbrl` reads **zip / tar.zst**, not a single loose `.xhtml` path.
-- Loose samples under `samples/` are also packed into `samples/sample.tar.zst` (via `cmd/mksample` if you refresh them).
+- Loose samples under `samples/` can be packed into `samples/sample.tar.zst` with `cmd/mksample` (gitignored).
 - The compare step filters extract rows by `source_file` basename matching the instance file name.
 
 ### 2. Verify one instance
@@ -278,7 +279,7 @@ Workflow: [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle
 | Push to `master` | Full sample set; Arelle **online** (taxonomies can download) |
 | **workflow_dispatch** | Optional `limit` and `offline`; same report |
 
-Steps: `go test` → ch-xbrl on `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
+Steps: `go test` → `mksample` → ch-xbrl on `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
 
 Local equivalent:
 

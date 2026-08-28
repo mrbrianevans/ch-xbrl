@@ -68,6 +68,7 @@ jobs:
       - name: Run ch-xbrl on sample archive → facts.csv
         run: |
           mkdir -p data
+          go run ./cmd/mksample -out samples/sample.tar.zst
           go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 
       - name: Install Arelle verify deps
