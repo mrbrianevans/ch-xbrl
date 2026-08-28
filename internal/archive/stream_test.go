@@ -1,8 +1,10 @@
 package archive
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -129,16 +131,355 @@ func TestStreamLocalTarZstRoundTrip(t *testing.T) {
 }
 
 func TestStreamUnsupportedFormat(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(p, []byte("not xbrl"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	ch := make(chan Member)
-	_, err := Stream(context.Background(), "notes.txt", ch)
+	_, err := Stream(context.Background(), p, ch)
 	// drain
 	for range ch {
 	}
 	if err == nil {
 		t.Fatal("expected error for unsupported format")
 	}
-	if !strings.Contains(err.Error(), "unsupported archive format") {
+	if !strings.Contains(err.Error(), "unsupported input format") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func collectFrom(t *testing.T, source string, in io.Reader) []Member {
+	t.Helper()
+	ch := make(chan Member, 8)
+	var (
+		got []Member
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+	)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for m := range ch {
+			mu.Lock()
+			got = append(got, m)
+			mu.Unlock()
+		}
+	}()
+	n, err := StreamFrom(context.Background(), source, in, ch)
+	wg.Wait()
+	if err != nil {
+		t.Fatalf("StreamFrom(%s): %v", source, err)
+	}
+	if n != len(got) {
+		t.Fatalf("count %d != received %d", n, len(got))
+	}
+	return got
+}
+
+func TestStreamLocalInstance(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	if _, err := os.Stat(src); err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	got := collect(t, src)
+	if len(got) != 1 {
+		t.Fatalf("got %d members, want 1", len(got))
+	}
+	if got[0].Name != "03024914_aa_2023-03-13.xhtml" {
+		t.Fatalf("name %q", got[0].Name)
+	}
+	if len(got[0].Content) < 100 {
+		t.Fatalf("content too small")
+	}
+}
+
+func TestStreamDirectoryTopLevelOnly(t *testing.T) {
+	entries := sampleEntries(t)
+	dir := t.TempDir()
+
+	xhtml := entries["03024914_aa_2023-03-13.xhtml"]
+	html := entries["Prod223_4203_00134794_20250927.html"]
+	for _, src := range []string{xhtml, html} {
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(src)), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("nope"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	nested := filepath.Join(dir, "nested")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nestedXHTML, err := os.ReadFile(xhtml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nested, "hidden.xhtml"), nestedXHTML, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	zipPath := filepath.Join(dir, "bundle.zip")
+	if err := WriteZip(zipPath, map[string]string{"inner.xhtml": xhtml}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := collect(t, dir)
+	if len(got) != 2 {
+		t.Fatalf("got %d members, want 2 top-level instances (nested dir and zip ignored)", len(got))
+	}
+	names := map[string]bool{}
+	for _, m := range got {
+		names[m.Name] = true
+		if strings.Contains(m.Name, "/") || strings.Contains(m.Name, "\\") {
+			t.Errorf("directory member should be a top-level base name: %q", m.Name)
+		}
+	}
+	if !names["03024914_aa_2023-03-13.xhtml"] || !names["Prod223_4203_00134794_20250927.html"] {
+		t.Errorf("unexpected names: %v", names)
+	}
+}
+
+func TestStreamRemoteInstance(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xhtml+xml")
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	got := collect(t, srv.URL+"/accounts.xhtml")
+	if len(got) != 1 {
+		t.Fatalf("got %d members, want 1", len(got))
+	}
+	if got[0].Name != "accounts.xhtml" {
+		t.Fatalf("name %q", got[0].Name)
+	}
+	if len(got[0].Content) != len(data) {
+		t.Fatalf("content len %d want %d", len(got[0].Content), len(data))
+	}
+}
+
+func TestStreamRemoteUnknownExtensionRedirect(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("format") != "xhtml" {
+			http.Error(w, "want format=xhtml", http.StatusBadRequest)
+			return
+		}
+		http.Redirect(w, r, "/docs/blob", http.StatusFound)
+	})
+	mux.HandleFunc("/docs/blob", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xhtml+xml")
+		w.Header().Set("Content-Disposition", `attachment;filename="14503021_aa_2026-08-28.xhtml"`)
+		_, _ = w.Write(data)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	url := srv.URL + "/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document?format=xhtml&download=1"
+	if DetectFormat(url) != FormatUnknown {
+		t.Fatalf("DetectFormat = %s, want unknown (sniff path, not extension)", DetectFormat(url))
+	}
+	got := collect(t, url)
+	if len(got) != 1 {
+		t.Fatalf("got %d members, want 1", len(got))
+	}
+	if got[0].Name != "14503021_aa_2026-08-28.xhtml" {
+		t.Fatalf("name %q, want Content-Disposition filename", got[0].Name)
+	}
+	if len(got[0].Content) != len(data) {
+		t.Fatalf("content len %d want %d", len(got[0].Content), len(data))
+	}
+}
+
+func TestStreamRemoteDispositionBeatsSniff(t *testing.T) {
+	// Filename says zip; body is iXBRL. Disposition must win, or sniff would
+	// treat the body as an instance.
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment;filename="pack.zip"`)
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	ch := make(chan Member, 1)
+	_, err = Stream(context.Background(), srv.URL+"/document", ch)
+	for range ch {
+	}
+	if err == nil || !strings.Contains(err.Error(), "zip") {
+		t.Fatalf("err = %v, want zip refusal from Content-Disposition (not XML sniff)", err)
+	}
+}
+
+func TestStreamRemoteUnknownZipRefused(t *testing.T) {
+	entries := sampleEntries(t)
+	zipPath := filepath.Join(t.TempDir(), "in.zip")
+	if err := WriteZip(zipPath, entries); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/zip")
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	url := srv.URL + "/document?download=1"
+	ch := make(chan Member, 1)
+	_, err = Stream(context.Background(), url, ch)
+	for range ch {
+	}
+	if err == nil || !strings.Contains(err.Error(), "zip") {
+		t.Fatalf("err = %v, want zip range-URL error", err)
+	}
+}
+
+func TestFilenameFromDisposition(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{`attachment;filename="14503021_aa_2026-08-28.xhtml"`, "14503021_aa_2026-08-28.xhtml"},
+		{`attachment; filename=accounts.xhtml`, "accounts.xhtml"},
+		{"", ""},
+		{`inline`, ""},
+	}
+	for _, tc := range cases {
+		if got := filenameFromDisposition(tc.in); got != tc.want {
+			t.Errorf("filenameFromDisposition(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestStreamStdinInstance(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	got := collectFrom(t, "-", bytes.NewReader(data))
+	if len(got) != 1 {
+		t.Fatalf("got %d members, want 1", len(got))
+	}
+	if got[0].Name != "-" {
+		t.Fatalf("name %q, want -", got[0].Name)
+	}
+}
+
+func TestStreamStdinTarZst(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "sample.tar.zst")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample.tar.zst missing")
+	}
+	fromFile := collect(t, src)
+	fromStdin := collectFrom(t, "-", bytes.NewReader(data))
+	if len(fromStdin) != len(fromFile) || len(fromStdin) == 0 {
+		t.Fatalf("stdin tar.zst members %d, file members %d", len(fromStdin), len(fromFile))
+	}
+}
+
+func TestStreamStdinTar(t *testing.T) {
+	entries := sampleEntries(t)
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for name, path := range entries {
+		if !isXBRLName(name) {
+			continue
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: name, Size: int64(len(body)), Mode: 0o644}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got := collectFrom(t, "-", bytes.NewReader(buf.Bytes()))
+	if len(got) != 2 {
+		t.Fatalf("got %d members, want 2", len(got))
+	}
+}
+
+func TestStreamStdinZipRefused(t *testing.T) {
+	entries := sampleEntries(t)
+	zipPath := filepath.Join(t.TempDir(), "in.zip")
+	if err := WriteZip(zipPath, entries); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := make(chan Member, 1)
+	_, err = StreamFrom(context.Background(), "-", bytes.NewReader(data), ch)
+	for range ch {
+	}
+	if !errors.Is(err, ErrZipStdin) {
+		t.Fatalf("err = %v, want ErrZipStdin", err)
+	}
+}
+
+func TestStreamStdinGzipRefused(t *testing.T) {
+	ch := make(chan Member, 1)
+	_, err := StreamFrom(context.Background(), "-", bytes.NewReader([]byte{0x1f, 0x8b, 0x08, 0x00}), ch)
+	for range ch {
+	}
+	if !errors.Is(err, ErrGzipStdin) {
+		t.Fatalf("err = %v, want ErrGzipStdin", err)
+	}
+}
+
+func TestStreamStdinEmpty(t *testing.T) {
+	ch := make(chan Member, 1)
+	_, err := StreamFrom(context.Background(), "-", bytes.NewReader(nil), ch)
+	for range ch {
+	}
+	if err == nil {
+		t.Fatal("expected error for empty stdin")
+	}
+}
+
+func TestDescribe(t *testing.T) {
+	if got := Describe("-"); got != "stdin" {
+		t.Fatalf("Describe(-) = %q", got)
+	}
+	dir := t.TempDir()
+	if got := Describe(dir); got != "directory" {
+		t.Fatalf("Describe(dir) = %q", got)
+	}
+	if got := Describe("accounts.xhtml"); got != "instance" {
+		t.Fatalf("Describe(xhtml) = %q", got)
+	}
+	if got := Describe("https://example.com/company/1/document?format=xhtml"); got != "remote" {
+		t.Fatalf("Describe(unknown remote) = %q", got)
 	}
 }
 

@@ -1,16 +1,22 @@
-// Command ch-xbrl streams a remote or local archive of Companies House iXBRL
-// accounts and writes a long-format fact CSV.
+// Command ch-xbrl streams Companies House iXBRL accounts and writes a
+// long-format fact CSV.
 //
-// Supported inputs (local path or http(s) URL):
+// Supported inputs (one positional path, URL, or "-"):
 //
-//	.zip      — random access; remote uses HTTP range requests
-//	.tar.zst  — sequential stream (optional plain .tar)
+//	.zip / .tar.zst / .tar  — local or http(s); remote zip uses HTTP ranges
+//	.xhtml .html .htm .xbrl .xml — single instance, local or http(s)
+//	http(s) URL with no known extension — GET, follow redirects, sniff body
+//	directory               — non-recursive; top-level instance files only
+//	-                       — stdin; XML/XHTML, tar, or tar.zst (not zip)
 //
 // Examples:
 //
 //	ch-xbrl -o facts.csv samples/sample.tar.zst
+//	ch-xbrl -o facts.csv samples/03024914_aa_2023-03-13.xhtml
+//	ch-xbrl -o facts.csv samples/
 //	ch-xbrl -o facts.csv -workers 16 https://example.com/Accounts_Bulk_Data.tar.zst
 //	ch-xbrl samples/sample.tar.zst > facts.csv
+//	cat accounts.xhtml | ch-xbrl -o facts.csv -
 //	ch-xbrl -V
 package main
 
@@ -19,6 +25,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -37,34 +44,40 @@ import (
 const memberQueueDepth = 64
 
 func main() {
-	cfg, err := parseConfig(os.Args[1:], stdoutIsTerminal())
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, stdoutIsTerminal()))
+}
+
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY bool) int {
+	log.SetOutput(stderr)
+	cfg, err := parseConfig(args, stdoutIsTTY)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			printUsage(os.Stderr)
-			os.Exit(exitOK)
+			printUsage(stderr)
+			return exitOK
 		}
-		fmt.Fprintf(os.Stderr, "ch-xbrl: %v\n", err)
+		fmt.Fprintf(stderr, "ch-xbrl: %v\n", err)
 		if !errors.Is(err, errTTYStdout) {
-			printUsage(os.Stderr)
+			printUsage(stderr)
 		}
-		os.Exit(exitUsage)
+		return exitUsage
 	}
 	if cfg.showVersion {
-		fmt.Println(versionLine())
-		os.Exit(exitOK)
+		fmt.Fprintln(stdout, versionLine())
+		return exitOK
 	}
 
-	var outW *os.File
+	var outW io.Writer = stdout
 	outName := "-"
-	if cfg.stdout {
-		outW = os.Stdout
-	} else {
+	var outFile *os.File
+	if !cfg.stdout {
 		outName = cfg.output
-		outW, err = os.Create(cfg.output)
+		outFile, err = os.Create(cfg.output)
 		if err != nil {
-			log.Fatalf("create output: %v", err)
+			log.Printf("create output: %v", err)
+			return runExitCode(0, 0, err)
 		}
-		defer func() { _ = outW.Close() }()
+		defer func() { _ = outFile.Close() }()
+		outW = outFile
 	}
 	csvW := csvout.New(outW)
 
@@ -80,7 +93,6 @@ func main() {
 		firstErrs []string
 	)
 
-	// Workers
 	var wg sync.WaitGroup
 	for i := 0; i < cfg.workers; i++ {
 		wg.Add(1)
@@ -108,7 +120,6 @@ func main() {
 		}()
 	}
 
-	// Progress logger
 	done := make(chan struct{})
 	go func() {
 		t := time.NewTicker(2 * time.Second)
@@ -125,14 +136,12 @@ func main() {
 	}()
 
 	start := time.Now()
-	log.Printf("input: %s format=%s", cfg.input, archive.DetectFormat(cfg.input))
-	n, streamErr := archive.Stream(ctx, cfg.input, members)
+	log.Printf("input: %s format=%s", cfg.input, archive.Describe(cfg.input))
+	n, streamErr := archive.StreamFrom(ctx, cfg.input, stdin, members)
 	wg.Wait()
 	close(done)
 
-	if err := csvW.Flush(); err != nil {
-		log.Fatalf("flush: %v", err)
-	}
+	flushErr := csvW.Flush()
 
 	elapsed := time.Since(start).Round(time.Millisecond)
 	log.Printf("done: members=%d files_ok=%d files_err=%d facts=%d elapsed=%s out=%s",
@@ -147,7 +156,11 @@ func main() {
 	if streamErr != nil && !errors.Is(streamErr, context.Canceled) {
 		log.Printf("stream: %v", streamErr)
 	}
-	if code := runExitCode(filesOK.Load(), filesErr.Load(), streamErr); code != exitOK {
-		os.Exit(code)
+	if flushErr != nil {
+		log.Printf("flush: %v", flushErr)
+		if streamErr == nil {
+			streamErr = flushErr
+		}
 	}
+	return runExitCode(filesOK.Load(), filesErr.Load(), streamErr)
 }

@@ -19,25 +19,41 @@ func isRemote(source string) bool {
 // Suitable for streamable formats (tar / tar.zst). The caller must Close the result.
 func Open(ctx context.Context, source string) (io.ReadCloser, error) {
 	if isRemote(source) {
-		return openHTTP(ctx, source)
+		rc, _, err := openHTTPStream(ctx, source)
+		return rc, err
 	}
 	return os.Open(source)
 }
 
-func openHTTP(ctx context.Context, source string) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+// openHTTPStream GETs source (following redirects) and returns the final body
+// plus response headers (Content-Disposition after an S3 override query).
+func openHTTPStream(ctx context.Context, source string) (io.ReadCloser, http.Header, error) {
+	client := newRemoteHTTPClient()
+	var (
+		body io.ReadCloser
+		hdr  http.Header
+	)
+	err := retryHTTP(ctx, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode != http.StatusOK {
+			drainAndClose(resp)
+			return httpErrorf(resp.StatusCode, resp.Status, source, "HTTP %s for %s", resp.Status, source)
+		}
+		body = resp.Body
+		hdr = resp.Header.Clone()
+		return nil
+	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	resp, err := newRemoteHTTPClient().Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		_ = resp.Body.Close()
-		return nil, fmt.Errorf("HTTP %s for %s", resp.Status, source)
-	}
-	return resp.Body, nil
+	return body, hdr, nil
 }
 
 // openReaderAt returns random-access bytes for a local file or remote object
@@ -79,12 +95,25 @@ func newRemoteHTTPClient() *http.Client {
 }
 
 // rangeGET fetches bytes [start, end] inclusive via a single HTTP Range request.
-// CloudFront/S3 return 206 Partial Content.
-func rangeGET(ctx context.Context, client *http.Client, url string, start, end int64) ([]byte, error) {
+// CloudFront/S3 return 206 Partial Content. Transient store errors are retried.
+func rangeGET(ctx context.Context, client *http.Client, rawURL string, start, end int64) ([]byte, error) {
 	if start < 0 || end < start {
 		return nil, fmt.Errorf("invalid range %d-%d", start, end)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	var out []byte
+	err := retryHTTP(ctx, func() error {
+		b, err := rangeGETOnce(ctx, client, rawURL, start, end)
+		if err != nil {
+			return err
+		}
+		out = b
+		return nil
+	})
+	return out, err
+}
+
+func rangeGETOnce(ctx context.Context, client *http.Client, rawURL string, start, end int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +123,7 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer drainAndClose(resp)
 
 	want := end - start + 1
 	switch resp.StatusCode {
@@ -102,17 +131,17 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 		// expected
 	case http.StatusOK:
 		if start != 0 {
-			return nil, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", url, start, end)
+			return nil, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", rawURL, start, end)
 		}
 	default:
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf("HTTP %s for range %d-%d of %s", resp.Status, start, end, url)
+		return nil, httpErrorf(resp.StatusCode, resp.Status, rawURL,
+			"HTTP %s for range %d-%d of %s", resp.Status, start, end, rawURL)
 	}
 
 	buf := make([]byte, want)
 	n, err := io.ReadFull(resp.Body, buf)
 	if err == io.ErrUnexpectedEOF || err == io.EOF {
-		return nil, fmt.Errorf("short range body for %s: got %d want %d: %w", url, n, want, err)
+		return nil, fmt.Errorf("short range body for %s: got %d want %d: %w", rawURL, n, want, errShortRange)
 	}
 	if err != nil {
 		return nil, err
@@ -171,46 +200,79 @@ func (r *httpRangeReader) ReadAt(p []byte, off int64) (int, error) {
 }
 
 // remoteSize discovers Content-Length via HEAD, falling back to a 1-byte range GET.
-func remoteSize(ctx context.Context, client *http.Client, url string) (int64, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, url, nil)
-	if err != nil {
-		return 0, err
+func remoteSize(ctx context.Context, client *http.Client, rawURL string) (int64, error) {
+	if n, err := remoteSizeHEAD(ctx, client, rawURL); err == nil && n > 0 {
+		return n, nil
 	}
-	resp, err := client.Do(req)
-	if err == nil {
-		_ = resp.Body.Close()
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 && resp.ContentLength > 0 {
-			return resp.ContentLength, nil
+	return remoteSizeRangeProbe(ctx, client, rawURL)
+}
+
+func remoteSizeHEAD(ctx context.Context, client *http.Client, rawURL string) (int64, error) {
+	var size int64
+	err := retryHTTP(ctx, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodHead, rawURL, nil)
+		if err != nil {
+			return err
 		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		drainAndClose(resp)
+		switch {
+		case resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound:
+			return httpErrorf(resp.StatusCode, resp.Status, rawURL, "HTTP %s for %s", resp.Status, rawURL)
+		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+			return httpErrorf(resp.StatusCode, resp.Status, rawURL, "HTTP %s for %s", resp.Status, rawURL)
+		case resp.StatusCode >= 200 && resp.StatusCode < 300 && resp.ContentLength > 0:
+			size = resp.ContentLength
+		}
+		return nil
+	})
+	if size > 0 {
+		return size, nil
 	}
+	return 0, err
+}
 
-	// Fallback: Range bytes=0-0 → Content-Range: bytes 0-0/<size>
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("Range", "bytes=0-0")
-	resp, err = client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
+func remoteSizeRangeProbe(ctx context.Context, client *http.Client, rawURL string) (int64, error) {
+	var size int64
+	err := retryHTTP(ctx, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Range", "bytes=0-0")
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer drainAndClose(resp)
 
-	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("size probe HTTP %s for %s", resp.Status, url)
-	}
-	if cr := resp.Header.Get("Content-Range"); cr != "" {
-		// bytes 0-0/57532150
-		if i := strings.LastIndex(cr, "/"); i >= 0 {
-			n, err := strconv.ParseInt(cr[i+1:], 10, 64)
-			if err == nil && n > 0 {
-				return n, nil
+		if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+			return httpErrorf(resp.StatusCode, resp.Status, rawURL, "size probe HTTP %s for %s", resp.Status, rawURL)
+		}
+		if cr := resp.Header.Get("Content-Range"); cr != "" {
+			// bytes 0-0/57532150
+			if i := strings.LastIndex(cr, "/"); i >= 0 {
+				n, err := strconv.ParseInt(cr[i+1:], 10, 64)
+				if err == nil && n > 0 {
+					size = n
+					return nil
+				}
 			}
 		}
+		if resp.ContentLength > 0 && resp.StatusCode == http.StatusOK {
+			size = resp.ContentLength
+			return nil
+		}
+		return fmt.Errorf("could not determine size of %s", rawURL)
+	})
+	if size > 0 {
+		return size, nil
 	}
-	if resp.ContentLength > 0 && resp.StatusCode == http.StatusOK {
-		return resp.ContentLength, nil
+	if err != nil {
+		return 0, err
 	}
-	return 0, fmt.Errorf("could not determine size of %s", url)
+	return 0, fmt.Errorf("could not determine size of %s", rawURL)
 }

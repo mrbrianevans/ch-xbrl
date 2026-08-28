@@ -65,3 +65,97 @@ jobs:
             echo "::error::--version printed '$got', want '$want'"
             exit 1
           fi
+
+      - name: CLI invocation smoke
+        run: |
+          set -euo pipefail
+          bin=/tmp/ch-xbrl
+          xhtml=samples/03024914_aa_2023-03-13.xhtml
+          tar=samples/sample.tar.zst
+          out=/tmp/ch-xbrl-smoke
+          mkdir -p "$out/dir/nested"
+          cp "$xhtml" "$out/dir/"
+          printf 'not xbrl\n' > "$out/dir/readme.txt"
+          cp "$xhtml" "$out/dir/nested/hidden.xhtml"
+
+          echo "local tar.zst"
+          "$bin" -o "$out/tar.csv" -workers 1 "$tar"
+          test -s "$out/tar.csv"
+
+          echo "local zip"
+          python3 - <<'PY'
+import zipfile, os
+out = "/tmp/ch-xbrl-smoke/sample.zip"
+xhtml = "samples/03024914_aa_2023-03-13.xhtml"
+with zipfile.ZipFile(out, "w") as z:
+    z.write(xhtml, arcname=os.path.basename(xhtml))
+PY
+          "$bin" -o "$out/zip.csv" -workers 1 "$out/sample.zip"
+          test -s "$out/zip.csv"
+
+          echo "local instance"
+          "$bin" -o "$out/xhtml.csv" -workers 1 "$xhtml"
+          test -s "$out/xhtml.csv"
+
+          echo "directory (top-level only)"
+          "$bin" -o "$out/dir.csv" -workers 1 "$out/dir"
+          test -s "$out/dir.csv"
+          if grep -q hidden.xhtml "$out/dir.csv"; then
+            echo "::error::directory smoke parsed a nested instance"
+            exit 1
+          fi
+
+          echo "stdin XML"
+          cat "$xhtml" | "$bin" -o "$out/stdin-xml.csv" -workers 1 -
+          test -s "$out/stdin-xml.csv"
+
+          echo "stdin tar.zst"
+          cat "$tar" | "$bin" -o "$out/stdin-tar.csv" -workers 1 -
+          test -s "$out/stdin-tar.csv"
+
+          echo "missing positional → 2"
+          set +e
+          "$bin" -o "$out/missing.csv"
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then
+            echo "::error::missing input: want exit 2, got $code"
+            exit 1
+          fi
+
+          echo "pipe without - → 2"
+          set +e
+          cat "$xhtml" | "$bin" -o "$out/nodash.csv"
+          code=$?
+          set -e
+          if [ "$code" -ne 2 ]; then
+            echo "::error::pipe without -: want exit 2, got $code"
+            exit 1
+          fi
+
+          echo "stdin zip refused → 1"
+          # ZIP local-file magic; zip from stdin is not supported (needs seek).
+          printf 'PK\x03\x04' > "$out/tiny.zip"
+          set +e
+          cat "$out/tiny.zip" | "$bin" -o "$out/stdin-zip.csv" -
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "::error::stdin zip: want exit 1, got $code"
+            exit 1
+          fi
+
+          echo "help lists new inputs"
+          set +e
+          "$bin" -h >/dev/null 2>"$out/help.err"
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
+            echo "::error::-h: want exit 0, got $code"
+            exit 1
+          fi
+          if ! grep -q 'stdin' "$out/help.err" || ! grep -q '.xhtml' "$out/help.err"; then
+            echo "::error::-h does not mention stdin / instance inputs"
+            cat "$out/help.err"
+            exit 1
+          fi

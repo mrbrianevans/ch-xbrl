@@ -19,6 +19,19 @@ func TestDetectFormat(t *testing.T) {
 		{"plain.zst", FormatTarZst},
 		{"no-extension", FormatUnknown},
 		{"https://example.com/download?name=file.zip", FormatZip},
+		{"accounts.xhtml", FormatInstance},
+		{"samples/03024914_aa_2023-03-13.xhtml", FormatInstance},
+		{"Prod223_4203_00134794_20250927.html", FormatInstance},
+		{"file.HTML", FormatInstance},
+		{"file.htm", FormatInstance},
+		{"instance.xbrl", FormatInstance},
+		{"facts.xml", FormatInstance},
+		{"https://example.com/accounts.xhtml", FormatInstance},
+		{"https://example.com/a.xbrl?token=1", FormatInstance},
+		{"https://example.com/download?name=file.xhtml", FormatUnknown}, // instance: path suffix only, not query
+		{"https://find-and-update.company-information.service.gov.uk/company/14503021/filing-history/MzU0MTQwMjEwOWFkaXF6a2N4/document?format=xhtml&download=1", FormatUnknown},
+		{"nested.zip", FormatZip},
+		{"file.xml.zip", FormatZip},
 	}
 	for _, tc := range cases {
 		got := DetectFormat(tc.in)

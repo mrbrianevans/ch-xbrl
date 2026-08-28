@@ -17,11 +17,11 @@ System for **high-volume extraction** of Companies House accounts (inline XBRL /
 The pipeline is deliberately split into four stages:
 
 ```text
-  zip or tar.zst (remote or local)
+  zip / tar.zst / instance / directory / stdin
            │
            ▼
   ┌─────────────────────┐
-  │  ch-xbrl (Go)       │  open archive → worker pool → iXBRL parse
+  │  ch-xbrl (Go)       │  open input → worker pool → iXBRL parse
   │  cmd/ch-xbrl        │  (zip: batched parallel HTTP ranges; tar.zst: stream zstd→tar)
   └─────────┬───────────┘
             │ long-format facts.csv
@@ -56,7 +56,7 @@ A contrasting wide-row parser ([stream-read-xbrl](https://stream-read-xbrl.docs.
 
 ### Stages in brief
 
-1. **ch-xbrl (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET). For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
+1. **ch-xbrl (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET), a single instance file, a directory of instances, or stdin. For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
 
 2. **ch-xbrl-taxonomy (Go, infrequent)** — Download or seed FRC (and related) schemas; write small static reference CSVs (`concepts.csv`, optionally labels/calculations later).
 
@@ -82,7 +82,7 @@ A contrasting wide-row parser ([stream-read-xbrl](https://stream-read-xbrl.docs.
 ## Repository layout
 
 ```text
-cmd/ch-xbrl/       main CLI — stream zip / tar.zst (local or remote) → facts CSV
+cmd/ch-xbrl/       main CLI — stream zip / tar.zst / instance / directory / stdin → facts CSV
 cmd/taxonomy/      ch-xbrl-taxonomy → reference CSVs
 cmd/mksample/      ch-xbrl-mksample — build sample.tar.zst from samples/
 internal/          shared Go packages (ixbrl, archive, fact, csvout)
@@ -111,7 +111,7 @@ go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 duckdb -c ".read sql/transform.sql"
 ```
 
-The archive is a positional path or URL. `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout. `-V` / `--version` prints `ch-xbrl <semver> (<sha>)` and exits 0 (release builds bake this via ldflags; `go run` is `0.0.0-dev` plus the VCS revision when available).
+The positional is a path, URL, or `-` (stdin). `-o FILE` (or `--output FILE`) writes the CSV. Omit `-o` to write stdout when it is not a terminal; on a TTY pass `-o FILE`, or `-o -` to force stdout. `-V` / `--version` prints `ch-xbrl <semver> (<sha>)` and exits 0 (release builds bake this via ldflags; `go run` is `0.0.0-dev` plus the VCS revision when available).
 
 Exit codes are fail-closed: **0** only if the stream finished, `files_err == 0`, and `files_ok >= 1`; **1** on any member parse/write failure, empty extract, or stream/I/O error; **2** usage; **130** interrupt (`Ctrl-C`). The frozen CLI (argv, columns, exits) is [`docs/cli-contract.md`](./docs/cli-contract.md). `ch-xbrl-taxonomy`, `ch-xbrl-mksample`, and DuckDB SQL are not 1.0-frozen.
 
@@ -119,14 +119,27 @@ Or `make all` if you have Make.
 
 ### Input formats
 
-| Input | Local | Remote |
-|-------|-------|--------|
-| `.zip` | file open + random access | HTTP **range** requests: central directory once, then **parallel large ranges** for member groups (CloudFront/S3) |
-| `.tar.zst` / `.tar` | stream from disk | single streaming GET |
+| Input | Local | Remote | Stdin (`-`) |
+|-------|-------|--------|-------------|
+| `.zip` | file open + random access | HTTP **range** requests: central directory once, then **parallel large ranges** for member groups (CloudFront/S3) | **refused** (needs seek) |
+| `.tar.zst` / `.tar` | stream from disk | single streaming GET | sniffed (zstd / ustar magic) |
+| instance (`.xhtml`, `.html`, `.htm`, `.xbrl`, `.xml`) | one file | single streaming GET | sniffed (XML/XHTML magic) |
+| URL with no recognised extension | — | GET, follow redirects; filename from `Content-Disposition`, else sniff body. Zip still needs a `.zip` URL so range reads stay on the fast path | — |
+| directory | non-recursive; top-level instance files only (nested zips/dirs ignored) | — | — |
 
-Format is inferred from the path or URL (query strings ignored). Parsing of iXBRL members is unchanged.
+Format for paths and URLs with a known suffix is inferred from the name (query strings ignored) with **no extra request**. Extension-less remotes (Companies House `…/document?format=xhtml&download=1`) GET once, take the filename from `Content-Disposition`, and sniff only if that is missing. Stdin is sniffed from magic; zip on stdin or on an extension-less URL errors clearly. A missing positional is usage (exit 2); stdin is never implicit. Parsing of iXBRL members is unchanged.
+
+```bash
+go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml
+go run ./cmd/ch-xbrl -o data/facts.csv samples/
+cat samples/03024914_aa_2023-03-13.xhtml | go run ./cmd/ch-xbrl -o data/facts.csv -
+# Companies House filing document (no .xhtml in the path; sniffed after 302 → S3):
+# go run ./cmd/ch-xbrl -o data/facts.csv 'https://find-and-update.company-information.service.gov.uk/company/NNNNNNNN/filing-history/…/document?format=xhtml&download=1'
+```
 
 Remote ZIP is optimised for day packs with tens of thousands of ~100 KB accounts: it does **not** issue one request per member. Defaults are ~16 MiB range batches and 16 parallel range workers.
+
+Remote calls (zip range GET, tar/instance GET, HEAD size probe) retry 429, 5xx, connection errors, and short range bodies with exponential backoff and jitter. 403 and 404 are not retried. Retry counts are not part of the CLI contract.
 
 Production run against a Companies House bulk ZIP:
 

@@ -12,6 +12,8 @@ const (
 	FormatTar
 	FormatTarZst
 	FormatZip
+	FormatInstance // single iXBRL/XBRL document (.xhtml, .html, .htm, .xbrl, .xml)
+	FormatDir      // local directory of top-level instance files
 )
 
 // DetectFormat infers the archive format from a local path or URL.
@@ -34,6 +36,9 @@ func DetectFormat(source string) Format {
 	case hasExt(s, base, ".zst") || hasExt(s, base, ".zstd"):
 		// Bare .zst is treated as compressed tar (Companies House bulk layout).
 		return FormatTarZst
+	case hasExt(s, base, ".xhtml") || hasExt(s, base, ".html") || hasExt(s, base, ".htm") ||
+		hasExt(s, base, ".xbrl") || hasExt(s, base, ".xml"):
+		return FormatInstance
 	}
 
 	// Fallback: substring hints (e.g. query params carrying the filename).
@@ -71,6 +76,10 @@ func (f Format) String() string {
 		return "tar.zst"
 	case FormatZip:
 		return "zip"
+	case FormatInstance:
+		return "instance"
+	case FormatDir:
+		return "directory"
 	default:
 		return "unknown"
 	}
