@@ -52,7 +52,7 @@ ch-xbrl optimises for **completeness and speed**. Filtering to “main totals”
 - Taxonomy evolution does not require Go releases for every new concept.
 - Dimensional breakdowns remain available for later analysis.
 
-A contrasting approach (wide rows and hard-coded concept priority *inside* the parser) is kept as a **38-column oracle** under `verify/inspiration/` (shim: `inspiration_stream_read_xbrl.py`). It pivots ch-xbrl long facts in DuckDB to the same columns and diffs them.
+A contrasting wide-row parser ([stream-read-xbrl](https://stream-read-xbrl.docs.trade.gov.uk/)) is used as a **soft oracle** under `verify/stream-read-xbrl/`. It is not ported into `cmd/ch-xbrl`; DuckDB pivots the long fact table and compares identity cells (financial totals are observed only).
 
 ### Stages in brief
 
@@ -90,8 +90,8 @@ mapping/           concept_map.csv
 reference/         concepts.csv
 sql/               DuckDB transforms
 samples/           example iXBRL + sample archive (see samples/NOTICE)
-verify/arelle/     Arelle (uv) fact export for correctness checks
-verify/inspiration/  38-column wide-row oracle vs DuckDB-pivoted facts
+verify/arelle/              Arelle (uv) fact export for correctness checks
+verify/stream-read-xbrl/    stream-read-xbrl (uv) wide-row soft oracle
 data/              runtime outputs (not committed)
 LICENSE            MIT (first-party code)
 docs/cli-contract.md  frozen ch-xbrl CLI (flags, CSV, exits)

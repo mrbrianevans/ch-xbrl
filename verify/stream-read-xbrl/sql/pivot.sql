@@ -1,6 +1,5 @@
--- Long-format ch-xbrl facts → 38-column wide rows (stream-read-xbrl grain).
--- Caller creates tables extract_all, col_map and SET VARIABLE source_file,
--- run_code, file_date, file_type.
+-- Long-format ch-xbrl facts (all sample members) → wide rows using column_map.csv.
+-- Caller creates tables extract_all, col_map.
 
 CREATE OR REPLACE MACRO is_plain_dim(d) AS (
     d IS NULL OR trim(cast(d AS VARCHAR)) IN ('', '{}')
@@ -15,15 +14,13 @@ SELECT
     trim(cast(concept AS VARCHAR)) AS concept,
     nullif(trim(cast(value AS VARCHAR)), '') AS value,
     trim(coalesce(cast(dimensions AS VARCHAR), '')) AS dimensions,
-    trim(coalesce(cast(taxonomy AS VARCHAR), '')) AS taxonomy,
     list_last(string_split(replace(cast(source_file AS VARCHAR), '\', '/'), '/')) AS source_file
-FROM extract_all
-WHERE list_last(string_split(replace(cast(source_file AS VARCHAR), '\', '/'), '/'))
-      = getvariable('source_file');
+FROM extract_all;
 
 CREATE OR REPLACE TABLE facts_mapped AS
 SELECT
     f.fact_ord,
+    f.source_file,
     f.company_id,
     f.period_start,
     f.period_end,
@@ -38,22 +35,11 @@ SELECT
             THEN cast(abs(try_cast(replace(f.value, ',', '') AS DOUBLE)) AS VARCHAR)
         ELSE f.value
     END AS value,
-    f.dimensions,
-    f.taxonomy
+    f.dimensions
 FROM facts_src f
 INNER JOIN col_map m ON f.concept = m.concept
 WHERE f.value IS NOT NULL
-  AND (
-      m.dim_filter IS NULL OR trim(m.dim_filter) = ''
-      OR (
-          m.dim_filter LIKE 'contains:%'
-          AND f.dimensions ILIKE '%' || substr(m.dim_filter, 10) || '%'
-      )
-      OR (
-          m.dim_filter = 'empty'
-          AND is_plain_dim(f.dimensions)
-      )
-  );
+  AND (m.grain = 'general' OR is_plain_dim(f.dimensions));
 
 CREATE OR REPLACE TABLE facts_best AS
 SELECT * EXCLUDE (rn)
@@ -62,51 +48,55 @@ FROM (
         *,
         row_number() OVER (
             PARTITION BY
+                source_file,
                 company_id,
                 column_name,
-                CASE WHEN grain = 'general' THEN DATE '1970-01-01' ELSE period_start END,
-                CASE WHEN grain = 'general' THEN DATE '1970-01-01' ELSE period_end END
+                period_start,
+                period_end
             ORDER BY
                 priority ASC,
-                -- general: later fact overwrites (inspiration uses priority > best)
-                -- periodical: first fact at a priority wins (inspiration uses >=)
-                CASE WHEN grain = 'general' THEN -fact_ord ELSE fact_ord END ASC,
-                is_plain_dim(dimensions) DESC
+                fact_ord ASC
         ) AS rn
     FROM facts_mapped
+    WHERE grain = 'periodical'
 ) t
 WHERE rn = 1;
 
-CREATE OR REPLACE TABLE general_best AS
-SELECT company_id, column_name, any_value(value) AS value
-FROM facts_best
-WHERE grain = 'general'
-GROUP BY company_id, column_name;
-
-CREATE OR REPLACE TABLE periodical_best AS
-SELECT company_id, period_start, period_end, column_name, value
-FROM facts_best
-WHERE grain = 'periodical';
+CREATE OR REPLACE TABLE facts_best_general AS
+SELECT * EXCLUDE (rn)
+FROM (
+    SELECT
+        *,
+        row_number() OVER (
+            PARTITION BY source_file, company_id, column_name
+            ORDER BY priority ASC, fact_ord ASC
+        ) AS rn
+    FROM facts_mapped
+    WHERE grain = 'general'
+) t
+WHERE rn = 1;
 
 CREATE OR REPLACE TABLE wide_general AS
 SELECT
+    source_file,
     company_id,
     max(CASE WHEN column_name = 'balance_sheet_date' THEN value END) AS balance_sheet_date,
     max(CASE WHEN column_name = 'companies_house_registered_number' THEN value END)
         AS companies_house_registered_number,
     max(CASE WHEN column_name = 'entity_current_legal_name' THEN value END)
         AS entity_current_legal_name,
-    max(CASE WHEN column_name = 'company_dormant' THEN value END) AS company_dormant,
-    max(CASE WHEN column_name = 'average_number_employees_during_period' THEN value END)
-        AS average_number_employees_during_period
-FROM general_best
-GROUP BY company_id;
+    max(CASE WHEN column_name = 'company_dormant' THEN value END) AS company_dormant
+FROM facts_best_general
+GROUP BY source_file, company_id;
 
 CREATE OR REPLACE TABLE wide_periodical AS
 SELECT
+    source_file,
     company_id,
     period_start,
     period_end,
+    max(CASE WHEN column_name = 'average_number_employees_during_period' THEN value END)
+        AS average_number_employees_during_period,
     max(CASE WHEN column_name = 'tangible_fixed_assets' THEN value END) AS tangible_fixed_assets,
     max(CASE WHEN column_name = 'debtors' THEN value END) AS debtors,
     max(CASE WHEN column_name = 'cash_bank_in_hand' THEN value END) AS cash_bank_in_hand,
@@ -149,40 +139,30 @@ SELECT
         AS tax_on_profit_or_loss_on_ordinary_activities,
     max(CASE WHEN column_name = 'profit_loss_for_period' THEN value END)
         AS profit_loss_for_period
-FROM periodical_best
-GROUP BY company_id, period_start, period_end;
+FROM facts_best
+GROUP BY source_file, company_id, period_start, period_end;
 
 CREATE OR REPLACE TABLE periods AS
-SELECT DISTINCT company_id, period_start, period_end FROM periodical_best
+SELECT DISTINCT source_file, company_id, period_start, period_end FROM facts_best
 UNION
-SELECT DISTINCT g.company_id, NULL::DATE, NULL::DATE
-FROM general_best g
+SELECT DISTINCT g.source_file, g.company_id, NULL::DATE, NULL::DATE
+FROM facts_best_general g
 WHERE NOT EXISTS (
-    SELECT 1 FROM periodical_best p WHERE p.company_id = g.company_id
-)
-UNION
-SELECT DISTINCT f.company_id, NULL::DATE, NULL::DATE
-FROM facts_src f
-WHERE NOT EXISTS (SELECT 1 FROM periodical_best)
-  AND NOT EXISTS (SELECT 1 FROM general_best);
+    SELECT 1 FROM facts_best p
+    WHERE p.source_file = g.source_file AND p.company_id = g.company_id
+);
 
 CREATE OR REPLACE TABLE extract_wide AS
 SELECT
-    getvariable('run_code') AS run_code,
+    per.source_file,
     per.company_id,
-    try_cast(nullif(getvariable('file_date'), '') AS DATE) AS date,
-    getvariable('file_type') AS file_type,
-    coalesce(
-        (SELECT taxonomy FROM facts_src WHERE taxonomy <> '' LIMIT 1),
-        ''
-    ) AS taxonomy,
     g.balance_sheet_date,
     g.companies_house_registered_number,
     g.entity_current_legal_name,
     g.company_dormant,
-    g.average_number_employees_during_period,
     p.period_start,
     p.period_end,
+    p.average_number_employees_during_period,
     p.tangible_fixed_assets,
     p.debtors,
     p.cash_bank_in_hand,
@@ -207,12 +187,13 @@ SELECT
     p.operating_profit_loss,
     p.profit_loss_on_ordinary_activities_before_tax,
     p.tax_on_profit_or_loss_on_ordinary_activities,
-    p.profit_loss_for_period,
-    NULL::VARCHAR AS error
+    p.profit_loss_for_period
 FROM periods per
 LEFT JOIN wide_periodical p
-    ON p.company_id = per.company_id
+    ON p.source_file = per.source_file
+   AND p.company_id = per.company_id
    AND p.period_start IS NOT DISTINCT FROM per.period_start
    AND p.period_end IS NOT DISTINCT FROM per.period_end
 LEFT JOIN wide_general g
-    ON g.company_id = per.company_id;
+    ON g.source_file = per.source_file
+   AND g.company_id = per.company_id;

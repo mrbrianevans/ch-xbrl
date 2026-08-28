@@ -6,4 +6,5 @@ __pycache__/
 out/
 *.csv
 !column_map.csv
+!compare_spec.csv
 .DS_Store
