@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -307,6 +308,56 @@ func TestStreamRemoteUnknownExtensionRedirect(t *testing.T) {
 	}
 }
 
+func TestStreamRemoteQueryContentDisposition(t *testing.T) {
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/document", func(w http.ResponseWriter, r *http.Request) {
+		q := url.QueryEscape(`attachment;filename="14503021_aa_2026-08-28.xhtml"`)
+		http.Redirect(w, r, "/docs/blob?response-content-disposition="+q, http.StatusFound)
+	})
+	mux.HandleFunc("/docs/blob", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write(data)
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	got := collect(t, srv.URL+"/document?format=xhtml&download=1")
+	if len(got) != 1 {
+		t.Fatalf("got %d members, want 1", len(got))
+	}
+	if got[0].Name != "14503021_aa_2026-08-28.xhtml" {
+		t.Fatalf("name %q, want filename from response-content-disposition query", got[0].Name)
+	}
+}
+
+func TestStreamRemoteDispositionBeatsSniff(t *testing.T) {
+	// Filename says zip; body is iXBRL. Disposition must win, or sniff would
+	// treat the body as an instance.
+	src := filepath.Join("..", "..", "samples", "03024914_aa_2023-03-13.xhtml")
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip("sample xhtml missing")
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment;filename="pack.zip"`)
+		_, _ = w.Write(data)
+	}))
+	defer srv.Close()
+
+	ch := make(chan Member, 1)
+	_, err = Stream(context.Background(), srv.URL+"/document", ch)
+	for range ch {
+	}
+	if err == nil || !strings.Contains(err.Error(), "zip") {
+		t.Fatalf("err = %v, want zip refusal from Content-Disposition (not XML sniff)", err)
+	}
+}
+
 func TestStreamRemoteUnknownZipRefused(t *testing.T) {
 	entries := sampleEntries(t)
 	zipPath := filepath.Join(t.TempDir(), "in.zip")
@@ -346,6 +397,13 @@ func TestFilenameFromDisposition(t *testing.T) {
 		if got := filenameFromDisposition(tc.in); got != tc.want {
 			t.Errorf("filenameFromDisposition(%q)=%q want %q", tc.in, got, tc.want)
 		}
+	}
+
+	encoded := "https://s3.eu-west-2.amazonaws.com/bucket/key?response-content-disposition=" +
+		url.QueryEscape(`attachment;filename="14503021_aa_2026-08-28.xhtml"`) +
+		"&X-Amz-Expires=60"
+	if got := filenameFromQueryDisposition(encoded); got != "14503021_aa_2026-08-28.xhtml" {
+		t.Fatalf("filenameFromQueryDisposition = %q", got)
 	}
 }
 

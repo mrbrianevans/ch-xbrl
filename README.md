@@ -124,10 +124,10 @@ Or `make all` if you have Make.
 | `.zip` | file open + random access | HTTP **range** requests: central directory once, then **parallel large ranges** for member groups (CloudFront/S3) | **refused** (needs seek) |
 | `.tar.zst` / `.tar` | stream from disk | single streaming GET | sniffed (zstd / ustar magic) |
 | instance (`.xhtml`, `.html`, `.htm`, `.xbrl`, `.xml`) | one file | single streaming GET | sniffed (XML/XHTML magic) |
-| URL with no recognised extension | — | GET, follow redirects, sniff body (same as stdin). Zip still needs a `.zip` URL so range reads stay on the fast path | — |
+| URL with no recognised extension | — | GET, follow redirects; filename from `Content-Disposition` / `response-content-disposition`, else sniff body. Zip still needs a `.zip` URL so range reads stay on the fast path | — |
 | directory | non-recursive; top-level instance files only (nested zips/dirs ignored) | — | — |
 
-Format for paths and URLs with a known suffix is inferred from the name (query strings ignored) with **no extra request**. Extension-less remotes (Companies House `…/document?format=xhtml&download=1`) are sniffed after the GET that fetches the document. Stdin is sniffed from magic; zip on stdin or on an extension-less URL errors clearly. A missing positional is usage (exit 2); stdin is never implicit. Parsing of iXBRL members is unchanged.
+Format for paths and URLs with a known suffix is inferred from the name (query strings ignored) with **no extra request**. Extension-less remotes (Companies House `…/document?format=xhtml&download=1`) GET once, take the filename from `Content-Disposition` or S3 `response-content-disposition`, and sniff only if that is missing. Stdin is sniffed from magic; zip on stdin or on an extension-less URL errors clearly. A missing positional is usage (exit 2); stdin is never implicit. Parsing of iXBRL members is unchanged.
 
 ```bash
 go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml

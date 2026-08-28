@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -112,20 +113,60 @@ func streamStdin(ctx context.Context, in io.Reader, out chan<- Member) (int, err
 // or instance extension (e.g. Companies House /document?format=xhtml).
 // Known extensions never reach here: DetectFormat still selects zip ranges,
 // tar stream, or instance GET with no extra sniff.
+//
+// After the GET (redirects followed), format is taken from a filename in
+// Content-Disposition or the S3 response-content-disposition query, then
+// magic sniff only if that is absent or unrecognised.
 func streamRemoteUnknown(ctx context.Context, source string, out chan<- Member) (int, error) {
-	rc, hdr, err := openHTTPStream(ctx, source)
+	s, err := openHTTPStream(ctx, source)
 	if err != nil {
 		return 0, fmt.Errorf("open remote: %w", err)
 	}
-	defer func() { _ = rc.Close() }()
-	name := filenameFromDisposition(hdr.Get("Content-Disposition"))
+	defer func() { _ = s.Body.Close() }()
+
+	zipErr := fmt.Errorf("cannot read zip from %q: zip requires a .zip URL for HTTP range requests", source)
+	gzipErr := fmt.Errorf("cannot read gzip from %q: .tar.gz is not supported", source)
+
+	name := remoteFilenameHint(s.Header, s.FinalURL, source)
+	if name != "" {
+		switch DetectFormat(name) {
+		case FormatInstance:
+			return streamInstanceReader(ctx, s.Body, name, out)
+		case FormatTar, FormatTarZst:
+			return streamTarReader(ctx, s.Body, DetectFormat(name) == FormatTarZst, out)
+		case FormatZip:
+			return 0, zipErr
+		}
+	}
 	if name == "" {
 		name = instanceName(source)
 	}
-	return streamPeeked(ctx, rc, name,
-		fmt.Errorf("cannot read zip from %q: zip requires a .zip URL for HTTP range requests", source),
-		fmt.Errorf("cannot read gzip from %q: .tar.gz is not supported", source),
-		out)
+	return streamPeeked(ctx, s.Body, name, zipErr, gzipErr, out)
+}
+
+// remoteFilenameHint prefers Content-Disposition, then the final URL's
+// response-content-disposition query (presigned S3), then the original URL.
+func remoteFilenameHint(hdr http.Header, finalURL, source string) string {
+	if hdr != nil {
+		if n := filenameFromDisposition(hdr.Get("Content-Disposition")); n != "" {
+			return n
+		}
+	}
+	if n := filenameFromQueryDisposition(finalURL); n != "" {
+		return n
+	}
+	return filenameFromQueryDisposition(source)
+}
+
+func filenameFromQueryDisposition(rawURL string) string {
+	if rawURL == "" {
+		return ""
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return filenameFromDisposition(u.Query().Get("response-content-disposition"))
 }
 
 func streamPeeked(ctx context.Context, r io.Reader, instanceName string, zipErr, gzipErr error, out chan<- Member) (int, error) {
