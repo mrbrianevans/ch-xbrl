@@ -2,11 +2,28 @@
 
 **ch-xbrl** extracts facts from Companies House accounts (inline XBRL / iXBRL) into a **long-format CSV** (one row per fact). It streams a local or remote bulk archive without loading the whole zip into memory.
 
+It is a **mechanical XML → CSV transform**, not an XBRL processor. It does **not** download or resolve taxonomies, walk linkbases, validate a DTS, or apply calculations. See [What it does not do](#what-it-does-not-do).
+
 If you only want the extractor, install a GitHub Release binary and stop at [Getting started](#getting-started). The rest of this file is for people working in the source tree (taxonomy map, DuckDB, layout, `go run`).
 
 ## Getting started
 
 A GitHub **release archive** is the binaries plus `LICENSE`. It has **no** `samples/` tree, **no** `go run` workflow, and **no** DuckDB pipeline. You need an accounts zip (or another iXBRL input) of your own.
+
+### What it does not do
+
+`ch-xbrl` reads the **instance document only**: `ix:nonNumeric` / `ix:nonFraction` (and related) tags, plus the contexts, units, and dimensions declared in that file. Numerics get the instance’s own scale, sign, and iXT format transforms. Each fact becomes one CSV row. The `taxonomy` column is the first `schemaRef` **href copied as a string** — the `.xsd` is never fetched.
+
+It does **not**:
+
+- download, parse, or cache taxonomy schemas
+- follow linkbases (presentation, calculation, definition, label)
+- validate against a DTS
+- apply calculation, formula, or dimensional linkbases
+- look up labels, data types, period type, or balance from a taxonomy
+- expand concept local names to QNames or preferred labels
+
+`ch-xbrl-taxonomy` in the same release archive is a separate, infrequent maintainer tool that writes reference CSVs. Extract does not call it. Semantic shaping (synonym pick, types, wide Parquet) is an optional DuckDB step in the source tree, using a hand-curated map — still not taxonomy resolution.
 
 ### Install from GitHub Releases
 
@@ -80,7 +97,7 @@ Exit codes are fail-closed: **0** only if the stream finished, `files_err == 0`,
 | **High throughput** | Multi-core parse of individual instance documents |
 | **Low information loss** | ch-xbrl keeps every fact (dimensional and not); values as strings |
 | **Flexible downstream views** | Semantic shaping, priority, and typing live outside the hot path |
-| **Taxonomy resilience** | New concepts appear in the long table automatically; mapping catches up later |
+| **Taxonomy resilience** | No DTS at extract time: new concepts still appear as rows; mapping catches up later |
 
 ## Design overview
 
@@ -126,7 +143,7 @@ A contrasting wide-row parser ([stream-read-xbrl](https://stream-read-xbrl.docs.
 
 ### Stages in brief
 
-1. **ch-xbrl (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET), a single instance file, a directory of instances, or stdin. For each file: parse XML, emit every fact with period, unit, dimensions (JSON), taxonomy `schemaRef`, and source filename. Output columns are documented in the table below.
+1. **ch-xbrl (Go)** — Open a local or remote `.zip` or `.tar.zst` of many ~100 KB iXBRL files (remote zip uses HTTP range requests; tar.zst streams as a single GET), a single instance file, a directory of instances, or stdin. For each file: parse the instance XML only (no taxonomy or linkbases), emit every fact with period, unit, dimensions (JSON), the `schemaRef` href as `taxonomy`, and source filename. Output columns are documented in the table below.
 
 2. **ch-xbrl-taxonomy (Go, infrequent)** — Download or seed FRC (and related) schemas; write small static reference CSVs (`concepts.csv`, optionally labels/calculations later).
 
@@ -145,7 +162,7 @@ A contrasting wide-row parser ([stream-read-xbrl](https://stream-read-xbrl.docs.
 | `value` | String (numerics: scale/sign/iXT format applied) |
 | `unit` | Unit measure when present |
 | `dimensions` | JSON map dimension → member; empty if none |
-| `taxonomy` | Primary schemaRef href |
+| `taxonomy` | First `schemaRef` href from the instance (not a resolved taxonomy) |
 | `source_file` | Archive member name |
 | `decimals` | Raw iXBRL `decimals` attribute (`INF` stays `INF`); empty when absent or non-numeric |
 
@@ -227,6 +244,7 @@ go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 ## Design constraints
 
+- Extract is instance XML → CSV only: no taxonomy fetch, no linkbases, no validation.
 - Intermediate data between Go and DuckDB is **CSV**.
 - Final analytics artefact is **Parquet**.
 - Taxonomy processing is fully decoupled from the instance parser.
