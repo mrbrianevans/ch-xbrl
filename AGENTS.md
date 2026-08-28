@@ -83,7 +83,7 @@ README.md         goals and design overview
   go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
   ```
 
-- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `go test -race`, build).
+- CI: `.github/workflows/go.yml` runs on **every push/PR** (`gofmt`, `go vet`, `staticcheck`, `go test -race`, build).
 
 - After concept map or SQL changes, run DuckDB when available:
 

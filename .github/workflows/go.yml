@@ -1,4 +1,4 @@
-# General Go CI: format, vet/lint, test, build — every push/PR on every branch.
+# General Go CI: format, vet, staticcheck, test, build — every push/PR on every branch.
 name: Go CI
 
 on:
@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   go:
-    name: Format · Vet · Test · Build
+    name: Format · Vet · Staticcheck · Test · Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -44,6 +44,11 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+      - name: Staticcheck
+        uses: dominikh/staticcheck-action@v1.4.1
+        with:
+          install-go: false
 
       - name: Test
         run: go test ./... -count=1 -race
