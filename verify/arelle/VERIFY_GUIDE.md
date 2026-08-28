@@ -199,45 +199,20 @@ verify/arelle/
 
 Among OK + OK (soft): **5,721** fact pairs, **5,530** soft value matches → **~96.7%**.
 
-The curated verify set is the 31 instance files under `samples/` (packed into `sample.tar.zst`). `Prod223_4203_00781277` and `Prod223_4203_00506170` were dropped: they were Arelle CSV / DuckDB tooling failures, not extract verdicts.
+The curated verify set is the **6** instance files under `samples/` (goldens, nested-`ix:nonNumeric` regression, Caseware HTML naming, Digita). Duplicate vendor templates were dropped.
 
-On the 7 Aug snapshot, **30 / 31 remaining scored samples** already had matching fact counts and no missing Arelle concepts. `Prod223_4203_14256400` was the remaining extract gap (nested `ix:nonNumeric`); that is fixed in the Go parser.
+On the 7 Aug snapshot, `Prod223_4203_14256400` was the remaining extract gap (nested `ix:nonNumeric`); that is fixed in the Go parser.
 
-### Per-sample results
+### Per-sample results (kept files; 7 Aug snapshot)
 
 | Sample | Status | Arelle facts | ch-xbrl facts | Missing concepts | Soft match | Soft mismatch |
 |--------|--------|-------------:|--------------:|-----------------:|-----------:|--------------:|
 | `03024914_aa_2023-03-13.xhtml` | OK | 130 | 130 | 0 | 130 | 0 |
 | `06760773_aa_2025-09-26.xhtml` | OK | 130 | 130 | 0 | 130 | 0 |
 | `09652677_aa_2026-03-25.xhtml` | OK soft | 213 | 213 | 0 | 199 | 14 |
-| `13566765_aa_2026-03-26.xhtml` | OK soft | 271 | 271 | 0 | 270 | 1 |
 | `Prod223_4203_00134794_20250927.html` | OK soft | 209 | 209 | 0 | 199 | 10 |
-| `Prod223_4203_02728626_20250731.html` | OK | 387 | 387 | 0 | 387 | 0 |
-| `Prod223_4203_03407923_20250731.html` | OK | 381 | 381 | 0 | 381 | 0 |
-| `Prod223_4203_03909595_20250930.html` | OK soft | 284 | 284 | 0 | 267 | 17 |
-| `Prod223_4203_04095617_20250930.html` | OK soft | 151 | 151 | 0 | 134 | 17 |
-| `Prod223_4203_04379113_20251231.html` | OK soft | 124 | 124 | 0 | 114 | 10 |
-| `Prod223_4203_05850222_20250731.html` | OK soft | 324 | 324 | 0 | 310 | 14 |
-| `Prod223_4203_06966663_20250731.html` | OK | 55 | 55 | 0 | 55 | 0 |
-| `Prod223_4203_07045599_20251031.html` | OK | 80 | 80 | 0 | 80 | 0 |
-| `Prod223_4203_07315995_20250731.html` | OK | 56 | 56 | 0 | 56 | 0 |
-| `Prod223_4203_07329603_20250731.html` | OK | 55 | 55 | 0 | 55 | 0 |
-| `Prod223_4203_07627748_20251231.html` | OK soft | 208 | 208 | 0 | 189 | 19 |
-| `Prod223_4203_08622598_20250731.html` | OK | 158 | 158 | 0 | 158 | 0 |
 | `Prod223_4203_08798715_20250331.html` | OK | 519 | 519 | 0 | 519 | 0 |
-| `Prod223_4203_09147126_20250731.html` | OK soft | 219 | 219 | 0 | 200 | 19 |
-| `Prod223_4203_09759426_20250930.html` | OK soft | 134 | 134 | 0 | 126 | 8 |
-| `Prod223_4203_10941963_20250930.html` | OK soft | 159 | 159 | 0 | 141 | 18 |
-| `Prod223_4203_12010617_20251031.html` | OK | 90 | 90 | 0 | 90 | 0 |
-| `Prod223_4203_12715470_20251231.html` | OK soft | 229 | 229 | 0 | 224 | 5 |
-| `Prod223_4203_12976293_20251031.html` | OK | 45 | 45 | 0 | 45 | 0 |
-| `Prod223_4203_13313421_20251031.html` | OK | 43 | 43 | 0 | 43 | 0 |
-| `Prod223_4203_13322968_20251231.html` | OK soft | 577 | 577 | 0 | 559 | 18 |
-| `Prod223_4203_13565183_20250831.html` | OK | 60 | 60 | 0 | 60 | 0 |
-| `Prod223_4203_14087072_20260228.html` | OK | 65 | 65 | 0 | 65 | 0 |
-| `Prod223_4203_14158962_20250630.html` | OK soft | 212 | 212 | 0 | 192 | 20 |
 | `Prod223_4203_14256400_20250923.html` | *(was FAIL 52 vs 49; nested facts now extracted)* | 52 | 49 | 2 | 47 | 2 |
-| `Prod223_4203_15145702_20251231.html` | OK soft | 153 | 153 | 0 | 152 | 1 |
 
 ### Notable failures and error
 
