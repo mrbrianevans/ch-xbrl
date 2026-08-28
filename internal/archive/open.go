@@ -82,12 +82,25 @@ func newRemoteHTTPClient() *http.Client {
 }
 
 // rangeGET fetches bytes [start, end] inclusive via a single HTTP Range request.
-// CloudFront/S3 return 206 Partial Content.
-func rangeGET(ctx context.Context, client *http.Client, url string, start, end int64) ([]byte, error) {
+// CloudFront/S3 return 206 Partial Content. Transient store errors are retried.
+func rangeGET(ctx context.Context, client *http.Client, rawURL string, start, end int64) ([]byte, error) {
 	if start < 0 || end < start {
 		return nil, fmt.Errorf("invalid range %d-%d", start, end)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	var out []byte
+	err := retryHTTP(ctx, func() error {
+		b, err := rangeGETOnce(ctx, client, rawURL, start, end)
+		if err != nil {
+			return err
+		}
+		out = b
+		return nil
+	})
+	return out, err
+}
+
+func rangeGETOnce(ctx context.Context, client *http.Client, rawURL string, start, end int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +110,7 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer drainAndClose(resp)
 
 	want := end - start + 1
 	switch resp.StatusCode {
@@ -105,17 +118,17 @@ func rangeGET(ctx context.Context, client *http.Client, url string, start, end i
 		// expected
 	case http.StatusOK:
 		if start != 0 {
-			return nil, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", url, start, end)
+			return nil, fmt.Errorf("server does not support range requests for %s (got HTTP 200 for range %d-%d)", rawURL, start, end)
 		}
 	default:
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf("HTTP %s for range %d-%d of %s", resp.Status, start, end, url)
+		return nil, httpErrorf(resp.StatusCode, resp.Status, rawURL,
+			"HTTP %s for range %d-%d of %s", resp.Status, start, end, rawURL)
 	}
 
 	buf := make([]byte, want)
 	n, err := io.ReadFull(resp.Body, buf)
 	if err == io.ErrUnexpectedEOF || err == io.EOF {
-		return nil, fmt.Errorf("short range body for %s: got %d want %d: %w", url, n, want, err)
+		return nil, fmt.Errorf("short range body for %s: got %d want %d: %w", rawURL, n, want, errShortRange)
 	}
 	if err != nil {
 		return nil, err
