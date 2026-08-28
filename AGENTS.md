@@ -65,8 +65,9 @@ verify/stream-read-xbrl/  published stream-read-xbrl package vs DuckDB-pivoted f
 data/             runtime outputs (gitignored)
 LICENSE           MIT (first-party code; samples are not MIT)
 docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
+docs/design.md    pipeline, layout, build-from-source
 AGENTS.md         this file
-README.md         goals and design overview
+README.md         user getting started (releases)
 ```
 
 ## Workflow expectations
@@ -142,4 +143,4 @@ duckdb -c ".read sql/transform.sql"
 ## Communication
 
 - Prefer short, precise commit messages and PR descriptions.
-- When behaviour changes (columns, period handling, formats), note it in the commit body and update `README.md` if the public design surface changes.
+- When behaviour changes (columns, period handling, formats), note it in the commit body and update `README.md` (user-facing) and `docs/design.md` / `docs/cli-contract.md` as needed.
