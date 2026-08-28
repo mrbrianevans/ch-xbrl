@@ -265,6 +265,17 @@ func TestRun_PipeWithoutDashExit2(t *testing.T) {
 	}
 }
 
+func TestRun_EmptyDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("skip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr := runCLI(t, []string{"-o", "-", dir}, nil)
+	if code != exitFail {
+		t.Fatalf("exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+}
+
 func TestRun_OutputFile(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "facts.csv")
 	code, stdout, stderr := runCLI(t, []string{"-o", out, "-workers", "1", sampleXHTML(t)}, nil)
