@@ -34,7 +34,9 @@ const maxMemberSize = 50 << 20
 //
 // Remote .tar / .tar.zst / instance are fetched as a single streaming GET.
 // Remote .zip uses HTTP range requests so the central directory and each member
-// can be read without downloading the entire object first.
+// can be read without downloading the entire object first. Transient HTTP
+// failures (429, 5xx, connection errors, short range bodies) are retried;
+// 403 and 404 are not.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }

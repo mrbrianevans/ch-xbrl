@@ -126,6 +126,7 @@ These may change without a `ch-xbrl` major:
 - `mapping/concept_map.csv`
 - Wide Parquet / DuckDB pipeline
 - Remote zip range-batch tunables (size and parallelism)
+- Remote HTTP retry policy (attempt count, backoff, jitter). 404 and 403 are never retried; exhausted retries are still exit **1**
 - Arelle verify scripts
 - Progress log text and timing
 - Default `-workers` formula remaining `NumCPU` (changing the default is not a major; changing the flag’s meaning is)

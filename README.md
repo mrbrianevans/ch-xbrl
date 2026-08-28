@@ -139,6 +139,8 @@ cat samples/03024914_aa_2023-03-13.xhtml | go run ./cmd/ch-xbrl -o data/facts.cs
 
 Remote ZIP is optimised for day packs with tens of thousands of ~100 KB accounts: it does **not** issue one request per member. Defaults are ~16 MiB range batches and 16 parallel range workers.
 
+Remote calls (zip range GET, tar/instance GET, HEAD size probe) retry 429, 5xx, connection errors, and short range bodies with exponential backoff and jitter. 403 and 404 are not retried. Retry counts are not part of the CLI contract.
+
 Production run against a Companies House bulk ZIP:
 
 ```bash
