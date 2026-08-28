@@ -118,6 +118,9 @@ func TestRun_LocalInstance(t *testing.T) {
 	if !strings.Contains(stdout, "03024914_aa_2023-03-13.xhtml") {
 		t.Fatalf("source_file not in CSV")
 	}
+	if !strings.Contains(stderr, "done:") {
+		t.Fatalf("missing done: line: %s", stderr)
+	}
 }
 
 func TestRun_DirectoryTopLevelOnly(t *testing.T) {
@@ -276,6 +279,9 @@ func TestRun_StdinZipRefused(t *testing.T) {
 	if !strings.Contains(stderr, "zip") || !strings.Contains(stderr, "stdin") {
 		t.Fatalf("want a clear zip-from-stdin error, got %s", stderr)
 	}
+	if !strings.Contains(stderr, "done:") {
+		t.Fatalf("stream failure should still log done: with counts: %s", stderr)
+	}
 }
 
 func TestRun_PipeWithoutDashExit2(t *testing.T) {
@@ -301,6 +307,24 @@ func TestRun_EmptyDirectory(t *testing.T) {
 	code, _, stderr := runCLI(t, []string{"-o", "-", dir}, nil)
 	if code != exitFail {
 		t.Fatalf("exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, "done:") {
+		t.Fatalf("empty extract should still log done: %s", stderr)
+	}
+}
+
+func TestRun_CreateOutputFail(t *testing.T) {
+	// os.Create on an existing directory fails; no stream counts yet.
+	dir := t.TempDir()
+	code, _, stderr := runCLI(t, []string{"-o", dir, "-workers", "1", sampleXHTML(t)}, nil)
+	if code != exitFail {
+		t.Fatalf("exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, "create output") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	if strings.Contains(stderr, "done:") {
+		t.Fatalf("create failure has no counts, should not log done: %s", stderr)
 	}
 }
 

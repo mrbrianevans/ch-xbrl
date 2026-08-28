@@ -74,7 +74,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 		outFile, err = os.Create(cfg.output)
 		if err != nil {
 			log.Printf("create output: %v", err)
-			return exitFail
+			return runExitCode(0, 0, err)
 		}
 		defer func() { _ = outFile.Close() }()
 		outW = outFile
@@ -141,10 +141,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 	wg.Wait()
 	close(done)
 
-	if err := csvW.Flush(); err != nil {
-		log.Printf("flush: %v", err)
-		return exitFail
-	}
+	flushErr := csvW.Flush()
 
 	elapsed := time.Since(start).Round(time.Millisecond)
 	log.Printf("done: members=%d files_ok=%d files_err=%d facts=%d elapsed=%s out=%s",
@@ -158,6 +155,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 	}
 	if streamErr != nil && !errors.Is(streamErr, context.Canceled) {
 		log.Printf("stream: %v", streamErr)
+	}
+	if flushErr != nil {
+		log.Printf("flush: %v", flushErr)
+		if streamErr == nil {
+			streamErr = flushErr
+		}
 	}
 	return runExitCode(filesOK.Load(), filesErr.Load(), streamErr)
 }
