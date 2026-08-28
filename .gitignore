@@ -6,4 +6,5 @@
 *.test
 *.out
 .DS_Store
-/samples/*.tar.zst
+samples/*.tar.zst
+Accounts_Bulk_Data-*.zip
