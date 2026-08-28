@@ -35,9 +35,8 @@ uv sync
 ## Run
 
 ```bash
-# repo root — produce ch-xbrl facts (includes the sample you care about)
-go run ./cmd/mksample -out samples/sample.tar.zst
-go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
+# repo root — produce ch-xbrl facts (directory of samples, same as CI)
+go run ./cmd/ch-xbrl -o data/facts.csv samples/
 
 cd verify/arelle
 uv run python verify_instance.py \
