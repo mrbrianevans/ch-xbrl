@@ -134,6 +134,7 @@ duckdb -c ".read sql/transform.sql"
 # cd verify/stream-read-xbrl && uv sync
 # uv run python run_batch.py --summary-md out/report.md
 # CI: .github/workflows/stream-read-xbrl-verify.yml (push master + pull_request + workflow_dispatch)
+# live CH bulk zip smoke (yesterday Accounts_Bulk_Data; 404 skip): .github/workflows/ch-bulk-smoke.yml (cron 08:00 UTC + workflow_dispatch)
 ```
 
 ## Communication
