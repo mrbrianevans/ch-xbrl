@@ -89,7 +89,7 @@ internal/          shared Go packages (ixbrl, archive, fact, csvout)
 mapping/           concept_map.csv
 reference/         concepts.csv
 sql/               DuckDB transforms
-samples/           example iXBRL + sample archive (see samples/NOTICE)
+samples/           example iXBRL (see samples/NOTICE); pack sample.tar.zst with mksample
 verify/arelle/              Arelle (uv) fact export for correctness checks
 verify/stream-read-xbrl/    stream-read-xbrl (uv) wide-row soft oracle
 data/              runtime outputs (not committed)
@@ -153,6 +153,7 @@ Or a remote / local `tar.zst`:
 
 ```bash
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 "https://example/Accounts_Bulk_Data.tar.zst"
+go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 ```
 

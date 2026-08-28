@@ -46,6 +46,7 @@ Reuse a bulk extract instead of invoking ch-xbrl:
 
 ```bash
 # repo root
+go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 
 cd verify/stream-read-xbrl

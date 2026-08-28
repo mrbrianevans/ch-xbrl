@@ -1,8 +1,9 @@
-# General Go CI: format, vet/lint, test, build — every push/PR on every branch.
+# General Go CI: format, vet, staticcheck, test, build.
 name: Go CI
 
 on:
   push:
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -15,7 +16,7 @@ permissions:
 
 jobs:
   go:
-    name: Format · Vet · Test · Build
+    name: Format · Vet · Staticcheck · Test · Build
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -30,20 +31,16 @@ jobs:
           cache: true
 
       - name: Check formatting (gofmt)
-        run: |
-          set -euo pipefail
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::The following files are not gofmt-formatted:"
-            echo "$unformatted"
-            echo ""
-            echo "Run: gofmt -w ."
-            exit 1
-          fi
-          echo "gofmt: OK"
+        run: test -z "$(gofmt -l .)"
 
       - name: Vet
         run: go vet ./...
+
+      - name: Staticcheck
+        uses: dominikh/staticcheck-action@v1
+        with:
+          version: "latest"
+          install-go: false
 
       - name: Test
         run: go test ./... -count=1 -race
@@ -71,25 +68,21 @@ jobs:
           set -euo pipefail
           bin=/tmp/ch-xbrl
           xhtml=samples/03024914_aa_2023-03-13.xhtml
-          tar=samples/sample.tar.zst
           out=/tmp/ch-xbrl-smoke
-          mkdir -p "$out/dir/nested"
+          mkdir -p "$out/dir/nested" "$out/tarin"
           cp "$xhtml" "$out/dir/"
+          cp "$xhtml" "$out/tarin/"
           printf 'not xbrl\n' > "$out/dir/readme.txt"
           cp "$xhtml" "$out/dir/nested/hidden.xhtml"
+          /tmp/ch-xbrl-mksample -dir "$out/tarin" -out "$out/sample.tar.zst"
+          tar=$out/sample.tar.zst
 
           echo "local tar.zst"
           "$bin" -o "$out/tar.csv" -workers 1 "$tar"
           test -s "$out/tar.csv"
 
           echo "local zip"
-          python3 - <<'PY'
-import zipfile, os
-out = "/tmp/ch-xbrl-smoke/sample.zip"
-xhtml = "samples/03024914_aa_2023-03-13.xhtml"
-with zipfile.ZipFile(out, "w") as z:
-    z.write(xhtml, arcname=os.path.basename(xhtml))
-PY
+          zip -j "$out/sample.zip" "$xhtml"
           "$bin" -o "$out/zip.csv" -workers 1 "$out/sample.zip"
           test -s "$out/zip.csv"
 
@@ -159,3 +152,41 @@ PY
             cat "$out/help.err"
             exit 1
           fi
+
+      - name: Install DuckDB CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/duckdb.zip \
+            "https://github.com/duckdb/duckdb/releases/download/v1.5.5/duckdb_cli-linux-amd64.zip"
+          mkdir -p "$HOME/.local/bin"
+          unzip -o /tmp/duckdb.zip -d "$HOME/.local/bin"
+          chmod +x "$HOME/.local/bin/duckdb"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/duckdb" --version
+
+      - name: Input-method consistency (DuckDB)
+        run: |
+          set -euo pipefail
+          bin=/tmp/ch-xbrl
+          fx=/tmp/ch-xbrl-input-fx
+          mkdir -p "$fx/dir"
+          cp samples/03024914_aa_2023-03-13.xhtml "$fx/dir/"
+          cp samples/Prod223_4203_00134794_20250927.html "$fx/dir/"
+
+          zip -j "$fx/sample.zip" "$fx/dir"/*
+          /tmp/ch-xbrl-mksample -dir "$fx/dir" -out "$fx/sample.tar.zst"
+
+          echo "dir"
+          "$bin" -o "$fx/dir.csv" -workers 2 "$fx/dir"
+          echo "zip"
+          "$bin" -o "$fx/zip.csv" -workers 2 "$fx/sample.zip"
+          echo "tar.zst"
+          "$bin" -o "$fx/tar.csv" -workers 2 "$fx/sample.tar.zst"
+          echo "stdin tar.zst"
+          "$bin" -o "$fx/stdin_tar.csv" -workers 2 - < "$fx/sample.tar.zst"
+
+          for f in dir.csv zip.csv tar.csv stdin_tar.csv; do
+            test -s "$fx/$f"
+          done
+
+          (cd "$fx" && duckdb -c ".read '${GITHUB_WORKSPACE}/sql/compare_input_methods.sql'")

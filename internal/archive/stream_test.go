@@ -70,14 +70,26 @@ func collect(t *testing.T, source string) []Member {
 	return got
 }
 
-func TestStreamLocalTarZst(t *testing.T) {
-	src := filepath.Join("..", "..", "samples", "sample.tar.zst")
-	if _, err := os.Stat(src); err != nil {
-		t.Skip("sample.tar.zst missing")
+func sampleTarZst(t *testing.T) string {
+	t.Helper()
+	xbrlOnly := map[string]string{}
+	for k, v := range sampleEntries(t) {
+		if isXBRLName(k) {
+			xbrlOnly[k] = v
+		}
 	}
+	dest := filepath.Join(t.TempDir(), "sample.tar.zst")
+	if err := WriteTarZst(dest, xbrlOnly); err != nil {
+		t.Fatal(err)
+	}
+	return dest
+}
+
+func TestStreamLocalTarZst(t *testing.T) {
+	src := sampleTarZst(t)
 	got := collect(t, src)
 	if len(got) == 0 {
-		t.Fatal("expected members from sample.tar.zst")
+		t.Fatal("expected members from packed tar.zst")
 	}
 	for _, m := range got {
 		if !isXBRLName(m.Name) {
@@ -388,10 +400,10 @@ func TestStreamStdinInstance(t *testing.T) {
 }
 
 func TestStreamStdinTarZst(t *testing.T) {
-	src := filepath.Join("..", "..", "samples", "sample.tar.zst")
+	src := sampleTarZst(t)
 	data, err := os.ReadFile(src)
 	if err != nil {
-		t.Skip("sample.tar.zst missing")
+		t.Fatal(err)
 	}
 	fromFile := collect(t, src)
 	fromStdin := collectFrom(t, "-", bytes.NewReader(data))
@@ -580,21 +592,12 @@ func TestStreamRemoteZipRange(t *testing.T) {
 }
 
 func TestStreamRemoteTarZst(t *testing.T) {
-	entries := sampleEntries(t)
-	xbrlOnly := map[string]string{}
-	for k, v := range entries {
-		if isXBRLName(k) {
-			xbrlOnly[k] = v
-		}
-	}
-	dest := filepath.Join(t.TempDir(), "remote.tar.zst")
-	if err := WriteTarZst(dest, xbrlOnly); err != nil {
-		t.Fatal(err)
-	}
+	dest := sampleTarZst(t)
 	data, err := os.ReadFile(dest)
 	if err != nil {
 		t.Fatal(err)
 	}
+	fromFile := collect(t, dest)
 	// Full GET (no range required for tar.zst stream).
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
@@ -603,8 +606,8 @@ func TestStreamRemoteTarZst(t *testing.T) {
 	defer srv.Close()
 
 	got := collect(t, srv.URL+"/sample.tar.zst")
-	if len(got) != len(xbrlOnly) {
-		t.Fatalf("got %d want %d", len(got), len(xbrlOnly))
+	if len(got) != len(fromFile) {
+		t.Fatalf("got %d want %d", len(got), len(fromFile))
 	}
 }
 

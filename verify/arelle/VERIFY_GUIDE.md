@@ -48,17 +48,29 @@ uv run arelleCmdLine --version
 
 ### 1. Produce ch-xbrl long-format facts
 
-From the **repository root**, run ch-xbrl on the sample archive (or any archive that contains the instances you will verify):
+From the **repository root**, extract the instances you will verify. The compare step keeps extract rows whose `source_file` **basename** matches the instance file name (`-i`).
+
+Preferred (same as CI): a **directory** of top-level instance files (non-recursive; `.xhtml` / `.html` / `.htm` / `.xbrl` / `.xml`):
 
 ```bash
+mkdir -p data
+go run ./cmd/ch-xbrl -o data/facts.csv samples/
+```
+
+A **single instance** is enough if you only verify one file:
+
+```bash
+go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml
+```
+
+Archives still work (`zip`, `tar.zst`, remote CH bulk zip). Packing is optional and gitignored:
+
+```bash
+go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
 ```
 
-Notes:
-
-- `cmd/ch-xbrl` reads **zip / tar.zst**, not a single loose `.xhtml` path.
-- Loose samples under `samples/` are also packed into `samples/sample.tar.zst` (via `cmd/mksample` if you refresh them).
-- The compare step filters extract rows by `source_file` basename matching the instance file name.
+Do **not** use stdin (`ch-xbrl -`) for this verifier: a stdin instance sets `source_file` to `-`, so the basename join fails. Zip on stdin is refused (needs seek).
 
 ### 2. Verify one instance
 
@@ -83,7 +95,16 @@ Flags:
 
 ### 3. Verify all samples under `samples/`
 
-PowerShell example (from `verify/arelle`):
+Same as CI (`run_batch.py` from `verify/arelle`):
+
+```bash
+uv run python run_batch.py \
+  --samples-dir ../../samples \
+  --extract ../../data/facts.csv \
+  --summary-md out/ci_summary.md
+```
+
+PowerShell one-file-at-a-time (from `verify/arelle`):
 
 ```powershell
 $extract = (Resolve-Path ..\..\data\facts.csv).Path
@@ -126,10 +147,10 @@ Then compare with DuckDB / re-run `verify_instance.py --skip-arelle` if the raw 
   1. First pass: run **online** (omit `--offline`) so FRC/UK schemas download into Arelle’s cache.
   2. Later: `--offline` is fine and much faster (~few seconds per file once warm).
 
-### One instance at a time
+### One instance at a time for Arelle
 
-- Do not pass CH bulk zips to this verifier. Arelle is slow; the tool is designed for single loose samples.
-- Use `cmd/ch-xbrl` on zip/tar.zst for the reference long CSV; point `-i` at a file under `samples/`.
+- Do not pass CH bulk zips to **Arelle**. Arelle is slow; `verify_instance.py` / `run_batch.py` take one loose sample (`-i`) each.
+- `cmd/ch-xbrl` can still build the reference CSV from a directory, a single `.xhtml`/`.html`, or an archive. Point `-i` at a file under `samples/`.
 
 ### Soft value mismatches are usually narrative truncation
 
@@ -150,7 +171,7 @@ Treat **missing concepts** and **fact-count gaps** as the real signal; treat lon
 
 ### ch-xbrl facts must include the member
 
-If you see “no extract rows for source_file=…”, re-run ch-xbrl so that archive member is present, or filter the wrong `facts.csv`.
+If you see “no extract rows for source_file=…”, the extract CSV does not contain that basename. Re-run ch-xbrl on `samples/`, on that instance file, or on an archive that includes it (not stdin).
 
 ### Environment
 
@@ -176,17 +197,35 @@ verify/arelle/
 
 ---
 
-## Results: full sample set (local run)
+## Sample set
 
-**Date of run:** 2026-08-07 (local machine, branch `feat/arelle-verify`)
+`samples/` is a small curated set (OGL; see `samples/NOTICE`), not a day pack. Duplicate vendor templates were dropped. CI Arelle-compares **every** `*.xhtml` / `*.html` here.
 
-**Inputs:**
+| File | Why it is here |
+|------|----------------|
+| `03024914_aa_*.xhtml` | IRIS golden (FRS-102 2021) |
+| `06760773_aa_*.xhtml` | IRIS golden; dimensional PPE |
+| `09652677_aa_*.xhtml` | CCH golden; `scale="-2"`; `ix:continuation` |
+| `00410149_aa_*.xhtml` | Companies House webfiling |
+| `00383317_aa_*.xhtml` | TaxCalc (Acorah) |
+| `00543529_aa_*.xhtml` | Taxfiler |
+| `00311870_aa_*.xhtml` | VT Final Accounts |
+| `00274745_aa_*.xhtml` | Sage |
+| `00528415_aa_*.xhtml` | Silverfin |
+| `01156878_aa_*.xhtml` | BTCSoftware |
+| `Prod223_4203_00134794_*.html` | Caseware; bulk `Prod*_*.html` naming |
+| `Prod223_4203_08798715_*.html` | Digita |
+| `Prod223_4203_14256400_*.html` | Workiva nested `ix:nonNumeric` |
 
-- Instances: all 33 `samples/*.{xhtml,html}`
-- ch-xbrl CSV: `data/facts_sample.csv` from `go run ./cmd/ch-xbrl -o data/facts_sample.csv samples/sample.tar.zst`
-- Procedure: offline batch first (many incomplete Arelle exports) → **re-run online** for files with 0 usable Arelle facts → merge results
+Unit tests assert `NameProductionSoftware` and at least one hand-checked numeric fact per file.
 
-### Summary
+## Results: earlier full-set snapshot (historical)
+
+**Date of run:** 2026-08-07 (local machine, branch `feat/arelle-verify`). That tree had ~33 instances; most duplicate Caseware/IRIS/Digita/Capium packs have since been removed.
+
+**Inputs then:** all `samples/*.{xhtml,html}`; extract from `samples/sample.tar.zst`. Offline first (many empty Arelle CSVs) → **online** re-run.
+
+### Summary (7 Aug, old 33-file tree)
 
 | Outcome | Count |
 |---------|------:|
@@ -198,45 +237,18 @@ verify/arelle/
 
 Among OK + OK (soft): **5,721** fact pairs, **5,530** soft value matches → **~96.7%**.
 
-The curated verify set is the 31 instance files under `samples/` (packed into `sample.tar.zst`). `Prod223_4203_00781277` and `Prod223_4203_00506170` were dropped: they were Arelle CSV / DuckDB tooling failures, not extract verdicts.
+`Prod223_4203_14256400` was the remaining extract gap (nested `ix:nonNumeric`); that is fixed in the Go parser. Re-score current samples in CI.
 
-On the 7 Aug snapshot, **30 / 31 remaining scored samples** already had matching fact counts and no missing Arelle concepts. `Prod223_4203_14256400` was the remaining extract gap (nested `ix:nonNumeric`); that is fixed in the Go parser.
-
-### Per-sample results
+### Per-sample results still in `samples/` (7 Aug numbers)
 
 | Sample | Status | Arelle facts | ch-xbrl facts | Missing concepts | Soft match | Soft mismatch |
 |--------|--------|-------------:|--------------:|-----------------:|-----------:|--------------:|
 | `03024914_aa_2023-03-13.xhtml` | OK | 130 | 130 | 0 | 130 | 0 |
 | `06760773_aa_2025-09-26.xhtml` | OK | 130 | 130 | 0 | 130 | 0 |
 | `09652677_aa_2026-03-25.xhtml` | OK soft | 213 | 213 | 0 | 199 | 14 |
-| `13566765_aa_2026-03-26.xhtml` | OK soft | 271 | 271 | 0 | 270 | 1 |
 | `Prod223_4203_00134794_20250927.html` | OK soft | 209 | 209 | 0 | 199 | 10 |
-| `Prod223_4203_02728626_20250731.html` | OK | 387 | 387 | 0 | 387 | 0 |
-| `Prod223_4203_03407923_20250731.html` | OK | 381 | 381 | 0 | 381 | 0 |
-| `Prod223_4203_03909595_20250930.html` | OK soft | 284 | 284 | 0 | 267 | 17 |
-| `Prod223_4203_04095617_20250930.html` | OK soft | 151 | 151 | 0 | 134 | 17 |
-| `Prod223_4203_04379113_20251231.html` | OK soft | 124 | 124 | 0 | 114 | 10 |
-| `Prod223_4203_05850222_20250731.html` | OK soft | 324 | 324 | 0 | 310 | 14 |
-| `Prod223_4203_06966663_20250731.html` | OK | 55 | 55 | 0 | 55 | 0 |
-| `Prod223_4203_07045599_20251031.html` | OK | 80 | 80 | 0 | 80 | 0 |
-| `Prod223_4203_07315995_20250731.html` | OK | 56 | 56 | 0 | 56 | 0 |
-| `Prod223_4203_07329603_20250731.html` | OK | 55 | 55 | 0 | 55 | 0 |
-| `Prod223_4203_07627748_20251231.html` | OK soft | 208 | 208 | 0 | 189 | 19 |
-| `Prod223_4203_08622598_20250731.html` | OK | 158 | 158 | 0 | 158 | 0 |
 | `Prod223_4203_08798715_20250331.html` | OK | 519 | 519 | 0 | 519 | 0 |
-| `Prod223_4203_09147126_20250731.html` | OK soft | 219 | 219 | 0 | 200 | 19 |
-| `Prod223_4203_09759426_20250930.html` | OK soft | 134 | 134 | 0 | 126 | 8 |
-| `Prod223_4203_10941963_20250930.html` | OK soft | 159 | 159 | 0 | 141 | 18 |
-| `Prod223_4203_12010617_20251031.html` | OK | 90 | 90 | 0 | 90 | 0 |
-| `Prod223_4203_12715470_20251231.html` | OK soft | 229 | 229 | 0 | 224 | 5 |
-| `Prod223_4203_12976293_20251031.html` | OK | 45 | 45 | 0 | 45 | 0 |
-| `Prod223_4203_13313421_20251031.html` | OK | 43 | 43 | 0 | 43 | 0 |
-| `Prod223_4203_13322968_20251231.html` | OK soft | 577 | 577 | 0 | 559 | 18 |
-| `Prod223_4203_13565183_20250831.html` | OK | 60 | 60 | 0 | 60 | 0 |
-| `Prod223_4203_14087072_20260228.html` | OK | 65 | 65 | 0 | 65 | 0 |
-| `Prod223_4203_14158962_20250630.html` | OK soft | 212 | 212 | 0 | 192 | 20 |
 | `Prod223_4203_14256400_20250923.html` | *(was FAIL 52 vs 49; nested facts now extracted)* | 52 | 49 | 2 | 47 | 2 |
-| `Prod223_4203_15145702_20251231.html` | OK soft | 153 | 153 | 0 | 152 | 1 |
 
 ### Notable failures and error
 
@@ -278,7 +290,7 @@ Workflow: [`.github/workflows/arelle-verify.yml`](../../.github/workflows/arelle
 | Push to `master` | Full sample set; Arelle **online** (taxonomies can download) |
 | **workflow_dispatch** | Optional `limit` and `offline`; same report |
 
-Steps: `go test` → ch-xbrl on `samples/sample.tar.zst` → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`.
+Steps: `ch-xbrl` on `samples/` (directory) → `run_batch.py` over all instances → Markdown on the **job summary** (`$GITHUB_STEP_SUMMARY`) plus artefact `out/ci_summary.md`. Go format/test/staticcheck live in [`.github/workflows/go.yml`](../../.github/workflows/go.yml).
 
 Local equivalent:
 
@@ -294,6 +306,7 @@ Job fails if any sample is **FAIL** or **ERROR**; **OK** / **OK_SOFT** keep the 
 ## Related docs
 
 - Short quick-start: [`README.md`](./README.md)
+- Frozen CLI (inputs, columns, exits): [`docs/cli-contract.md`](../../docs/cli-contract.md)
 - Arelle install: <https://arelle.readthedocs.io/en/latest/install.html>
 - Arelle CLI: <https://arelle.readthedocs.io/en/latest/command_line.html>
 - ch-xbrl design: root [`README.md`](../../README.md)

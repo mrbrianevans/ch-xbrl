@@ -65,10 +65,10 @@ jobs:
 
       # Go format/lint/test: see go.yml (runs on every branch)
 
-      - name: Run ch-xbrl on sample archive → facts.csv
+      - name: Run ch-xbrl on samples/ → facts.csv
         run: |
           mkdir -p data
-          go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
+          go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/
 
       - name: Install Arelle verify deps
         working-directory: verify/arelle
