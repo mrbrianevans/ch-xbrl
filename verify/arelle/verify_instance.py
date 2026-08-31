@@ -6,7 +6,8 @@
 3. Report counts, missing/extra concepts, soft value mismatches
 
 Not byte-identical: whitespace, thousands separators, and common date
-formats are normalised. Dimensions/units/taxonomy are ignored.
+formats are normalised. Dimensions, units, and taxonomy are not requested
+from Arelle and are ignored.
 """
 
 from __future__ import annotations
@@ -22,9 +23,10 @@ import duckdb
 HERE = Path(__file__).resolve().parent
 SQL = (HERE / "sql" / "verify.sql").read_text(encoding="utf-8")
 
-FACT_COLS = (
-    "Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions"
-)
+# Only columns verify.sql reads. Arelle expands Period into Start + End/Instant.
+# Label/contextRef/unitRef/Dec/Dimensions are unused and commas in those
+# fields (especially labels and dim,member) shift DuckDB columns.
+FACT_COLS = "Name,Value,EntityIdentifier,Period"
 
 
 def find_arelle() -> str:
@@ -79,7 +81,7 @@ def compare(raw_csv: Path, extract_csv: Path, source_file: str) -> dict:
     con = duckdb.connect(":memory:")
     raw = _path_sql(raw_csv)
     ext = _path_sql(extract_csv)
-    # all_varchar + parallel=false: Arelle CSV has messy dimensions / newlines
+    # all_varchar + parallel=false: Arelle CSV can have commas and newlines in Value
     con.execute(
         f"""
         CREATE TABLE raw_arelle AS

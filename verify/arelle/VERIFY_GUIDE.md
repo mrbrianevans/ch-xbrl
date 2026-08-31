@@ -130,7 +130,7 @@ Get-ChildItem ..\..\samples -File |
 uv run arelleCmdLine \
   -f ../../samples/FILE.xhtml \
   --facts out/raw.csv \
-  --factListCols Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions
+  --factListCols Name,Value,EntityIdentifier,Period
 ```
 
 Then compare with DuckDB / re-run `verify_instance.py --skip-arelle` if the raw file is named `out/<stem>.arelle_raw.csv`.
@@ -165,7 +165,8 @@ Treat **missing concepts** and **fact-count gaps** as the real signal; treat lon
 
 ### Arelle fact-list CSV is quirky
 
-- Unquoted dimension `dim,member` spills into extra columns — DuckDB `null_padding` handles this for most files.
+- The verifier only asks Arelle for `Name,Value,EntityIdentifier,Period` (the columns `sql/verify.sql` uses). Extra columns (`Label`, `Dimensions`, …) are omitted: commas in labels (`Property, plant and equipment`) and unquoted `dim,member` pairs used to shift DuckDB columns and invent “missing concepts”.
+- Quoted values can still contain commas (`"97,888"`, company names, long prose). If pairing stays noisy after dropping unused columns, parse Arelle’s CSV outside DuckDB.
 - Occasional files (e.g. BOM / delimiter sniffing) can make DuckDB treat the header as a single column → pipeline error, not an extract verdict.
 - Period column from Arelle is `Start` + `End/Instant`; instants leave Start empty (mapped to start = end in SQL).
 

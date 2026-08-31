@@ -76,5 +76,5 @@ out/                 # Arelle raw CSV (gitignored)
 uv run arelleCmdLine \
   -f ../../samples/FILE.xhtml \
   --facts out/raw.csv \
-  --factListCols Label,Name,contextRef,Value,EntityIdentifier,Period,unitRef,Dec,Dimensions
+  --factListCols Name,Value,EntityIdentifier,Period
 ```
