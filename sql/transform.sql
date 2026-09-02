@@ -9,7 +9,7 @@
 -- 1. Load long facts (force string columns so empty dates do not break auto-detect)
 CREATE OR REPLACE TABLE facts AS
 SELECT
-  company_id,
+  company_number,
   TRY_CAST(NULLIF(TRIM(CAST(period_start AS VARCHAR)), '') AS DATE) AS period_start,
   TRY_CAST(NULLIF(TRIM(CAST(period_end AS VARCHAR)), '') AS DATE)   AS period_end,
   concept,
@@ -61,7 +61,7 @@ WHERE dimensions IS NULL
 -- 4. Join facts to concept map (match on concept local name)
 CREATE OR REPLACE TABLE facts_mapped AS
 SELECT
-  f.company_id,
+  f.company_number,
   f.period_start,
   f.period_end,
   m.canonical,
@@ -75,13 +75,13 @@ SELECT
 FROM facts_plain f
 INNER JOIN concept_map m
   ON f.concept = m.concept
-WHERE f.company_id IS NOT NULL AND f.company_id <> ''
+WHERE f.company_number IS NOT NULL AND f.company_number <> ''
   AND f.period_end IS NOT NULL;
 
 -- 5. Normalise: for each (company, period, canonical) keep highest-priority non-null value
 CREATE OR REPLACE TABLE facts_best AS
 SELECT
-  company_id,
+  company_number,
   period_start,
   period_end,
   canonical,
@@ -93,7 +93,7 @@ FROM (
   SELECT
     *,
     ROW_NUMBER() OVER (
-      PARTITION BY company_id, period_start, period_end, canonical
+      PARTITION BY company_number, period_start, period_end, canonical
       ORDER BY priority ASC, value DESC NULLS LAST
     ) AS rn
   FROM facts_mapped
@@ -101,16 +101,17 @@ FROM (
 ) t
 WHERE rn = 1;
 
--- 6. Pivot canonicals to columns (must match mapping/concept_map.csv canonical names)
+-- 6. Pivot canonicals to columns (must match mapping/concept_map.csv canonical names).
+-- company_number is the fact-row identifier, not a pivoted canonical (same name as
+-- UKCompaniesHouseRegisteredNumber in the map; the identifier already backfills from it).
 CREATE OR REPLACE TABLE wide_raw AS
 SELECT *
 FROM (
-  SELECT company_id, period_start, period_end, canonical, value
+  SELECT company_number, period_start, period_end, canonical, value
   FROM facts_best
 )
 PIVOT (
   FIRST(value) FOR canonical IN (
-    'company_number',
     'company_name',
     'company_dormant',
     'principal_activities',
@@ -189,10 +190,9 @@ PIVOT (
 -- 7. Explicit casts
 CREATE OR REPLACE TABLE accounts_wide AS
 SELECT
-  company_id,
+  CAST(company_number AS VARCHAR)                                     AS company_number,
   period_start,
   period_end,
-  CAST(company_number AS VARCHAR)                                     AS company_number,
   CAST(company_name AS VARCHAR)                                       AS company_name,
   TRY_CAST(company_dormant AS BOOLEAN)                                AS company_dormant,
   CAST(principal_activities AS VARCHAR)                               AS principal_activities,
@@ -266,7 +266,7 @@ SELECT
   TRY_CAST(gain_loss_disposal_ppe AS DECIMAL(20, 2))                  AS gain_loss_disposal_ppe,
   TRY_CAST(net_cash_from_operations AS DECIMAL(20, 2))                AS net_cash_from_operations
 FROM wide_raw
-ORDER BY company_id, period_end, period_start;
+ORDER BY company_number, period_end, period_start;
 
 -- 8. Write Parquet
 COPY accounts_wide
@@ -277,14 +277,14 @@ TO 'data/accounts_wide.parquet'
 SELECT
   'rows' AS metric, COUNT(*)::VARCHAR AS value FROM accounts_wide
 UNION ALL
-SELECT 'companies', COUNT(DISTINCT company_id)::VARCHAR FROM accounts_wide
+SELECT 'companies', COUNT(DISTINCT company_number)::VARCHAR FROM accounts_wide
 UNION ALL
 SELECT 'mapped_plain_facts', COUNT(*)::VARCHAR FROM facts_mapped
 UNION ALL
 SELECT 'best_facts', COUNT(*)::VARCHAR FROM facts_best;
 
 SELECT
-  company_id,
+  company_number,
   period_end,
   company_name,
   employees,
@@ -298,5 +298,5 @@ SELECT
   auditor_name
 FROM accounts_wide
 WHERE company_name IS NOT NULL OR net_assets IS NOT NULL OR turnover IS NOT NULL
-ORDER BY company_id, period_end
+ORDER BY company_number, period_end
 LIMIT 25;

@@ -32,9 +32,9 @@ func TestParseSampleFiles(t *testing.T) {
 			wantCompany := companyFromFilename(base)
 			var hasCompany, hasConcept, companyMatches bool
 			for _, f := range facts {
-				if f.CompanyID != "" {
+				if f.CompanyNumber != "" {
 					hasCompany = true
-					if wantCompany != "" && f.CompanyID == wantCompany {
+					if wantCompany != "" && f.CompanyNumber == wantCompany {
 						companyMatches = true
 					}
 				}
@@ -50,7 +50,7 @@ func TestParseSampleFiles(t *testing.T) {
 				}
 			}
 			if !hasCompany {
-				t.Error("no company_id on any fact")
+				t.Error("no company_number on any fact")
 			}
 			if !hasConcept {
 				t.Error("no concepts")
@@ -58,7 +58,7 @@ func TestParseSampleFiles(t *testing.T) {
 			if wantCompany != "" && !companyMatches {
 				// Company may also come from entity identifier / registered-number fact;
 				// require at least one fact carries the id implied by the filename.
-				t.Errorf("expected some fact with company_id=%q (from filename)", wantCompany)
+				t.Errorf("expected some fact with company_number=%q (from filename)", wantCompany)
 			}
 			t.Logf("%s: %d facts company=%s", base, len(facts), wantCompany)
 		})

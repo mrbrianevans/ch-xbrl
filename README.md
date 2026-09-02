@@ -48,7 +48,7 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 
 | Column | Meaning |
 |--------|---------|
-| `company_id` | Companies House number |
+| `company_number` | Companies House number |
 | `period_start` / `period_end` | ISO dates (instants: both equal) |
 | `concept` | Local name |
 | `value` | String (scale / sign / iXT applied) |

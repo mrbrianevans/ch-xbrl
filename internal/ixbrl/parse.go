@@ -29,11 +29,11 @@ const (
 )
 
 type contextInfo struct {
-	ID          string
-	CompanyID   string
-	PeriodStart string
-	PeriodEnd   string
-	Dimensions  map[string]string // dimension local/qname → member local/qname
+	ID            string
+	CompanyNumber string
+	PeriodStart   string
+	PeriodEnd     string
+	Dimensions    map[string]string // dimension local/qname → member local/qname
 }
 
 type unitInfo struct {
@@ -270,8 +270,8 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				inPeriod = false
 
 			case isNS(space, nsXBRLI) && local == "identifier" && curCtx != nil && inEntity:
-				if curCtx.CompanyID == "" {
-					curCtx.CompanyID = text
+				if curCtx.CompanyNumber == "" {
+					curCtx.CompanyNumber = text
 				}
 			case isNS(space, nsXBRLI) && local == "startDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodStart = text
@@ -368,8 +368,8 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		periodStart, periodEnd := "", ""
 		dimsJSON := ""
 		if ctx != nil {
-			if ctx.CompanyID != "" {
-				company = ctx.CompanyID
+			if ctx.CompanyNumber != "" {
+				company = ctx.CompanyNumber
 			}
 			periodStart = ctx.PeriodStart
 			periodEnd = ctx.PeriodEnd
@@ -404,20 +404,20 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			decimals = pf.Decimals
 		}
 		out = append(out, fact.Fact{
-			CompanyID:   company,
-			PeriodStart: periodStart,
-			PeriodEnd:   periodEnd,
-			Concept:     qnameLocal(pf.Name),
-			Value:       val,
-			Unit:        unit,
-			Dimensions:  dimsJSON,
-			Taxonomy:    taxonomy,
-			SourceFile:  sourceFile,
-			Decimals:    decimals,
+			CompanyNumber: company,
+			PeriodStart:   periodStart,
+			PeriodEnd:     periodEnd,
+			Concept:       qnameLocal(pf.Name),
+			Value:         val,
+			Unit:          unit,
+			Dimensions:    dimsJSON,
+			Taxonomy:      taxonomy,
+			SourceFile:    sourceFile,
+			Decimals:      decimals,
 		})
 	}
 
-	// Backfill company_id from registered-number facts if missing.
+	// Backfill company_number from registered-number facts if missing.
 	regNo := ""
 	for _, f := range out {
 		if f.Concept == "UKCompaniesHouseRegisteredNumber" && f.Value != "" {
@@ -427,8 +427,8 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 	}
 	if regNo != "" {
 		for i := range out {
-			if out[i].CompanyID == "" {
-				out[i].CompanyID = regNo
+			if out[i].CompanyNumber == "" {
+				out[i].CompanyNumber = regNo
 			}
 		}
 	}
@@ -734,7 +734,7 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 		id, body := m[1], m[2]
 		ctx := &contextInfo{ID: id, Dimensions: map[string]string{}}
 		if im := reIdentifier.FindStringSubmatch(body); len(im) > 1 {
-			ctx.CompanyID = strings.TrimSpace(im[1])
+			ctx.CompanyNumber = strings.TrimSpace(im[1])
 		}
 		if sm := reStartDate.FindStringSubmatch(body); len(sm) > 1 {
 			ctx.PeriodStart = strings.TrimSpace(sm[1])
@@ -834,8 +834,8 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 		ps, pe := "", ""
 		dimsJSON := ""
 		if ctx != nil {
-			if ctx.CompanyID != "" {
-				company = ctx.CompanyID
+			if ctx.CompanyNumber != "" {
+				company = ctx.CompanyNumber
 			}
 			ps, pe = ctx.PeriodStart, ctx.PeriodEnd
 			if len(ctx.Dimensions) > 0 {
@@ -855,16 +855,16 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 			val = normaliseNonNumeric(val, format)
 		}
 		out = append(out, fact.Fact{
-			CompanyID:   company,
-			PeriodStart: ps,
-			PeriodEnd:   pe,
-			Concept:     qnameLocal(name),
-			Value:       val,
-			Unit:        unit,
-			Dimensions:  dimsJSON,
-			Taxonomy:    taxonomy,
-			SourceFile:  sourceFile,
-			Decimals:    decimals,
+			CompanyNumber: company,
+			PeriodStart:   ps,
+			PeriodEnd:     pe,
+			Concept:       qnameLocal(name),
+			Value:         val,
+			Unit:          unit,
+			Dimensions:    dimsJSON,
+			Taxonomy:      taxonomy,
+			SourceFile:    sourceFile,
+			Decimals:      decimals,
 		})
 	}
 
@@ -894,8 +894,8 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	}
 	if regNo != "" {
 		for i := range out {
-			if out[i].CompanyID == "" {
-				out[i].CompanyID = regNo
+			if out[i].CompanyNumber == "" {
+				out[i].CompanyNumber = regNo
 			}
 		}
 	}

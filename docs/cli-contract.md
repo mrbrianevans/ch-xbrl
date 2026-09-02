@@ -61,12 +61,12 @@ UTF-8, RFC 4180-style quoting (`encoding/csv`). Header row, then one row per fac
 Column order is frozen:
 
 ```text
-company_id,period_start,period_end,concept,value,unit,dimensions,taxonomy,source_file,decimals
+company_number,period_start,period_end,concept,value,unit,dimensions,taxonomy,source_file,decimals
 ```
 
 | Column | Frozen meaning |
 |--------|----------------|
-| `company_id` | Context entity identifier, else filename heuristic, else `UKCompaniesHouseRegisteredNumber` |
+| `company_number` | Context entity identifier, else filename heuristic, else `UKCompaniesHouseRegisteredNumber` |
 | `period_start` / `period_end` | ISO dates. Instant: `period_start` = `period_end` |
 | `concept` | **Local name** (not a namespace-qualified QName) |
 | `value` | Effective string (scale / sign / iXT applied for numerics) |

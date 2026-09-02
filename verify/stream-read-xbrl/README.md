@@ -63,7 +63,7 @@ names. `out/file_map.csv` joins the two.
 
 | Kind | Columns | Pass/fail |
 |------|---------|-----------|
-| **must** | identity: `company_id`, registered number, legal name, dormant, balance sheet date | FAIL if stream-read-xbrl has a value and the pivot differs (soft equal) |
+| **must** | identity: `company_id` (oracle column; ch-xbrl CSV `company_number` is aliased), registered number, legal name, dormant, balance sheet date | FAIL if stream-read-xbrl has a value and the pivot differs (soft equal) |
 | **observe** | financial totals (assets, P&amp;L, …) | both-filled diffs → OK_SOFT. stream-read-xbrl often takes the first tag in file order, including dimensional breakdowns / group vs company; we pivot non-dimensional facts with concept priority instead |
 | **skip** | employees (current year copied onto comparatives), creditors via `contextRef` substring, filename meta, `taxonomy`, `error` | ignored |
 

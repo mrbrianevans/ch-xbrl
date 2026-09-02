@@ -71,16 +71,16 @@ func containsFold(s, sub string) bool {
 
 func assertGoldens(t *testing.T, facts []fact.Fact, company string, goldens []goldenFact) {
 	t.Helper()
-	// company_id present on facts
+	// company_number present on facts
 	var sawCompany bool
 	for _, f := range facts {
-		if f.CompanyID == company {
+		if f.CompanyNumber == company {
 			sawCompany = true
 			break
 		}
 	}
 	if !sawCompany {
-		t.Errorf("no fact with company_id=%q", company)
+		t.Errorf("no fact with company_number=%q", company)
 	}
 
 	for _, g := range goldens {
@@ -100,8 +100,8 @@ func assertGoldens(t *testing.T, facts []fact.Fact, company string, goldens []go
 				}
 				return
 			}
-			if got.CompanyID != company {
-				t.Errorf("company_id=%q want %q", got.CompanyID, company)
+			if got.CompanyNumber != company {
+				t.Errorf("company_number=%q want %q", got.CompanyNumber, company)
 			}
 			if g.unitSubstr != "" && !containsFold(got.Unit, g.unitSubstr) {
 				t.Errorf("unit=%q want substring %q", got.Unit, g.unitSubstr)

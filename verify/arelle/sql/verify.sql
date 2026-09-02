@@ -59,7 +59,7 @@ WHERE nullif(list_last(string_split(trim(coalesce(cast(Name AS VARCHAR), '')), '
 
 CREATE OR REPLACE TABLE extract AS
 SELECT
-    trim(coalesce(cast(company_id AS VARCHAR), '')) AS company_id,
+    trim(coalesce(cast(company_number AS VARCHAR), '')) AS company_id,
     trim(coalesce(cast(concept AS VARCHAR), '')) AS concept,
     trim(coalesce(cast(period_start AS VARCHAR), '')) AS period_start,
     trim(coalesce(cast(period_end AS VARCHAR), '')) AS period_end,

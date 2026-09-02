@@ -1,5 +1,7 @@
 -- Long-format ch-xbrl facts (all sample members) → wide rows using column_map.csv.
 -- Caller creates tables extract_all, col_map.
+-- ch-xbrl emits company_number; alias to company_id so extract_wide matches the
+-- stream-read-xbrl oracle (which we do not change).
 
 CREATE OR REPLACE MACRO is_plain_dim(d) AS (
     d IS NULL OR trim(cast(d AS VARCHAR)) IN ('', '{}')
@@ -8,7 +10,7 @@ CREATE OR REPLACE MACRO is_plain_dim(d) AS (
 CREATE OR REPLACE TABLE facts_src AS
 SELECT
     fact_ord,
-    trim(cast(company_id AS VARCHAR)) AS company_id,
+    trim(cast(company_number AS VARCHAR)) AS company_id,
     try_cast(nullif(trim(cast(period_start AS VARCHAR)), '') AS DATE) AS period_start,
     try_cast(nullif(trim(cast(period_end AS VARCHAR)), '') AS DATE) AS period_end,
     trim(cast(concept AS VARCHAR)) AS concept,

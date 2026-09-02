@@ -20,19 +20,19 @@ CREATE OR REPLACE TABLE stdin_tar AS
 SELECT * FROM read_csv('stdin_tar.csv', header = true, all_varchar = true);
 
 CREATE OR REPLACE VIEW fact_key_dir AS
-SELECT company_id, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
+SELECT company_number, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
 FROM dir;
 
 CREATE OR REPLACE VIEW fact_key_zip AS
-SELECT company_id, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
+SELECT company_number, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
 FROM zip;
 
 CREATE OR REPLACE VIEW fact_key_tar AS
-SELECT company_id, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
+SELECT company_number, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
 FROM tar;
 
 CREATE OR REPLACE VIEW fact_key_stdin_tar AS
-SELECT company_id, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
+SELECT company_number, period_start, period_end, concept, value, unit, dimensions, taxonomy, source_file, decimals
 FROM stdin_tar;
 
 CREATE OR REPLACE TABLE method_counts AS
