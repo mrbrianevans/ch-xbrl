@@ -1,6 +1,8 @@
 # Edge cases
 
-Real Companies House inputs that a straightforward parser gets wrong. Each case below records where it was found and the behaviour that must stay. The regression tests fail if that behaviour is removed.
+Maintainer notes. This page is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). The contract freezes that `company_number` is populated with a company-number string. It does not freeze which sources fill that column.
+
+Real Companies House inputs that a straightforward parser gets wrong. Each case below records where it was found and the behaviour the regression tests lock in today. The tests fail if that behaviour is removed. Changing it on purpose means updating this page and the tests in the same change.
 
 When you find another one, add it here (archive URL and member name) and add a test. Do not only patch the code. See `AGENTS.md`.
 

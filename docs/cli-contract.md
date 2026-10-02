@@ -59,6 +59,8 @@ Unsupported format, missing file, empty stdin, refused stdin zip, or stream I/O 
 
 UTF-8, RFC 4180-style quoting (`encoding/csv`). Header row, then one row per fact. Values are **strings** through ch-xbrl; callers cast downstream.
 
+A frozen column meaning is what a caller can rely on. The procedure that fills the column is not frozen: a minor version may change it, as long as the column still means what this table says.
+
 Column order is frozen:
 
 ```text
@@ -67,13 +69,13 @@ company_number,period_start,period_end,concept,value,unit,dimensions,taxonomy,so
 
 | Column | Frozen meaning |
 |--------|----------------|
-| `company_number` | String, not an integer. Companies House numbers may contain letters (`SC248149`, `NI012345`, `OC123456`). Taken from an identifier that looks like a company number, else the filename, else `UKCompaniesHouseRegisteredNumber` or `CompaniesHouseRegisteredNumber`. |
+| `company_number` | Populated with the company's registered number, as a string. The value may contain letters. It is not an integer. |
 | `period_start` / `period_end` | ISO dates. Instant: `period_start` = `period_end` |
 | `concept` | **Local name** (not a namespace-qualified QName) |
 | `value` | Effective string (scale / sign / iXT applied for numerics) |
 | `unit` | Unit measure(s), empty if none |
 | `dimensions` | JSON object of local-name → member; empty if none |
-| `taxonomy` | First `schemaRef` href |
+| `taxonomy` | A schema reference href from the instance, or empty |
 | `source_file` | Archive member name, instance basename, or `-` for a stdin instance |
 | `decimals` | Raw iXBRL `decimals` attribute (`INF` stays `INF`); empty when absent or non-numeric |
 
@@ -84,6 +86,9 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 - Row order (worker pool).
 - Exact numeric pretty-print / trailing zeros.
 - Full narrative prose (nested `ix:exclude` or similar may still truncate). Fact **inventory** (concepts present, periods, numeric values) must still match.
+- How `company_number` is chosen. Today that can be the context identifier, the filename, or a registered-number fact such as `UKCompaniesHouseRegisteredNumber` / `CompaniesHouseRegisteredNumber`. A minor version may add or remove a source, including the filename.
+- Which schema reference is copied into `taxonomy` when an instance has more than one.
+- Stderr wording, including the text of a parse error.
 
 ## Exit codes (fail-closed)
 
@@ -98,7 +103,7 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 
 A partial extract (some members OK, some not) is **not** success unless `--continue-on-error` was set. `--continue-on-error` does not turn an empty extract or a stream failure into success.
 
-A member that yields no facts is a parse error (`no facts extracted`), including non-XML placeholders. It increments `files_err`. It is not a successful empty file. Known archive cases, with the zip they came from: [edge-cases.md](./edge-cases.md).
+A member that yields no facts is a failed member (`files_err`), not a successful empty file. That is part of the exit-code meanings above. The log text is not frozen.
 
 ## SemVer
 
@@ -116,6 +121,7 @@ A member that yields no facts is a parse error (`no facts extracted`), including
 - Add a new flag.
 - Add an input kind or archive format that does not change existing invocations (e.g. later `.tar.gz`; not implemented).
 - Accept flags after the positional (today they must come first).
+- Change how an existing column is populated while it still means what the frozen cell says (for example, add or remove the filename as a source of `company_number`).
 
 **Patch:** bug fixes that do not change the frozen meaning above.
 
