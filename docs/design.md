@@ -21,7 +21,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
            │
            ▼
   ┌─────────────────────┐
-  │  ch-xbrl (Go)       │  open input → worker pool → iXBRL parse
+  │  ch-xbrl (Go)       │  open input → worker pool → iXBRL / XBRL parse
   │  cmd/ch-xbrl        │  instance XML only (no taxonomy / linkbases)
   └─────────┬───────────┘
             │ long-format facts.csv
@@ -32,7 +32,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
   DuckDB sql/transform.sql → accounts_wide.parquet
 ```
 
-1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. Parse instance XML; emit every fact with period, unit, dimensions (JSON), `schemaRef` href as `taxonomy`, source filename.
+1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. Parse instance XML (inline `ix:` facts and non-inline items that carry `contextRef`); emit every fact with period, unit, dimensions (JSON), `schemaRef` href as `taxonomy`, source filename.
 2. **ch-xbrl-taxonomy** (infrequent) — Seed/download FRC schemas → `concepts.csv`. Not called at extract time.
 3. **Concept map** — Hand-curated `canonical,concept,priority,cast_type`. Lower `priority` wins.
 4. **DuckDB** — Non-dimensional filter, join map, priority-pick, pivot, explicit casts, Parquet.

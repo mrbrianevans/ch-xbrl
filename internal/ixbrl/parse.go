@@ -1,5 +1,5 @@
-// Package ixbrl parses Companies House inline XBRL (iXBRL) instance documents
-// into long-format facts.
+// Package ixbrl parses Companies House iXBRL and non-inline XBRL instance
+// documents into long-format facts.
 package ixbrl
 
 import (
@@ -123,9 +123,12 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		ContinuedAt string // head of ix:continuation chain, if any
 	}
 	type factFrame struct {
-		fact pendingFact
-		buf  strings.Builder
+		fact  pendingFact
+		buf   strings.Builder
+		space string
+		local string
 	}
+	var curIdentScheme string
 	var facts []pendingFact
 	var factStack []*factFrame
 
@@ -188,6 +191,9 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				local == "endDate" || local == "instant" || local == "measure"):
 				captureText = true
 				textBuf.Reset()
+				if local == "identifier" {
+					curIdentScheme = attrAny(t, "scheme")
+				}
 
 			case isNS(space, nsXBRLI) && local == "unit":
 				curUnit = &unitInfo{ID: attrAny(t, "id")}
@@ -210,7 +216,27 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				}
 				// Nested ix:nonNumeric / ix:nonFraction (Workiva wraps one
 				// fact inside another). Each layer is a separate fact.
-				factStack = append(factStack, &factFrame{fact: pf})
+				factStack = append(factStack, &factFrame{fact: pf, space: space, local: local})
+
+			case isClassicItem(space, t):
+				// Non-inline XBRL: an item is an element with contextRef
+				// (tuple wrappers have no contextRef and are not facts).
+				unitRef := attrAny(t, "unitRef")
+				decimals := attrAny(t, "decimals")
+				pf := pendingFact{
+					Name:       local,
+					ContextRef: attrAny(t, "contextRef"),
+					UnitRef:    unitRef,
+					Scale:      attrAny(t, "scale"),
+					Sign:       attrAny(t, "sign"),
+					Format:     attrAny(t, "format"),
+					Decimals:   decimals,
+					IsNumeric:  unitRef != "" || decimals != "" || attrAny(t, "precision") != "",
+				}
+				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
+					pf.Value = ""
+				}
+				factStack = append(factStack, &factFrame{fact: pf, space: space, local: local})
 
 			case isIX(space) && local == "continuation":
 				// Continuation of a prior fact (continuedAt chain).
@@ -253,6 +279,16 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				contBuf.Reset()
 				continue
 			}
+			if n := len(factStack); n > 0 && factStack[n-1].local == local && factStack[n-1].space == space {
+				fr := factStack[n-1]
+				factStack = factStack[:n-1]
+				fr.fact.Value = fr.buf.String()
+				facts = append(facts, fr.fact)
+				// Nested fact text is also the parent's visible content.
+				if len(factStack) > 0 {
+					factStack[len(factStack)-1].buf.WriteString(fr.fact.Value)
+				}
+			}
 			text := strings.TrimSpace(textBuf.String())
 
 			switch {
@@ -270,9 +306,10 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				inPeriod = false
 
 			case isNS(space, nsXBRLI) && local == "identifier" && curCtx != nil && inEntity:
-				if curCtx.CompanyNumber == "" {
+				if curCtx.CompanyNumber == "" && acceptEntityIdentifier(curIdentScheme, text) {
 					curCtx.CompanyNumber = text
 				}
+				curIdentScheme = ""
 			case isNS(space, nsXBRLI) && local == "startDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodStart = text
 			case isNS(space, nsXBRLI) && local == "endDate" && curCtx != nil && inPeriod:
@@ -318,18 +355,6 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 					units[curUnit.ID] = curUnit
 				}
 				curUnit = nil
-
-			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
-				if n := len(factStack); n > 0 {
-					fr := factStack[n-1]
-					factStack = factStack[:n-1]
-					fr.fact.Value = fr.buf.String()
-					facts = append(facts, fr.fact)
-					// Nested fact text is also the parent's visible content.
-					if len(factStack) > 0 {
-						factStack[len(factStack)-1].buf.WriteString(fr.fact.Value)
-					}
-				}
 			}
 
 			if captureText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
@@ -417,22 +442,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		})
 	}
 
-	// Backfill company_number from registered-number facts if missing.
-	regNo := ""
-	for _, f := range out {
-		if f.Concept == "UKCompaniesHouseRegisteredNumber" && f.Value != "" {
-			regNo = f.Value
-			break
-		}
-	}
-	if regNo != "" {
-		for i := range out {
-			if out[i].CompanyNumber == "" {
-				out[i].CompanyNumber = regNo
-			}
-		}
-	}
-
+	backfillCompanyNumber(out)
 	return out, nil
 }
 
@@ -515,6 +525,86 @@ var (
 	// Fallback: first 6–8 digit run in the basename (last resort).
 	companyAnyRE = regexp.MustCompile(`(?i)(?:^|_)([0-9]{6,8}|[A-Z]{2}[0-9]{6})(?:[_\.]|$)`)
 )
+
+// isClassicItem reports a non-inline XBRL item: an element that carries
+// contextRef and is not part of the instance, link, or inline-XBRL machinery.
+// Tuple containers omit contextRef, so they are not facts.
+func isClassicItem(space string, t xml.StartElement) bool {
+	if attrAny(t, "contextRef") == "" || t.Name.Local == "" {
+		return false
+	}
+	if space == nsIXBRL || space == nsIXBRL1 || strings.Contains(space, "inlineXBRL") {
+		return false
+	}
+	switch space {
+	case nsXBRLI, nsLink, nsXLink, nsXBRLDI, nsXMLNS,
+		"http://www.w3.org/1999/xhtml",
+		"http://www.w3.org/2001/XMLSchema-instance",
+		"http://www.w3.org/2001/XMLSchema",
+		"http://xbrl.org/2005/xbrldt",
+		"http://www.w3.org/2005/xpath-functions",
+		"http://www.xbrl.org/2003/iso4217":
+		return false
+	}
+	return true
+}
+
+// acceptEntityIdentifier reports whether an xbrli:identifier should be used as
+// company_number. Companies House iXBRL uses a companieshouse.gov.uk scheme.
+// Older joint-filing instances put the legal name in the identifier and the
+// number in CompaniesHouseRegisteredNumber; those names are not company numbers.
+func acceptEntityIdentifier(scheme, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	if strings.Contains(strings.ToLower(scheme), "companieshouse.gov.uk") {
+		return true
+	}
+	return looksLikeCompanyNumber(id)
+}
+
+func looksLikeCompanyNumber(s string) bool {
+	s = strings.TrimSpace(s)
+	if len(s) < 6 || len(s) > 8 {
+		return false
+	}
+	hasDigit := false
+	for _, r := range s {
+		switch {
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z':
+		default:
+			return false
+		}
+	}
+	return hasDigit
+}
+
+func backfillCompanyNumber(out []fact.Fact) {
+	regNo := ""
+	for _, f := range out {
+		if f.Value == "" {
+			continue
+		}
+		if f.Concept == "UKCompaniesHouseRegisteredNumber" {
+			regNo = f.Value
+			break
+		}
+		if regNo == "" && f.Concept == "CompaniesHouseRegisteredNumber" {
+			regNo = f.Value
+		}
+	}
+	if regNo == "" {
+		return
+	}
+	for i := range out {
+		if out[i].CompanyNumber == "" {
+			out[i].CompanyNumber = regNo
+		}
+	}
+}
 
 func companyFromFilename(name string) string {
 	base := filepath.Base(name)
@@ -705,7 +795,7 @@ func trimTrailingZeros(s string) string {
 var (
 	reSchemaRef        = regexp.MustCompile(`(?is)<[^>]*schemaRef[^>]+href=["']([^"']+)["']`)
 	reContext          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?context\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?context>`)
-	reIdentifier       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?identifier[^>]*>([^<]*)</(?:[\w.]+:)?identifier>`)
+	reIdentifier       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?identifier\b([^>]*)>([^<]*)</(?:[\w.]+:)?identifier>`)
 	reStartDate        = regexp.MustCompile(`(?is)<(?:[\w.]+:)?startDate[^>]*>([^<]*)</(?:[\w.]+:)?startDate>`)
 	reEndDate          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?endDate[^>]*>([^<]*)</(?:[\w.]+:)?endDate>`)
 	reInstant          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?instant[^>]*>([^<]*)</(?:[\w.]+:)?instant>`)
@@ -733,8 +823,11 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	for _, m := range reContext.FindAllStringSubmatch(s, -1) {
 		id, body := m[1], m[2]
 		ctx := &contextInfo{ID: id, Dimensions: map[string]string{}}
-		if im := reIdentifier.FindStringSubmatch(body); len(im) > 1 {
-			ctx.CompanyNumber = strings.TrimSpace(im[1])
+		if im := reIdentifier.FindStringSubmatch(body); len(im) > 2 {
+			id := strings.TrimSpace(im[2])
+			if acceptEntityIdentifier(parseAttrs(im[1])["scheme"], id) {
+				ctx.CompanyNumber = id
+			}
 		}
 		if sm := reStartDate.FindStringSubmatch(body); len(sm) > 1 {
 			ctx.PeriodStart = strings.TrimSpace(sm[1])
@@ -885,20 +978,7 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 		return nil, fmt.Errorf("no facts extracted from %s", sourceFile)
 	}
 
-	regNo := ""
-	for _, f := range out {
-		if f.Concept == "UKCompaniesHouseRegisteredNumber" && f.Value != "" {
-			regNo = f.Value
-			break
-		}
-	}
-	if regNo != "" {
-		for i := range out {
-			if out[i].CompanyNumber == "" {
-				out[i].CompanyNumber = regNo
-			}
-		}
-	}
+	backfillCompanyNumber(out)
 	return out, nil
 }
 

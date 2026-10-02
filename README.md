@@ -1,6 +1,6 @@
 # ch-xbrl
 
-Extracts Companies House iXBRL accounts to a **long-format fact CSV** (one row per fact). Instance XML only — it does not resolve taxonomies or linkbases.
+Extracts Companies House iXBRL and non-inline XBRL accounts to a **long-format fact CSV** (one row per fact). Instance XML only — it does not resolve taxonomies or linkbases. Non-inline items are elements that carry `contextRef` (tuple wrappers are not facts).
 
 ## Getting started
 
