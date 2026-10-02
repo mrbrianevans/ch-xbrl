@@ -14,14 +14,19 @@ const (
 
 // runExitCode is fail-closed: 0 only when the stream finished, every member
 // succeeded, and at least one member was extracted. Interrupt is 130.
-func runExitCode(filesOK, filesErr int64, streamErr error) int {
+// continueOnError logs member failures but still returns 0 when filesOK >= 1.
+// An empty extract and any stream error stay exit 1.
+func runExitCode(filesOK, filesErr int64, streamErr error, continueOnError bool) int {
 	if streamErr != nil {
 		if errors.Is(streamErr, context.Canceled) {
 			return exitInterrupt
 		}
 		return exitFail
 	}
-	if filesErr != 0 || filesOK < 1 {
+	if filesOK < 1 {
+		return exitFail
+	}
+	if filesErr != 0 && !continueOnError {
 		return exitFail
 	}
 	return exitOK

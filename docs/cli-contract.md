@@ -11,7 +11,7 @@ Until the first non-prerelease `v1.0.0` tag, this document is the intended freez
 ```text
 ch-xbrl -V
 ch-xbrl --version
-ch-xbrl [-o FILE] [-workers N] <path|url|->
+ch-xbrl [-o FILE] [-workers N] [--continue-on-error] <path|url|->
 ```
 
 Examples:
@@ -33,6 +33,7 @@ Flags are parsed with the Go `flag` package: they must appear **before** the pos
 | positional `<path\|url\|->` | Required (except `-V` / `--version` / `-h`). See **Inputs**. Stdin is **not** implicit: a missing positional still exits **2**; pass `-` to read stdin. |
 | `-o` / `--output` `FILE` | Write CSV to `FILE`. Omit = stdout. `-` is stdout. On a TTY, refuse unless `-o FILE` or `-o -`. |
 | `-workers` `N` | Concurrent parse workers. Default: `runtime.NumCPU()`. Values `< 1` clamp to 1. |
+| `--continue-on-error` | Log and skip members that fail to parse or write. Exit **0** when the stream finished and `files_ok >= 1`, even if `files_err > 0`. Exit **1** when `files_ok < 1` or the stream itself fails. Default is off (fail-closed). No error-count threshold. |
 | `-V` / `--version` | Print `ch-xbrl <semver> (<sha>)` to stdout and exit 0. Untagged / `go run` builds use `0.0.0-dev` and the VCS revision when available. |
 | `-h` / `--help` | Print usage to stderr and exit 0 (Go `flag` help). |
 
@@ -58,6 +59,8 @@ Unsupported format, missing file, empty stdin, refused stdin zip, or stream I/O 
 
 UTF-8, RFC 4180-style quoting (`encoding/csv`). Header row, then one row per fact. Values are **strings** through ch-xbrl; callers cast downstream.
 
+A frozen column meaning is what a caller can rely on. The procedure that fills the column is not frozen: a minor version may change it, as long as the column still means what this table says.
+
 Column order is frozen:
 
 ```text
@@ -66,13 +69,13 @@ company_number,period_start,period_end,concept,value,unit,dimensions,taxonomy,so
 
 | Column | Frozen meaning |
 |--------|----------------|
-| `company_number` | Context entity identifier, else filename heuristic, else `UKCompaniesHouseRegisteredNumber` |
+| `company_number` | Populated with the company's registered number, as a string. The value may contain letters. It is not an integer. |
 | `period_start` / `period_end` | ISO dates. Instant: `period_start` = `period_end` |
 | `concept` | **Local name** (not a namespace-qualified QName) |
 | `value` | Effective string (scale / sign / iXT applied for numerics) |
 | `unit` | Unit measure(s), empty if none |
 | `dimensions` | JSON object of local-name → member; empty if none |
-| `taxonomy` | First `schemaRef` href |
+| `taxonomy` | A schema reference href from the instance, or empty |
 | `source_file` | Archive member name, instance basename, or `-` for a stdin instance |
 | `decimals` | Raw iXBRL `decimals` attribute (`INF` stays `INF`); empty when absent or non-numeric |
 
@@ -83,19 +86,24 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 - Row order (worker pool).
 - Exact numeric pretty-print / trailing zeros.
 - Full narrative prose (nested `ix:exclude` or similar may still truncate). Fact **inventory** (concepts present, periods, numeric values) must still match.
+- How `company_number` is chosen. Today that can be the context identifier, the filename, or a registered-number fact such as `UKCompaniesHouseRegisteredNumber` / `CompaniesHouseRegisteredNumber`. A minor version may add or remove a source, including the filename.
+- Which schema reference is copied into `taxonomy` when an instance has more than one.
+- Stderr wording, including the text of a parse error.
 
 ## Exit codes (fail-closed)
 
 | Code | Meaning |
 |-----:|---------|
-| `0` | Stream finished, `files_err == 0`, and `files_ok >= 1` |
-| `1` | Any member failed to parse or write, empty extract (`files_ok < 1`), or fatal I/O / stream error |
+| `0` | Stream finished, `files_ok >= 1`, and `files_err == 0`. With `--continue-on-error`, `files_err` may be non-zero. |
+| `1` | Any member failed to parse or write (unless `--continue-on-error`), empty extract (`files_ok < 1`), or fatal I/O / stream error |
 | `2` | Usage: missing input, extra positionals, unknown flag, TTY stdout without `-o FILE` / `-o -` |
 | `130` | Interrupt (`Ctrl-C` / SIGINT) |
 
-`-h` and `-V` exit **0**. Per-file parse errors are logged on stderr and **fail the process** (exit 1), except interrupt (130).
+`-h` and `-V` exit **0**. Per-file parse errors are logged on stderr and **fail the process** (exit 1), except interrupt (130) and except `--continue-on-error`.
 
-A partial extract (some members OK, some not) is **not** success.
+A partial extract (some members OK, some not) is **not** success unless `--continue-on-error` was set. `--continue-on-error` does not turn an empty extract or a stream failure into success.
+
+A member that yields no facts is a failed member (`files_err`), not a successful empty file. That is part of the exit-code meanings above. The log text is not frozen.
 
 ## SemVer
 
@@ -113,6 +121,7 @@ A partial extract (some members OK, some not) is **not** success.
 - Add a new flag.
 - Add an input kind or archive format that does not change existing invocations (e.g. later `.tar.gz`; not implemented).
 - Accept flags after the positional (today they must come first).
+- Change how an existing column is populated while it still means what the frozen cell says (for example, add or remove the filename as a source of `company_number`).
 
 **Patch:** bug fixes that do not change the frozen meaning above.
 

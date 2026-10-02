@@ -43,8 +43,26 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 | Final artefact is **Parquet** | Analytics-ready |
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
 | Concept priority lives in **`concept_map.csv`**, not hard-coded Go | Curated in git; change without rebuild |
+| `company_number` is a **string** and may contain letters (`SC`, `NI`, `OC`, …) | Do not store, parse, or cast it as an integer or as digits-only |
 
 Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Use `verify/stream-read-xbrl/` (the published package + DuckDB pivot) as a soft oracle only.
+
+## Edge cases
+
+When you find an edge case, do not only change the code. A later edit can put the old behaviour back if nothing records that the case exists.
+
+Do both of these before the fix is finished:
+
+1. Document it in markdown, in [`docs/edge-cases.md`](docs/edge-cases.md). Say where it was found (archive URL and member name), what the input actually contains, and the behaviour that must be preserved.
+2. Add a regression test that fails if that behaviour is removed. Commit the real bytes when they are small enough (`internal/ixbrl/testdata/`).
+
+These three are already recorded. Keep the write-up and the tests if you refactor the parser.
+
+| Edge case | Found in | Tests |
+|-----------|----------|-------|
+| Corrupt member `Prod224_0088_08972528_20200331.xml` (binary, not XML; parse error) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_ContinueOnErrorSkipsBadMember` |
+| Placeholder member `Prod224_0088_11426842_20200630.xml` (`ATTACHMENTPLACEHOLDER127319911`; parse error, not a successful empty file) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_AttachmentPlaceholderIsAnError` |
+| Legal name in `xbrli:identifier` (`BEST MONEY HOLDING LIMITED` must not become `company_number`; the number is `06651382`) | [Accounts_Monthly_Data-April2010.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip) | `TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName` |
 
 ## Layout
 
@@ -66,6 +84,7 @@ data/             runtime outputs (gitignored)
 LICENSE           MIT (first-party code; samples are not MIT)
 docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
 docs/design.md    pipeline, layout, build-from-source
+docs/edge-cases.md  real archive inputs that must stay documented and tested
 AGENTS.md         this file
 README.md         user getting started (releases)
 ```
@@ -77,6 +96,7 @@ README.md         user getting started (releases)
 - Match existing style; prefer small diffs.
 - Format with `gofmt -w .` before commit (enforced by Go CI).
 - Parser / numeric / context behaviour: update or add tests under `internal/ixbrl/`.
+- A new edge case is not done until it is written up in `docs/edge-cases.md` (including where it was found) and a regression test fails if the fix is reverted. See [Edge cases](#edge-cases).
 - After parser or CLI changes, smoke-test:
 
   ```bash

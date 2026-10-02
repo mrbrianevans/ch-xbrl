@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/mrbrianevans/ch-xbrl/internal/fact"
 )
 
 func TestParseSampleFiles(t *testing.T) {
@@ -325,4 +328,211 @@ func TestContinuationOnSample09652677(t *testing.T) {
 	if len(got) < 40 {
 		t.Fatalf("still truncated: %q", got)
 	}
+}
+
+func TestParseClassicXBRL(t *testing.T) {
+	doc := `<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:pt="http://www.xbrl.org/uk/fr/gaap/pt/2004-12-01"
+  xmlns:ae="http://www.companieshouse.gov.uk/ef/xbrl/uk/fr/gaap/ae/2009-06-21">
+  <link:schemaRef xlink:type="simple" xlink:href="http://www.companieshouse.gov.uk/ef/xbrl/uk/fr/gaap/ae/2009-06-21/uk-gaap-ae-2009-06-21.xsd"/>
+  <pt:ShareholderFunds decimals="0" unitRef="GBP" contextRef="eName">10</pt:ShareholderFunds>
+  <pt:ApprovalDetails>
+    <pt:NameApprovingDirector contextRef="yName">Mr David Anthony Cooper</pt:NameApprovingDirector>
+  </pt:ApprovalDetails>
+  <ae:CompaniesHouseRegisteredNumber contextRef="yName">08974483</ae:CompaniesHouseRegisteredNumber>
+  <ae:CompanyDormant contextRef="yName">true</ae:CompanyDormant>
+  <pt:CashBankInHand decimals="0" unitRef="GBP" contextRef="eCH">5</pt:CashBankInHand>
+  <pt:Equity decimals="0" unitRef="GBP" contextRef="eDim">1</pt:Equity>
+  <xbrli:context id="yName">
+    <xbrli:entity>
+      <xbrli:identifier scheme="Example Ltd/results">Example Ltd</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2019-04-01</xbrli:startDate>
+      <xbrli:endDate>2020-03-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="eName">
+    <xbrli:entity>
+      <xbrli:identifier scheme="Example Ltd/results">Example Ltd</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period><xbrli:instant>2020-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="eCH">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.companieshouse.gov.uk/">06022930</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period><xbrli:instant>2020-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <xbrli:context id="eDim">
+    <xbrli:entity>
+      <xbrli:identifier scheme="Example Ltd/results">Example Ltd</xbrli:identifier>
+      <xbrli:segment>
+        <xbrldi:explicitMember dimension="bus:EquityClassesDimension">bus:ShareCapital</xbrldi:explicitMember>
+      </xbrli:segment>
+    </xbrli:entity>
+    <xbrli:period><xbrli:instant>2020-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="GBP"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+</xbrli:xbrl>`
+
+	facts, err := ParseBytes([]byte(doc), "accounts.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byConcept := map[string][]factView{}
+	for _, f := range facts {
+		byConcept[f.Concept] = append(byConcept[f.Concept], factView{f})
+	}
+	if _, ok := byConcept["ApprovalDetails"]; ok {
+		t.Fatal("tuple wrapper emitted as a fact")
+	}
+	if _, ok := byConcept["schemaRef"]; ok {
+		t.Fatal("schemaRef emitted as a fact")
+	}
+
+	sh := mustOne(t, byConcept, "ShareholderFunds")
+	if sh.Value != "10" || sh.Unit != "iso4217:GBP" || sh.Decimals != "0" {
+		t.Fatalf("ShareholderFunds = %+v", sh)
+	}
+	if sh.PeriodStart != "2020-03-31" || sh.PeriodEnd != "2020-03-31" {
+		t.Fatalf("ShareholderFunds period = %s..%s", sh.PeriodStart, sh.PeriodEnd)
+	}
+	if sh.CompanyNumber != "08974483" {
+		t.Fatalf("name-identifier context company=%q want registered-number backfill", sh.CompanyNumber)
+	}
+	if sh.Taxonomy != "http://www.companieshouse.gov.uk/ef/xbrl/uk/fr/gaap/ae/2009-06-21/uk-gaap-ae-2009-06-21.xsd" {
+		t.Fatalf("taxonomy=%q", sh.Taxonomy)
+	}
+
+	name := mustOne(t, byConcept, "NameApprovingDirector")
+	if name.Value != "Mr David Anthony Cooper" || name.CompanyNumber != "08974483" {
+		t.Fatalf("director = %+v", name)
+	}
+	if name.PeriodStart != "2019-04-01" || name.PeriodEnd != "2020-03-31" {
+		t.Fatalf("director period = %s..%s", name.PeriodStart, name.PeriodEnd)
+	}
+
+	dormant := mustOne(t, byConcept, "CompanyDormant")
+	if dormant.Value != "true" || dormant.Unit != "" || dormant.Decimals != "" {
+		t.Fatalf("dormant = %+v", dormant)
+	}
+
+	cash := mustOne(t, byConcept, "CashBankInHand")
+	if cash.CompanyNumber != "06022930" || cash.Value != "5" {
+		t.Fatalf("cash = %+v", cash)
+	}
+
+	eq := mustOne(t, byConcept, "Equity")
+	if eq.Dimensions != `{"EquityClassesDimension":"ShareCapital"}` {
+		t.Fatalf("dimensions=%q", eq.Dimensions)
+	}
+	if eq.CompanyNumber != "08974483" {
+		t.Fatalf("dimensional company=%q", eq.CompanyNumber)
+	}
+}
+
+func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
+	// Found in https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip
+	// The scheme mentions Companies House, but the identifier is the legal name.
+	// See docs/edge-cases.md.
+	doc := `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:ae="http://example.com/ae">
+  <ae:CompaniesHouseRegisteredNumber contextRef="y">06651382</ae:CompaniesHouseRegisteredNumber>
+  <ae:EntityCurrentLegalName contextRef="y">BEST MONEY HOLDING LIMITED</ae:EntityCurrentLegalName>
+  <xbrli:context id="y">
+    <xbrli:entity>
+      <xbrli:identifier scheme="www.companieshouse.gov.uk">BEST MONEY HOLDING LIMITED</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2008-07-21</xbrli:startDate>
+      <xbrli:endDate>2009-12-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "Prod224_9953_06651382_20091231.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range facts {
+		if f.CompanyNumber != "06651382" {
+			t.Fatalf("%s company_number=%q", f.Concept, f.CompanyNumber)
+		}
+	}
+}
+
+func TestParseKnownArchiveAnomalies(t *testing.T) {
+	// Real members from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
+	// See docs/edge-cases.md.
+	cases := []string{
+		"Prod224_0088_11426842_20200630.xml",
+		"Prod224_0088_08972528_20200331.xml",
+	}
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			facts, err := ParseBytes(data, name)
+			if err == nil {
+				t.Fatalf("expected error, got %d facts", len(facts))
+			}
+			if !strings.Contains(err.Error(), "no facts extracted from "+name) {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
+func TestCompanyNumberAllowsLetters(t *testing.T) {
+	for _, id := range []string{"SC248149", "NI012345", "OC123456", "SO123456", "R0000001", "08972528"} {
+		if !looksLikeCompanyNumber(id) {
+			t.Errorf("%s should be a company number; letters are valid", id)
+		}
+	}
+	for _, id := range []string{"BEST MONEY HOLDING LIMITED", "12345", "LIMITED", "123456789"} {
+		if looksLikeCompanyNumber(id) {
+			t.Errorf("%s should not be accepted as a company number", id)
+		}
+	}
+	if got := companyFromFilename("Prod224_0088_SC248149_20100331.xml"); got != "SC248149" {
+		t.Fatalf("filename company=%q", got)
+	}
+
+	doc := `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:pt="http://example.com/pt">
+  <pt:ShareholderFunds contextRef="y" unitRef="u" decimals="0">1</pt:ShareholderFunds>
+  <xbrli:context id="y">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.companieshouse.gov.uk/">SC248149</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period><xbrli:instant>2010-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="u"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "Prod224_0088_SC248149_20100331.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if facts[0].CompanyNumber != "SC248149" {
+		t.Fatalf("company_number=%q", facts[0].CompanyNumber)
+	}
+}
+
+type factView struct{ fact.Fact }
+
+func mustOne(t *testing.T, m map[string][]factView, concept string) fact.Fact {
+	t.Helper()
+	got := m[concept]
+	if len(got) != 1 {
+		t.Fatalf("%s count=%d", concept, len(got))
+	}
+	return got[0].Fact
 }

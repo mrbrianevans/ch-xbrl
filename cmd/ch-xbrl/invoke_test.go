@@ -302,6 +302,117 @@ func TestRun_PipeWithoutDashExit2(t *testing.T) {
 	}
 }
 
+func TestRun_ContinueOnErrorSkipsBadMember(t *testing.T) {
+	// Corrupt member from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
+	// See docs/edge-cases.md.
+	dir := t.TempDir()
+	good, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodName := filepath.Base(sampleXHTML(t))
+	if err := os.WriteFile(filepath.Join(dir, goodName), good, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const badName = "Prod224_0088_08972528_20200331.xml"
+	bad, err := os.ReadFile(filepath.Join("..", "..", "internal", "ixbrl", "testdata", badName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, badName), bad, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", dir}, nil)
+	if code != exitFail {
+		t.Fatalf("default exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("partial CSV should still contain facts from the good member")
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", dir}, nil)
+	if code != exitOK {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
+	}
+	assertCSV(t, stdout)
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("--continue-on-error CSV missing facts from the good member")
+	}
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "no facts extracted") || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("--continue-on-error should still log the bad member: %s", stderr)
+	}
+
+	badOnly := t.TempDir()
+	if err := os.WriteFile(filepath.Join(badOnly, badName), []byte("<*\x0cnot-xml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", badOnly}, nil)
+	if code != exitFail {
+		t.Fatalf("--continue-on-error with no successful member exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+}
+
+func TestRun_AttachmentPlaceholderIsAnError(t *testing.T) {
+	// Placeholder member from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
+	// See docs/edge-cases.md.
+	const name = "Prod224_0088_11426842_20200630.xml"
+	placeholder, err := os.ReadFile(filepath.Join("..", "..", "internal", "ixbrl", "testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(placeholder) != "ATTACHMENTPLACEHOLDER127319911" {
+		t.Fatalf("fixture changed: %q", placeholder)
+	}
+
+	dir := t.TempDir()
+	good, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodName := filepath.Base(sampleXHTML(t))
+	if err := os.WriteFile(filepath.Join(dir, goodName), good, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), placeholder, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", dir}, nil)
+	if code != exitFail {
+		t.Fatalf("default exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, name) || !strings.Contains(stderr, "no facts extracted") {
+		t.Fatalf("placeholder should be logged as a parse error: %s", stderr)
+	}
+
+	var stdout string
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", dir}, nil)
+	if code != exitOK {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
+	}
+	if !strings.Contains(stderr, name) || !strings.Contains(stderr, "no facts extracted") || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("--continue-on-error should log the placeholder, not skip it quietly: %s", stderr)
+	}
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("good member facts missing")
+	}
+
+	only := t.TempDir()
+	if err := os.WriteFile(filepath.Join(only, name), placeholder, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", only}, nil)
+	if code != exitFail {
+		t.Fatalf("placeholder-only run exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+}
+
 func TestRun_EmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("skip"), 0o644); err != nil {
