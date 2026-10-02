@@ -98,7 +98,7 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 
 A partial extract (some members OK, some not) is **not** success unless `--continue-on-error` was set. `--continue-on-error` does not turn an empty extract or a stream failure into success.
 
-A member that yields no facts is a parse error (`no facts extracted`), including non-XML placeholders. It increments `files_err`. It is not a successful empty file. Known archive cases: [anomalies.md](./anomalies.md).
+A member that yields no facts is a parse error (`no facts extracted`), including non-XML placeholders. It increments `files_err`. It is not a successful empty file. Known archive cases, with the zip they came from: [edge-cases.md](./edge-cases.md).
 
 ## SemVer
 

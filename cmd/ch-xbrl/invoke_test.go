@@ -303,6 +303,9 @@ func TestRun_PipeWithoutDashExit2(t *testing.T) {
 }
 
 func TestRun_ContinueOnErrorSkipsBadMember(t *testing.T) {
+	// Corrupt member from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
+	// See docs/edge-cases.md.
 	dir := t.TempDir()
 	good, err := os.ReadFile(sampleXHTML(t))
 	if err != nil {
@@ -355,6 +358,9 @@ func TestRun_ContinueOnErrorSkipsBadMember(t *testing.T) {
 }
 
 func TestRun_AttachmentPlaceholderIsAnError(t *testing.T) {
+	// Placeholder member from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
+	// See docs/edge-cases.md.
 	const name = "Prod224_0088_11426842_20200630.xml"
 	placeholder, err := os.ReadFile(filepath.Join("..", "..", "internal", "ixbrl", "testdata", name))
 	if err != nil {

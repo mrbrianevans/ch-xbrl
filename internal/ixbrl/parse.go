@@ -557,8 +557,10 @@ func isClassicItem(space string, t xml.StartElement) bool {
 
 // acceptEntityIdentifier reports whether an xbrli:identifier should be used as
 // company_number. The value has to look like a company number. April 2010
-// joint filings use scheme www.companieshouse.gov.uk with the legal name in
-// the identifier and the number in CompaniesHouseRegisteredNumber or the filename.
+// joint filings (Accounts_Monthly_Data-April2010.zip) use scheme
+// www.companieshouse.gov.uk with the legal name in the identifier and the
+// number in CompaniesHouseRegisteredNumber or the filename.
+// See docs/edge-cases.md.
 func acceptEntityIdentifier(_, id string) bool {
 	return looksLikeCompanyNumber(id)
 }

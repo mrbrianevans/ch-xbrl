@@ -47,7 +47,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 - Explicit casts in DuckDB over silent type inference.
 - Instants: `period_start = period_end`.
 - `company_number` stays a string. Letters are part of the number (`SC`, `NI`, `OC`). Do not cast it to an integer.
-- A member with no facts is a parse error. Known bad archive members: [anomalies.md](./anomalies.md).
+- A member with no facts is a parse error. Known archive edge cases, including where they were found: [edge-cases.md](./edge-cases.md).
 
 ## Layout
 
@@ -65,6 +65,7 @@ verify/stream-read-xbrl/  wide-row soft oracle
 data/              runtime outputs (not committed)
 docs/cli-contract.md  frozen CLI
 docs/design.md     this file
+docs/edge-cases.md real archive inputs that must stay documented and tested
 ```
 
 ## Build from source

@@ -438,7 +438,9 @@ func TestParseClassicXBRL(t *testing.T) {
 }
 
 func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
-	// April 2010 joint filings: scheme mentions Companies House, identifier is the legal name.
+	// Found in https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip
+	// The scheme mentions Companies House, but the identifier is the legal name.
+	// See docs/edge-cases.md.
 	doc := `<?xml version="1.0"?>
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:ae="http://example.com/ae">
   <ae:CompaniesHouseRegisteredNumber contextRef="y">06651382</ae:CompaniesHouseRegisteredNumber>
@@ -465,7 +467,9 @@ func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
 }
 
 func TestParseKnownArchiveAnomalies(t *testing.T) {
-	// Real members from Accounts_Monthly_Data-March2021.zip. See docs/anomalies.md.
+	// Real members from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
+	// See docs/edge-cases.md.
 	cases := []string{
 		"Prod224_0088_11426842_20200630.xml",
 		"Prod224_0088_08972528_20200331.xml",
