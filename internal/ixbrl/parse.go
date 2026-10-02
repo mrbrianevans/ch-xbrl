@@ -550,17 +550,10 @@ func isClassicItem(space string, t xml.StartElement) bool {
 }
 
 // acceptEntityIdentifier reports whether an xbrli:identifier should be used as
-// company_number. Companies House iXBRL uses a companieshouse.gov.uk scheme.
-// Older joint-filing instances put the legal name in the identifier and the
-// number in CompaniesHouseRegisteredNumber; those names are not company numbers.
-func acceptEntityIdentifier(scheme, id string) bool {
-	id = strings.TrimSpace(id)
-	if id == "" {
-		return false
-	}
-	if strings.Contains(strings.ToLower(scheme), "companieshouse.gov.uk") {
-		return true
-	}
+// company_number. The value has to look like a company number. April 2010
+// joint filings use scheme www.companieshouse.gov.uk with the legal name in
+// the identifier and the number in CompaniesHouseRegisteredNumber or the filename.
+func acceptEntityIdentifier(_, id string) bool {
 	return looksLikeCompanyNumber(id)
 }
 

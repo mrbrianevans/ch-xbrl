@@ -436,6 +436,33 @@ func TestParseClassicXBRL(t *testing.T) {
 	}
 }
 
+func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
+	// April 2010 joint filings: scheme mentions Companies House, identifier is the legal name.
+	doc := `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:ae="http://example.com/ae">
+  <ae:CompaniesHouseRegisteredNumber contextRef="y">06651382</ae:CompaniesHouseRegisteredNumber>
+  <ae:EntityCurrentLegalName contextRef="y">BEST MONEY HOLDING LIMITED</ae:EntityCurrentLegalName>
+  <xbrli:context id="y">
+    <xbrli:entity>
+      <xbrli:identifier scheme="www.companieshouse.gov.uk">BEST MONEY HOLDING LIMITED</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2008-07-21</xbrli:startDate>
+      <xbrli:endDate>2009-12-31</xbrli:endDate>
+    </xbrli:period>
+  </xbrli:context>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "Prod224_9953_06651382_20091231.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range facts {
+		if f.CompanyNumber != "06651382" {
+			t.Fatalf("%s company_number=%q", f.Concept, f.CompanyNumber)
+		}
+	}
+}
+
 type factView struct{ fact.Fact }
 
 func mustOne(t *testing.T, m map[string][]factView, concept string) fact.Fact {
