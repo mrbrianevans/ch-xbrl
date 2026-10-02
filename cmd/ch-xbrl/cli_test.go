@@ -139,25 +139,33 @@ func TestParseConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("keep-going", func(t *testing.T) {
+	t.Run("--continue-on-error", func(t *testing.T) {
 		t.Parallel()
-		cfg, err := parseConfig([]string{"-keep-going", "-o", "facts.csv", "archive.zip"}, true)
+		cfg, err := parseConfig([]string{"--continue-on-error", "-o", "facts.csv", "archive.zip"}, true)
 		if err != nil {
 			t.Fatalf("parseConfig: %v", err)
 		}
-		if !cfg.keepGoing || cfg.input != "archive.zip" {
+		if !cfg.continueOnError || cfg.input != "archive.zip" {
 			t.Fatalf("got %+v", cfg)
 		}
 	})
 
-	t.Run("keep-going defaults off", func(t *testing.T) {
+	t.Run("continue-on-error defaults off", func(t *testing.T) {
 		t.Parallel()
 		cfg, err := parseConfig([]string{"-o", "facts.csv", "archive.zip"}, true)
 		if err != nil {
 			t.Fatalf("parseConfig: %v", err)
 		}
-		if cfg.keepGoing {
+		if cfg.continueOnError {
 			t.Fatalf("got %+v", cfg)
+		}
+	})
+
+	t.Run("old -keep-going flag is rejected", func(t *testing.T) {
+		t.Parallel()
+		_, err := parseConfig([]string{"-keep-going", "-o", "facts.csv", "archive.zip"}, true)
+		if err == nil {
+			t.Fatal("expected unknown-flag error for -keep-going")
 		}
 	})
 

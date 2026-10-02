@@ -18,12 +18,12 @@ var (
 )
 
 type config struct {
-	input       string
-	output      string // file path; empty when writing stdout
-	stdout      bool
-	workers     int
-	showVersion bool
-	keepGoing   bool
+	input           string
+	output          string // file path; empty when writing stdout
+	stdout          bool
+	workers         int
+	showVersion     bool
+	continueOnError bool
 }
 
 func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
@@ -38,7 +38,7 @@ func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
 	fs.BoolVar(&showVersion, "V", false, "print version and exit")
 	fs.BoolVar(&showVersion, "version", false, "print version and exit")
 	workers := fs.Int("workers", runtime.NumCPU(), "concurrent XBRL parse workers")
-	keepGoing := fs.Bool("keep-going", false, "log member parse errors and still exit 0 when files_ok>=1")
+	continueOnError := fs.Bool("continue-on-error", false, "log member parse errors and still exit 0 when files_ok>=1")
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
 	}
@@ -58,7 +58,7 @@ func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
 	if w < 1 {
 		w = 1
 	}
-	cfg := config{input: pos[0], workers: w, keepGoing: *keepGoing}
+	cfg := config{input: pos[0], workers: w, continueOnError: *continueOnError}
 
 	switch output {
 	case "":
@@ -79,7 +79,7 @@ func stdoutIsTerminal() bool {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: ch-xbrl [-o FILE] [-workers N] [-keep-going] <path|url|->
+	fmt.Fprint(w, `usage: ch-xbrl [-o FILE] [-workers N] [--continue-on-error] <path|url|->
        ch-xbrl -V
 
 Stream Companies House iXBRL to a long-format fact CSV.
@@ -94,7 +94,7 @@ Inputs (one positional):
 
   -o, --output FILE   write CSV to FILE (default: stdout)
   -workers N          concurrent parse workers (default: number of CPUs)
-  -keep-going         log member parse errors and still exit 0 when files_ok>=1
+  --continue-on-error log bad members and still exit 0 when files_ok>=1
   -V, --version       print version and exit
 
 Omit -o to write stdout when it is not a terminal (pipes, files).
@@ -102,7 +102,7 @@ On a TTY, pass -o FILE, or -o - to force stdout.
 
 Exit codes: 0 if the stream finished with files_ok>=1 and files_err=0;
 1 on any member or stream failure; 2 usage; 130 interrupt.
--keep-going still exits 1 when files_ok=0 or the stream itself fails.
+--continue-on-error still exits 1 when files_ok=0 or the stream itself fails.
 
 Examples:
   ch-xbrl -o facts.csv samples/sample.tar.zst

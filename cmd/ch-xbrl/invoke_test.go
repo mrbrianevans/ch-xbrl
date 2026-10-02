@@ -302,7 +302,7 @@ func TestRun_PipeWithoutDashExit2(t *testing.T) {
 	}
 }
 
-func TestRun_KeepGoingSkipsBadMember(t *testing.T) {
+func TestRun_ContinueOnErrorSkipsBadMember(t *testing.T) {
 	dir := t.TempDir()
 	good, err := os.ReadFile(sampleXHTML(t))
 	if err != nil {
@@ -328,25 +328,25 @@ func TestRun_KeepGoingSkipsBadMember(t *testing.T) {
 		t.Fatal("partial CSV should still contain facts from the good member")
 	}
 
-	code, stdout, stderr = runCLI(t, []string{"-keep-going", "-o", "-", "-workers", "1", dir}, nil)
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", dir}, nil)
 	if code != exitOK {
-		t.Fatalf("keep-going exit %d, want %d stderr=%s", code, exitOK, stderr)
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
 	}
 	assertCSV(t, stdout)
 	if !strings.Contains(stdout, "03024914") {
-		t.Fatal("keep-going CSV missing facts from the good member")
+		t.Fatal("--continue-on-error CSV missing facts from the good member")
 	}
 	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "files_err=1") {
-		t.Fatalf("keep-going should still log the bad member: %s", stderr)
+		t.Fatalf("--continue-on-error should still log the bad member: %s", stderr)
 	}
 
 	badOnly := t.TempDir()
 	if err := os.WriteFile(filepath.Join(badOnly, badName), []byte("<*\x0cnot-xml"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, _, stderr = runCLI(t, []string{"-keep-going", "-o", "-", "-workers", "1", badOnly}, nil)
+	code, _, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", badOnly}, nil)
 	if code != exitFail {
-		t.Fatalf("keep-going with no successful member exit %d, want %d stderr=%s", code, exitFail, stderr)
+		t.Fatalf("--continue-on-error with no successful member exit %d, want %d stderr=%s", code, exitFail, stderr)
 	}
 }
 

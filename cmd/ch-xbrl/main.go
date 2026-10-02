@@ -74,7 +74,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 		outFile, err = os.Create(cfg.output)
 		if err != nil {
 			log.Printf("create output: %v", err)
-			return runExitCode(0, 0, err, cfg.keepGoing)
+			return runExitCode(0, 0, err, cfg.continueOnError)
 		}
 		defer func() { _ = outFile.Close() }()
 		outW = outFile
@@ -162,5 +162,5 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 			streamErr = flushErr
 		}
 	}
-	return runExitCode(filesOK.Load(), filesErr.Load(), streamErr, cfg.keepGoing)
+	return runExitCode(filesOK.Load(), filesErr.Load(), streamErr, cfg.continueOnError)
 }

@@ -11,7 +11,7 @@ Until the first non-prerelease `v1.0.0` tag, this document is the intended freez
 ```text
 ch-xbrl -V
 ch-xbrl --version
-ch-xbrl [-o FILE] [-workers N] [-keep-going] <path|url|->
+ch-xbrl [-o FILE] [-workers N] [--continue-on-error] <path|url|->
 ```
 
 Examples:
@@ -33,7 +33,7 @@ Flags are parsed with the Go `flag` package: they must appear **before** the pos
 | positional `<path\|url\|->` | Required (except `-V` / `--version` / `-h`). See **Inputs**. Stdin is **not** implicit: a missing positional still exits **2**; pass `-` to read stdin. |
 | `-o` / `--output` `FILE` | Write CSV to `FILE`. Omit = stdout. `-` is stdout. On a TTY, refuse unless `-o FILE` or `-o -`. |
 | `-workers` `N` | Concurrent parse workers. Default: `runtime.NumCPU()`. Values `< 1` clamp to 1. |
-| `-keep-going` | Member parse or CSV-write errors are logged and omitted from the success check. Exit **0** when the stream finished and `files_ok >= 1`, even if `files_err > 0`. Exit **1** still when `files_ok < 1` or the stream itself fails. Default is off (fail-closed). |
+| `--continue-on-error` | Log and skip members that fail to parse or write. Exit **0** when the stream finished and `files_ok >= 1`, even if `files_err > 0`. Exit **1** when `files_ok < 1` or the stream itself fails. Default is off (fail-closed). No error-count threshold. |
 | `-V` / `--version` | Print `ch-xbrl <semver> (<sha>)` to stdout and exit 0. Untagged / `go run` builds use `0.0.0-dev` and the VCS revision when available. |
 | `-h` / `--help` | Print usage to stderr and exit 0 (Go `flag` help). |
 
@@ -89,14 +89,14 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 
 | Code | Meaning |
 |-----:|---------|
-| `0` | Stream finished, `files_ok >= 1`, and `files_err == 0`. With `-keep-going`, `files_err` may be non-zero. |
-| `1` | Any member failed to parse or write (unless `-keep-going`), empty extract (`files_ok < 1`), or fatal I/O / stream error |
+| `0` | Stream finished, `files_ok >= 1`, and `files_err == 0`. With `--continue-on-error`, `files_err` may be non-zero. |
+| `1` | Any member failed to parse or write (unless `--continue-on-error`), empty extract (`files_ok < 1`), or fatal I/O / stream error |
 | `2` | Usage: missing input, extra positionals, unknown flag, TTY stdout without `-o FILE` / `-o -` |
 | `130` | Interrupt (`Ctrl-C` / SIGINT) |
 
-`-h` and `-V` exit **0**. Per-file parse errors are logged on stderr and **fail the process** (exit 1), except interrupt (130) and except `-keep-going`.
+`-h` and `-V` exit **0**. Per-file parse errors are logged on stderr and **fail the process** (exit 1), except interrupt (130) and except `--continue-on-error`.
 
-A partial extract (some members OK, some not) is **not** success unless `-keep-going` was set. `-keep-going` does not turn an empty extract or a stream failure into success.
+A partial extract (some members OK, some not) is **not** success unless `--continue-on-error` was set. `--continue-on-error` does not turn an empty extract or a stream failure into success.
 
 ## SemVer
 

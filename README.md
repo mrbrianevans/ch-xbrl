@@ -40,7 +40,7 @@ ch-xbrl archive.zip -o facts.csv     # usage error (exit 2)
 
 **Input** (one positional): local or `https` `.zip` / `.tar.zst` / `.tar`, a single instance (`.xhtml` `.html` `.htm` `.xbrl` `.xml`), a directory of instances, or `-` (stdin). Zip on stdin is refused.
 
-**Exits:** `0` stream finished with `files_ok≥1` and no errors; `1` parse/empty/I/O; `2` usage; `130` interrupt. `-keep-going` still writes the CSV and exits `0` when some members fail, as long as `files_ok≥1`. Empty extracts and stream errors stay exit `1`.
+**Exits:** `0` stream finished with `files_ok≥1` and no errors; `1` parse/empty/I/O; `2` usage; `130` interrupt. `--continue-on-error` still writes the CSV and exits `0` when some members fail, as long as `files_ok≥1`. Empty extracts and stream errors stay exit `1`.
 
 ### CSV columns
 
