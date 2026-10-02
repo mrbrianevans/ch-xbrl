@@ -46,6 +46,8 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 - Taxonomy processing is decoupled from the instance parser.
 - Explicit casts in DuckDB over silent type inference.
 - Instants: `period_start = period_end`.
+- `company_number` stays a string. Letters are part of the number (`SC`, `NI`, `OC`). Do not cast it to an integer.
+- A member with no facts is a parse error. Known bad archive members: [anomalies.md](./anomalies.md).
 
 ## Layout
 

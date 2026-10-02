@@ -67,7 +67,7 @@ company_number,period_start,period_end,concept,value,unit,dimensions,taxonomy,so
 
 | Column | Frozen meaning |
 |--------|----------------|
-| `company_number` | Context entity identifier, else filename heuristic, else `UKCompaniesHouseRegisteredNumber` |
+| `company_number` | String, not an integer. Companies House numbers may contain letters (`SC248149`, `NI012345`, `OC123456`). Taken from an identifier that looks like a company number, else the filename, else `UKCompaniesHouseRegisteredNumber` or `CompaniesHouseRegisteredNumber`. |
 | `period_start` / `period_end` | ISO dates. Instant: `period_start` = `period_end` |
 | `concept` | **Local name** (not a namespace-qualified QName) |
 | `value` | Effective string (scale / sign / iXT applied for numerics) |
@@ -97,6 +97,8 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 `-h` and `-V` exit **0**. Per-file parse errors are logged on stderr and **fail the process** (exit 1), except interrupt (130) and except `--continue-on-error`.
 
 A partial extract (some members OK, some not) is **not** success unless `--continue-on-error` was set. `--continue-on-error` does not turn an empty extract or a stream failure into success.
+
+A member that yields no facts is a parse error (`no facts extracted`), including non-XML placeholders. It increments `files_err`. It is not a successful empty file. Known archive cases: [anomalies.md](./anomalies.md).
 
 ## SemVer
 

@@ -442,6 +442,9 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		})
 	}
 
+	if len(out) == 0 {
+		return nil, errNoFacts(sourceFile)
+	}
 	backfillCompanyNumber(out)
 	return out, nil
 }
@@ -516,13 +519,16 @@ func qnameLocal(q string) string {
 //   - {company}_{type}_{date}.xhtml   e.g. 03024914_aa_2023-03-13.xhtml
 //   - Prod{run}_{batch}_{company}_{yyyymmdd}.{html|xml|xhtml}
 //     e.g. Prod223_4203_00134794_20250927.html
-//   - Optional LLP / SC / NI style ids: SC123456, NI123456, etc.
+//
+// A company number is a string, not an integer. Letters are normal:
+// SC (Scotland), NI (Northern Ireland), OC/SO (LLP), NC, R, and similar
+// prefixes. Do not require an all-digit value and do not cast to an integer.
 var (
 	// Prefer Prod* first so the middle company field is not confused with batch numbers.
 	prodFileRE = regexp.MustCompile(`(?i)^Prod\d+_\d+_([A-Z]{0,2}\d{6,8})_\d{8}\.(html|htm|xml|xhtml|zip)$`)
 	// Leading company id before underscore or extension.
 	companyFileRE = regexp.MustCompile(`(?i)^([0-9]{6,8}|[A-Z]{2}[0-9]{6})[_\.]`)
-	// Fallback: first 6–8 digit run in the basename (last resort).
+	// Fallback: company number anywhere in the basename (letters allowed).
 	companyAnyRE = regexp.MustCompile(`(?i)(?:^|_)([0-9]{6,8}|[A-Z]{2}[0-9]{6})(?:[_\.]|$)`)
 )
 
@@ -557,6 +563,10 @@ func acceptEntityIdentifier(_, id string) bool {
 	return looksLikeCompanyNumber(id)
 }
 
+// looksLikeCompanyNumber reports a Companies House registered number.
+// The value is a short alphanumeric string, not an integer. Letters are
+// part of the number (SC248149, NI012345, OC123456). A digits-only check
+// is wrong. A legal name fails because of length, spaces, or punctuation.
 func looksLikeCompanyNumber(s string) bool {
 	s = strings.TrimSpace(s)
 	if len(s) < 6 || len(s) > 8 {
@@ -804,6 +814,10 @@ var (
 	reAttr             = regexp.MustCompile(`(?i)([:\w]+)\s*=\s*["']([^"']*)["']`)
 )
 
+func errNoFacts(sourceFile string) error {
+	return fmt.Errorf("no facts extracted from %s", sourceFile)
+}
+
 func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	data = stripXMLPreamble(data)
 	s := string(data)
@@ -968,7 +982,7 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	}
 
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no facts extracted from %s", sourceFile)
+		return nil, errNoFacts(sourceFile)
 	}
 
 	backfillCompanyNumber(out)

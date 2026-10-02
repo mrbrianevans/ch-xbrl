@@ -190,6 +190,7 @@ PIVOT (
 -- 7. Explicit casts
 CREATE OR REPLACE TABLE accounts_wide AS
 SELECT
+  -- VARCHAR on purpose. Company numbers may contain letters (SC, NI, OC). Do not cast to an integer.
   CAST(company_number AS VARCHAR)                                     AS company_number,
   period_start,
   period_end,

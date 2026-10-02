@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
@@ -460,6 +461,64 @@ func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
 		if f.CompanyNumber != "06651382" {
 			t.Fatalf("%s company_number=%q", f.Concept, f.CompanyNumber)
 		}
+	}
+}
+
+func TestParseKnownArchiveAnomalies(t *testing.T) {
+	// Real members from Accounts_Monthly_Data-March2021.zip. See docs/anomalies.md.
+	cases := []string{
+		"Prod224_0088_11426842_20200630.xml",
+		"Prod224_0088_08972528_20200331.xml",
+	}
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			facts, err := ParseBytes(data, name)
+			if err == nil {
+				t.Fatalf("expected error, got %d facts", len(facts))
+			}
+			if !strings.Contains(err.Error(), "no facts extracted from "+name) {
+				t.Fatalf("err=%v", err)
+			}
+		})
+	}
+}
+
+func TestCompanyNumberAllowsLetters(t *testing.T) {
+	for _, id := range []string{"SC248149", "NI012345", "OC123456", "SO123456", "R0000001", "08972528"} {
+		if !looksLikeCompanyNumber(id) {
+			t.Errorf("%s should be a company number; letters are valid", id)
+		}
+	}
+	for _, id := range []string{"BEST MONEY HOLDING LIMITED", "12345", "LIMITED", "123456789"} {
+		if looksLikeCompanyNumber(id) {
+			t.Errorf("%s should not be accepted as a company number", id)
+		}
+	}
+	if got := companyFromFilename("Prod224_0088_SC248149_20100331.xml"); got != "SC248149" {
+		t.Fatalf("filename company=%q", got)
+	}
+
+	doc := `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:pt="http://example.com/pt">
+  <pt:ShareholderFunds contextRef="y" unitRef="u" decimals="0">1</pt:ShareholderFunds>
+  <xbrli:context id="y">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.companieshouse.gov.uk/">SC248149</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period><xbrli:instant>2010-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="u"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "Prod224_0088_SC248149_20100331.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if facts[0].CompanyNumber != "SC248149" {
+		t.Fatalf("company_number=%q", facts[0].CompanyNumber)
 	}
 }
 

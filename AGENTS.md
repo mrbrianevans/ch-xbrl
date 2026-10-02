@@ -43,8 +43,11 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 | Final artefact is **Parquet** | Analytics-ready |
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
 | Concept priority lives in **`concept_map.csv`**, not hard-coded Go | Curated in git; change without rebuild |
+| `company_number` is a **string** and may contain letters (`SC`, `NI`, `OC`, …) | Do not store, parse, or cast it as an integer or as digits-only |
 
 Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Use `verify/stream-read-xbrl/` (the published package + DuckDB pivot) as a soft oracle only.
+
+A member that yields no facts is a parse error (`files_err`), not a successful empty file. Keep the regression fixtures in `internal/ixbrl/testdata/` for the known bad Companies House members described in `docs/anomalies.md`.
 
 ## Layout
 
