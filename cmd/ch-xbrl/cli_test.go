@@ -139,6 +139,28 @@ func TestParseConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("keep-going", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := parseConfig([]string{"-keep-going", "-o", "facts.csv", "archive.zip"}, true)
+		if err != nil {
+			t.Fatalf("parseConfig: %v", err)
+		}
+		if !cfg.keepGoing || cfg.input != "archive.zip" {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
+	t.Run("keep-going defaults off", func(t *testing.T) {
+		t.Parallel()
+		cfg, err := parseConfig([]string{"-o", "facts.csv", "archive.zip"}, true)
+		if err != nil {
+			t.Fatalf("parseConfig: %v", err)
+		}
+		if cfg.keepGoing {
+			t.Fatalf("got %+v", cfg)
+		}
+	})
+
 	t.Run("stdin dash with -o -", func(t *testing.T) {
 		t.Parallel()
 		cfg, err := parseConfig([]string{"-o", "-", "-"}, true)
