@@ -600,6 +600,59 @@ func TestRun_NestedZipFactsMatchDirect(t *testing.T) {
 	}
 }
 
+func TestRun_NestedZipSkipsCIC34(t *testing.T) {
+	accountsName := "CIC-05016384/accounts/financialStatement.xhtml"
+	reportName := "CIC-05016384/cic34/cicReport.xhtml"
+	wrapper := "Prod223_4320_05016384_20251231_CIC.zip"
+	xhtml, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inner := writeZipBytes(t, filepath.Join(dir, "inner.zip"), map[string][]byte{
+		accountsName: xhtml,
+		reportName:   xhtml,
+	})
+	innerBytes, err := os.ReadFile(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := writeZipBytes(t, filepath.Join(dir, "outer.zip"), map[string][]byte{
+		wrapper: innerBytes,
+	})
+
+	code, directCSV, directErr := runCLI(t, []string{"-o", "-", "-workers", "1", inner}, nil)
+	if code != exitOK {
+		t.Fatalf("direct exit %d stderr=%s", code, directErr)
+	}
+	code, outerCSV, outerErr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
+	if code != exitOK {
+		t.Fatalf("outer exit %d stderr=%s", code, outerErr)
+	}
+
+	directAccounts := rowsBlankingSource(t, directCSV, accountsName)
+	directReport := rowsBlankingSource(t, directCSV, reportName)
+	if len(directAccounts) == 0 || strings.Join(directAccounts, "\n") != strings.Join(directReport, "\n") {
+		t.Fatalf("direct CIC zip should parse both instances, accounts=%d cic34=%d", len(directAccounts), len(directReport))
+	}
+	outerRows := rowsBlankingSource(t, outerCSV, wrapper)
+	if strings.Join(directAccounts, "\n") != strings.Join(outerRows, "\n") {
+		t.Fatalf("nested facts = %d, accounts facts = %d", len(outerRows), len(directAccounts))
+	}
+	if len(rowsForSource(t, outerCSV, reportName)) != 0 || len(rowsForSource(t, outerCSV, accountsName)) != 0 {
+		t.Fatal("inner path was used as source_file")
+	}
+	if !strings.Contains(outerErr, "skip nested member: "+reportName) {
+		t.Fatalf("stderr missing cic34 skip:\n%s", outerErr)
+	}
+	if !strings.Contains(outerErr, "nested zip: "+wrapper+" (1 members)") {
+		t.Fatalf("stderr missing nested zip summary:\n%s", outerErr)
+	}
+	if !strings.Contains(outerErr, "files_err=0") || !strings.Contains(outerErr, "members=1") {
+		t.Fatalf("stderr: %s", outerErr)
+	}
+}
+
 func TestRun_NestedZipSkipsDeeperZip(t *testing.T) {
 	keepName := "CIC-03024914/accounts/keep.xhtml"
 	secretName := "secret.xhtml"

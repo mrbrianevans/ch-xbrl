@@ -39,8 +39,11 @@ const maxMemberSize = 50 << 20
 // 403 and 404 are not.
 //
 // A .zip input (local or remote) also opens members whose names end in .zip,
-// one level (Companies House CIC packages). A zip inside that inner zip is
-// skipped. Tar, directories, and stdin do not open nested zips.
+// one level (Companies House CIC packages). Only inner instances under an
+// accounts directory are emitted; a CIC34 report under cic34/ is skipped.
+// Opening that zip as the input itself still yields every inner instance.
+// A zip inside the inner zip is skipped. Tar, directories, and stdin do not
+// open nested zips.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }
@@ -101,6 +104,23 @@ func Describe(source string) string {
 		return "remote"
 	}
 	return f.String()
+}
+
+// hasPathSegment reports whether name has a directory segment equal to
+// segment, case-insensitively. The last component is the file name, so
+// accounts.xhtml does not match segment "accounts".
+func hasPathSegment(name, segment string) bool {
+	name = strings.Trim(filepath.ToSlash(name), "/")
+	parts := strings.Split(name, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts[:len(parts)-1] {
+		if strings.EqualFold(part, segment) {
+			return true
+		}
+	}
+	return false
 }
 
 // isXBRLName reports whether an archive member looks like an iXBRL/XBRL instance.

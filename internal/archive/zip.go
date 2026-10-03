@@ -99,11 +99,14 @@ func readZipFile(f *zip.File) ([]byte, error) {
 	return content, nil
 }
 
-// expandNestedZip opens one already-inflated zip member and emits its iXBRL
-// members. Inner members that are themselves zip files are logged and skipped.
+// expandNestedZip opens one already-inflated zip member and emits iXBRL
+// members that sit under an accounts directory. Companies House CIC packages
+// store the accounts filing there and a CIC34 report under cic34/; only the
+// accounts file is emitted. Other inner instances are logged and skipped.
+// Inner members that are themselves zip files are logged and skipped.
 // source_file is the wrapper member name, the same name a loose member of
 // this zip would get. The 50 MiB cap applies to the wrapper and each inner
-// instance.
+// instance. This filter is not used when the inner zip is the positional input.
 func expandNestedZip(ctx context.Context, name string, content []byte, out chan<- Member) (int, error) {
 	if int64(len(content)) > maxMemberSize {
 		return 0, fmt.Errorf("member %s exceeds size limit", name)
@@ -129,6 +132,10 @@ func expandNestedZip(ctx context.Context, name string, content []byte, out chan<
 			continue
 		}
 		if !isXBRLName(inner) {
+			continue
+		}
+		if !hasPathSegment(inner, "accounts") {
+			log.Printf("skip nested member: %s", inner)
 			continue
 		}
 		body, err := readZipFile(f)

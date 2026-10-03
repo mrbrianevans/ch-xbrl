@@ -57,18 +57,22 @@ CIC-05016384/accounts/financialStatement.xhtml
 CIC-05016384/cic34/cicReport.xhtml
 ```
 
-Other `*_CIC.zip` members in that pack follow the same layout: an accounts document and a CIC34 report, as `.xhtml` or `.html`, under `CIC-<number>/`. Some also store directory entries. None of the inner members are another zip.
+Other `*_CIC.zip` members in that pack follow the same layout: exactly one accounts document and one CIC34 report, as `.xhtml` or `.html`, under `CIC-<number>/`. Some also store directory entries. None of the inner members are another zip.
+
+The reliable split is the directory segment, not the basename. All 14 wrappers use a segment named `accounts` for the filing and `cic34` for the CIC34 report. Basenames vary (`financialStatement.xhtml`, `accounts.html`, `cic_accts.xhtml`, `9881-LTD CH Copy-31_12_2025.html`, `cicReport.xhtml`, `cic34.html`, `CIC34.xhtml`). Both documents contain facts. The CIC34 report is a different filing (community-interest statements), so unwrapping a bulk member keeps the accounts file and leaves the CIC34 report out.
 
 A name ending in `.zip` used to be dropped before it was counted. `ch-xbrl` on that pack reported `members=9518` and `files_err=0`, and `05016384` was absent from the CSV. Opening the inner zip and passing it as the positional input parses both documents (79 facts, `company_number` `05016384`).
 
 Behaviour that must stay:
 
 - Local and remote `.zip` inputs open members whose names end in `.zip`, one level.
-- Each inner iXBRL/XBRL file is emitted. Both the accounts document and the CIC34 report contain facts. `source_file` is the bulk member name unchanged (`Prod223_4320_05016384_20251231_CIC.zip` for every fact from that member, accounts and CIC34 alike). Opening the CIC zip itself as the positional input uses the inner path (`CIC-05016384/accounts/financialStatement.xhtml`), because that path is the member name of that zip.
+- From that inner zip, only iXBRL/XBRL members with a directory segment named `accounts` (case-insensitive) are emitted. A CIC34 report under `cic34/` is skipped and logged (`skip nested member: …`). It is not a parse error (`files_err` stays 0). A nested zip with no `accounts/` segment contributes no members.
+- `source_file` for those facts is the bulk member name unchanged (`Prod223_4320_05016384_20251231_CIC.zip`).
+- Opening the CIC zip itself as the positional input parses every inner instance, including the CIC34 report. `source_file` is then the inner path (`CIC-05016384/accounts/financialStatement.xhtml`), because that path is the member name of that zip. The accounts-only filter applies only when the zip is a member of another zip.
 - A `.zip` inside the inner zip is skipped and logged (`skip nested zip: …`). It is not a parse error (`files_err` stays 0).
 - The 50 MiB member cap applies to the wrapper zip and to each inner instance.
 - Directories, tar archives, and stdin do not open nested zips. Zip on stdin stays refused.
 
 The day pack is not in git. Tests build a tiny outer zip with one inner zip plus a loose instance.
 
-Tests: `TestStreamLocalNestedZip`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsDeeperZip`.
+Tests: `TestStreamLocalNestedZip`, `TestStreamNestedZipKeepsAccountsSkipsCIC34`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsCIC34`, `TestRun_NestedZipSkipsDeeperZip`.

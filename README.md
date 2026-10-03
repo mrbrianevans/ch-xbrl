@@ -38,7 +38,7 @@ ch-xbrl archive.zip -o facts.csv     # usage error (exit 2)
 
 `-o FILE` is required on a TTY (`-o -` forces stdout). Logs go to stderr. `-V` prints version.
 
-**Input** (one positional): local or `https` `.zip` / `.tar.zst` / `.tar`, a single instance (`.xhtml` `.html` `.htm` `.xbrl` `.xml`), a directory of instances, or `-` (stdin). A `.zip` member inside a `.zip` (Companies House CIC packages) is opened one level; a zip inside that inner zip is skipped. `source_file` stays the member name from the zip being read, so facts from `Prod223_4320_05016384_20251231_CIC.zip` use that name. Directories and tar inputs do not open nested zips. Zip on stdin is refused.
+**Input** (one positional): local or `https` `.zip` / `.tar.zst` / `.tar`, a single instance (`.xhtml` `.html` `.htm` `.xbrl` `.xml`), a directory of instances, or `-` (stdin). A `.zip` member inside a `.zip` (Companies House CIC packages) is opened one level. Only the inner file under an `accounts/` directory is parsed; a CIC34 report under `cic34/` is skipped. Opening that CIC zip itself still parses every instance inside it. A zip inside the inner zip is skipped. `source_file` stays the member name from the zip being read, so facts from `Prod223_4320_05016384_20251231_CIC.zip` use that name. Directories and tar inputs do not open nested zips. Zip on stdin is refused.
 
 **Exits:** `0` stream finished with `files_ok≥1` and no errors; `1` parse/empty/I/O; `2` usage; `130` interrupt. `--continue-on-error` still writes the CSV and exits `0` when some members fail, as long as `files_ok≥1`. Empty extracts and stream errors stay exit `1`.
 

@@ -156,19 +156,48 @@ func TestStreamLocalNestedZip(t *testing.T) {
 	}
 }
 
-func TestStreamNestedZipSourceFileIsWrapperName(t *testing.T) {
+func TestHasPathSegment(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"CIC-05016384/accounts/financialStatement.xhtml", true},
+		{"CIC-05016384/Accounts/other.html", true},
+		{"CIC-05016384/cic34/cicReport.xhtml", false},
+		{"CIC-05016384/CIC34/cicReport.xhtml", false},
+		{"CIC-05016384/loose.xhtml", false},
+		{"accounts.xhtml", false},
+		{"accounts", false},
+	}
+	for _, tc := range cases {
+		if got := hasPathSegment(tc.name, "accounts"); got != tc.want {
+			t.Errorf("hasPathSegment(%q)=%v want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestStreamNestedZipKeepsAccountsSkipsCIC34(t *testing.T) {
 	accounts := []byte("accounts-bytes")
+	cased := []byte("cased-accounts")
 	report := []byte("cic34-bytes")
+	loose := []byte("loose-bytes")
+	accountsName := "CIC-05016384/accounts/financialStatement.xhtml"
+	casedName := "CIC-05016384/Accounts/other.html"
+	reportName := "CIC-05016384/cic34/cicReport.xhtml"
+	looseName := "CIC-05016384/loose.xhtml"
 	inner := writeZipBytes(t, filepath.Join(t.TempDir(), "inner.zip"), map[string][]byte{
-		"CIC-05016384/accounts/financialStatement.xhtml": accounts,
-		"CIC-05016384/cic34/cicReport.xhtml":             report,
+		accountsName: accounts,
+		casedName:    cased,
+		reportName:   report,
+		looseName:    loose,
 	})
 	outer := writeZipBytes(t, filepath.Join(t.TempDir(), "outer.zip"), map[string][]byte{
 		cicWrapperName: readSample(t, inner),
 	})
+
 	got := collect(t, outer)
 	if len(got) != 2 {
-		t.Fatalf("members = %d, want 2", len(got))
+		t.Fatalf("nested members = %d, want 2 accounts files", len(got))
 	}
 	seen := map[string]int{}
 	for _, m := range got {
@@ -177,8 +206,16 @@ func TestStreamNestedZipSourceFileIsWrapperName(t *testing.T) {
 		}
 		seen[string(m.Content)]++
 	}
-	if seen[string(accounts)] != 1 || seen[string(report)] != 1 {
+	if seen[string(accounts)] != 1 || seen[string(cased)] != 1 || seen[string(report)] != 0 || seen[string(loose)] != 0 {
 		t.Fatalf("contents = %#v", seen)
+	}
+
+	direct := membersByName(t, collect(t, inner))
+	if len(direct) != 4 {
+		t.Fatalf("direct CIC zip members = %d, want every instance", len(direct))
+	}
+	if !bytes.Equal(direct[accountsName], accounts) || !bytes.Equal(direct[reportName], report) {
+		t.Fatal("direct open dropped an inner instance")
 	}
 }
 
