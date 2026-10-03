@@ -32,7 +32,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
   DuckDB sql/transform.sql → accounts_wide.parquet
 ```
 
-1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. Parse instance XML (inline `ix:` facts and non-inline items that carry `contextRef`); emit every fact with period, unit, dimensions (JSON), `schemaRef` href as `taxonomy`, source filename.
+1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. A `.zip` member inside a `.zip` is opened one level (Companies House CIC packages). Only an inner instance under an `accounts/` directory is parsed; a CIC34 report is skipped. Opening that zip itself still parses every instance inside it. A zip inside the inner zip is skipped. `source_file` stays the member name in the zip being read. Parse instance XML (inline `ix:` facts and non-inline items that carry `contextRef`); emit every fact with period, unit, dimensions (JSON), `schemaRef` href as `taxonomy`, source filename.
 2. **ch-xbrl-taxonomy** (infrequent) — Seed/download FRC schemas → `concepts.csv`. Not called at extract time.
 3. **Concept map** — Hand-curated `canonical,concept,priority,cast_type`. Lower `priority` wins.
 4. **DuckDB** — Non-dimensional filter, join map, priority-pick, pivot, explicit casts, Parquet.
@@ -59,7 +59,7 @@ internal/          ixbrl, archive, fact, csvout
 mapping/           concept_map.csv
 reference/         concepts.csv
 sql/               DuckDB transforms
-samples/           example iXBRL (OGL; samples/NOTICE)
+samples/           example iXBRL and edge-case filings (OGL; samples/NOTICE)
 verify/arelle/     Arelle fact oracle
 verify/stream-read-xbrl/  wide-row soft oracle
 data/              runtime outputs (not committed)

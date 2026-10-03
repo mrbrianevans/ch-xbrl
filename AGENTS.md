@@ -51,18 +51,21 @@ Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Us
 
 When you find an edge case, do not only change the code. A later edit can put the old behaviour back if nothing records that the case exists.
 
-Do both of these before the fix is finished:
+Do all of these before the fix is finished:
 
 1. Document it in markdown, in [`docs/edge-cases.md`](docs/edge-cases.md). Say where it was found (archive URL and member name), what the input actually contains, and the behaviour that must be preserved.
-2. Add a regression test that fails if that behaviour is removed. Commit the real bytes when they are small enough (`internal/ixbrl/testdata/`).
+2. Commit a real example under [`samples/`](samples/) when the bytes are small enough. That file is what later work runs `ch-xbrl` against. A member that is not an instance (corrupt binary, attachment placeholder) stays in `internal/ixbrl/testdata/` so the Arelle and stream-read-xbrl jobs, which scan `samples/` for instances, do not pick it up.
+3. Add an invoke test that runs `ch-xbrl` on that sample and checks the CSV. Assert in Go. A short DuckDB query from the test is fine when it makes the CSV easier to read (`SELECT count(*)`, a concept filter); do not add a shared SQL file of edge cases. The `duckdb` CLI must be on `PATH` for tests that call it (CI installs it before `go test`). If part of the behaviour is not settled, assert the parts that are and leave the rest out. The charity accounts sample is that case: company, concepts, and values are checked, and the `taxonomy` column is not, until a later change attributes each fact to its taxonomy and the test queries that column.
 
-These three are already recorded. Keep the write-up and the tests if you refactor the parser.
+These are already recorded. Keep the write-up, the sample, and the tests if you refactor the parser.
 
 | Edge case | Found in | Tests |
 |-----------|----------|-------|
 | Corrupt member `Prod224_0088_08972528_20200331.xml` (binary, not XML; parse error) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_ContinueOnErrorSkipsBadMember` |
 | Placeholder member `Prod224_0088_11426842_20200630.xml` (`ATTACHMENTPLACEHOLDER127319911`; parse error, not a successful empty file) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_AttachmentPlaceholderIsAnError` |
 | Legal name in `xbrli:identifier` (`BEST MONEY HOLDING LIMITED` must not become `company_number`; the number is `06651382`) | [Accounts_Monthly_Data-April2010.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip) | `TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName` |
+| CIC wrapper `samples/Prod223_4320_05016384_20251231_CIC.zip` (nested unwrap keeps `accounts/`, skips `cic34/`; opening the zip itself parses both) | [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip) | `TestRun_EdgeSampleCICZipDirect`, `TestRun_EdgeSampleCICZipNested`, `TestStreamLocalNestedZip`, `TestStreamNestedZipKeepsAccountsSkipsCIC34`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsCIC34`, `TestRun_NestedZipSkipsDeeperZip` |
+| Charity accounts `samples/Prod223_4320_04986021_20260331.html` (FRS-102 and charity schemaRefs; `taxonomy` still the first href, not asserted) | [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip) | `TestRun_EdgeSampleCharityAccounts` |
 
 ## Layout
 
@@ -96,7 +99,7 @@ README.md         user getting started (releases)
 - Match existing style; prefer small diffs.
 - Format with `gofmt -w .` before commit (enforced by Go CI).
 - Parser / numeric / context behaviour: update or add tests under `internal/ixbrl/`.
-- A new edge case is not done until it is written up in `docs/edge-cases.md` (including where it was found) and a regression test fails if the fix is reverted. See [Edge cases](#edge-cases).
+- A new edge case is not done until it is written up in `docs/edge-cases.md` (including where it was found), a real example is in `samples/` (or `internal/ixbrl/testdata/` when it is not an instance), and an invoke test runs `ch-xbrl` on it and checks the CSV. See [Edge cases](#edge-cases).
 - After parser or CLI changes, smoke-test:
 
   ```bash

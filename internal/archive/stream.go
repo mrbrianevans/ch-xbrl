@@ -37,6 +37,13 @@ const maxMemberSize = 50 << 20
 // can be read without downloading the entire object first. Transient HTTP
 // failures (429, 5xx, connection errors, short range bodies) are retried;
 // 403 and 404 are not.
+//
+// A .zip input (local or remote) also opens members whose names end in .zip,
+// one level (Companies House CIC packages). Only inner instances under an
+// accounts directory are emitted; a CIC34 report under cic34/ is skipped.
+// Opening that zip as the input itself still yields every inner instance.
+// A zip inside the inner zip is skipped. Tar, directories, and stdin do not
+// open nested zips.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }
@@ -99,6 +106,23 @@ func Describe(source string) string {
 	return f.String()
 }
 
+// hasPathSegment reports whether name has a directory segment equal to
+// segment, case-insensitively. The last component is the file name, so
+// accounts.xhtml does not match segment "accounts".
+func hasPathSegment(name, segment string) bool {
+	name = strings.Trim(filepath.ToSlash(name), "/")
+	parts := strings.Split(name, "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts[:len(parts)-1] {
+		if strings.EqualFold(part, segment) {
+			return true
+		}
+	}
+	return false
+}
+
 // isXBRLName reports whether an archive member looks like an iXBRL/XBRL instance.
 // Companies House uses both .xhtml (recent) and .html (bulk Prod* packages).
 func isXBRLName(name string) bool {
@@ -110,8 +134,8 @@ func isXBRLName(name string) bool {
 		strings.HasSuffix(l, ".xml")
 }
 
-// wantMember filters out junk paths and non-XBRL names.
-func wantMember(name string) bool {
+// memberNameOK rejects junk paths shared by instance members and nested zips.
+func memberNameOK(name string) bool {
 	name = filepath.ToSlash(name)
 	if strings.Contains(name, "__MACOSX/") {
 		return false
@@ -120,7 +144,23 @@ func wantMember(name string) bool {
 	if strings.HasPrefix(base, ".") || strings.HasPrefix(base, "__") {
 		return false
 	}
-	return isXBRLName(name)
+	return true
+}
+
+// isZipName reports whether name is a zip archive member.
+func isZipName(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".zip")
+}
+
+// wantMember filters out junk paths and non-XBRL names.
+func wantMember(name string) bool {
+	return memberNameOK(name) && isXBRLName(name)
+}
+
+// wantNestedZip reports whether a member of a zip input should be opened one level.
+// Tar, directories, and stdin do not use this.
+func wantNestedZip(name string) bool {
+	return memberNameOK(name) && isZipName(name)
 }
 
 func emit(ctx context.Context, out chan<- Member, name string, content []byte) error {

@@ -136,14 +136,23 @@ func processRemoteBatch(ctx context.Context, client *http.Client, url string, ba
 		if err := ctx.Err(); err != nil {
 			return n, err
 		}
+		name := filepath.ToSlash(e.Name)
 		if e.UncompressedSize > maxMemberSize {
-			return n, fmt.Errorf("member %s exceeds size limit", e.Name)
+			return n, fmt.Errorf("member %s exceeds size limit", name)
 		}
 		content, err := extractMemberFromRange(data, batch.start, e)
 		if err != nil {
-			return n, fmt.Errorf("extract %s: %w", e.Name, err)
+			return n, fmt.Errorf("extract %s: %w", name, err)
 		}
-		if err := emit(ctx, out, e.Name, content); err != nil {
+		if wantNestedZip(name) {
+			added, err := expandNestedZip(ctx, name, content, out)
+			if err != nil {
+				return n, err
+			}
+			n += added
+			continue
+		}
+		if err := emit(ctx, out, name, content); err != nil {
 			return n, err
 		}
 		n++
@@ -197,7 +206,7 @@ func packMemberBatches(all []cdEntry, cdOffset, target, maxSpan, gapSplit int64)
 
 	for i, e := range sorted {
 		name := filepath.ToSlash(e.Name)
-		if !wantMember(name) {
+		if !wantMember(name) && !wantNestedZip(name) {
 			continue
 		}
 
