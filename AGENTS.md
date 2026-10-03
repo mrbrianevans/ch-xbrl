@@ -55,7 +55,7 @@ Do all of these before the fix is finished:
 
 1. Document it in markdown, in [`docs/edge-cases.md`](docs/edge-cases.md). Say where it was found (archive URL and member name), what the input actually contains, and the behaviour that must be preserved.
 2. Commit a real example under [`samples/`](samples/) when the bytes are small enough. That file is what later work runs `ch-xbrl` against. A member that is not an instance (corrupt binary, attachment placeholder) stays in `internal/ixbrl/testdata/` so the Arelle and stream-read-xbrl jobs, which scan `samples/` for instances, do not pick it up.
-3. Add an invoke test that runs `ch-xbrl` on that sample and checks the CSV with DuckDB ([`sql/edge_samples.sql`](sql/edge_samples.sql)). The `duckdb` CLI must be on `PATH` (`go test` fails without it; CI installs it before the test step). If part of the behaviour is not settled, assert the parts that are and leave the rest out. The charity accounts sample is that case: company, concepts, and values are checked, and the `taxonomy` column is not, until a later change attributes each fact to its taxonomy and extends the DuckDB check.
+3. Add an invoke test that runs `ch-xbrl` on that sample and checks the CSV. Assert in Go. A short DuckDB query from the test is fine when it makes the CSV easier to read (`SELECT count(*)`, a concept filter); do not add a shared SQL file of edge cases. The `duckdb` CLI must be on `PATH` for tests that call it (CI installs it before `go test`). If part of the behaviour is not settled, assert the parts that are and leave the rest out. The charity accounts sample is that case: company, concepts, and values are checked, and the `taxonomy` column is not, until a later change attributes each fact to its taxonomy and the test queries that column.
 
 These are already recorded. Keep the write-up, the sample, and the tests if you refactor the parser.
 
@@ -99,7 +99,7 @@ README.md         user getting started (releases)
 - Match existing style; prefer small diffs.
 - Format with `gofmt -w .` before commit (enforced by Go CI).
 - Parser / numeric / context behaviour: update or add tests under `internal/ixbrl/`.
-- A new edge case is not done until it is written up in `docs/edge-cases.md` (including where it was found), a real example is in `samples/` (or `internal/ixbrl/testdata/` when it is not an instance), and an invoke test runs `ch-xbrl` on it and checks the CSV with DuckDB. See [Edge cases](#edge-cases).
+- A new edge case is not done until it is written up in `docs/edge-cases.md` (including where it was found), a real example is in `samples/` (or `internal/ixbrl/testdata/` when it is not an instance), and an invoke test runs `ch-xbrl` on it and checks the CSV. See [Edge cases](#edge-cases).
 - After parser or CLI changes, smoke-test:
 
   ```bash

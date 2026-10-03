@@ -4,7 +4,7 @@
 // Supported inputs (one positional path, URL, or "-"):
 //
 //	.zip / .tar.zst / .tar  — local or http(s); remote zip uses HTTP ranges
-//	.zip member inside a .zip is opened one level (CIC packages; accounts/ only)
+//	.zip member inside a .zip is opened one level (CIC packages)
 //	.xhtml .html .htm .xbrl .xml — single instance, local or http(s)
 //	http(s) URL with no known extension — GET, follow redirects, sniff body
 //	directory               — non-recursive; top-level instance files only

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/csv"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,31 +29,32 @@ func sampleCICZip(t *testing.T) string {
 	return p
 }
 
-// duckdbEdge runs ch-xbrl's CSV through sql/edge_samples.sql.
-// edgeCase is charity, cic_direct, or cic_nested.
-func duckdbEdge(t *testing.T, csvPath, edgeCase string) {
+// duckdbCounts runs one SELECT against the ch-xbrl CSV and returns the row.
+// expr is the select list. Assertions stay in the test.
+func duckdbCounts(t *testing.T, csvPath, expr string) []string {
 	t.Helper()
 	bin, err := exec.LookPath("duckdb")
 	if err != nil {
-		t.Fatal("duckdb CLI not on PATH; edge-sample checks need it")
-	}
-	sqlPath := filepath.Join("..", "..", "sql", "edge_samples.sql")
-	if _, err := os.Stat(sqlPath); err != nil {
-		t.Fatal(err)
+		t.Fatal("duckdb CLI not on PATH; edge-sample checks query the CSV with it")
 	}
 	csvPath = strings.ReplaceAll(csvPath, `'`, `''`)
-	runner := filepath.Join(t.TempDir(), "edge.sql")
-	body := "SET VARIABLE facts_csv = '" + csvPath + "';\nSET VARIABLE edge_case = '" + edgeCase + "';\n.read " + sqlPath + "\n"
-	if err := os.WriteFile(runner, []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command(bin, "-bail", "-f", runner)
+	q := "SELECT " + expr + " FROM read_csv('" + csvPath + "', header = true, all_varchar = true)"
+	cmd := exec.Command(bin, "-csv", "-noheader", "-c", q)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("duckdb %s: %v\n%s", edgeCase, err, out)
+		t.Fatalf("duckdb: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "ok:") {
-		t.Fatalf("duckdb %s output:\n%s", edgeCase, out)
+	rec, err := csv.NewReader(strings.NewReader(string(out))).Read()
+	if err != nil {
+		t.Fatalf("duckdb output %q: %v", out, err)
+	}
+	return rec
+}
+
+func assertCounts(t *testing.T, got, want []string) {
+	t.Helper()
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("counts = %v, want %v", got, want)
 	}
 }
 
@@ -71,7 +73,23 @@ func TestRun_EdgeSampleCharityAccounts(t *testing.T) {
 	if !strings.Contains(stderr, "files_err=0") {
 		t.Fatalf("stderr: %s", stderr)
 	}
-	duckdbEdge(t, csvPath, "charity")
+	// taxonomy is intentionally not selected. This file lists two schemaRefs
+	// and every fact currently stores the first href.
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '04986021'),
+		count(*) FILTER (WHERE source_file <> 'Prod223_4320_04986021_20260331.html'),
+		count(*) FILTER (WHERE concept = 'CharityRegistrationNumberEnglandWales' AND value = '1103254'),
+		count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'The Captain French Trust'),
+		count(*) FILTER (
+			WHERE concept = 'CharityFunds'
+			  AND period_start = '2025-03-31'
+			  AND period_end = '2025-03-31'
+			  AND value = '1397'
+			  AND unit = 'iso4217:GBP'
+			  AND dimensions IS NULL
+		)`)
+	assertCounts(t, got, []string{"159", "0", "0", "3", "8", "6"})
 }
 
 func TestRun_EdgeSampleCICZipDirect(t *testing.T) {
@@ -79,7 +97,15 @@ func TestRun_EdgeSampleCICZipDirect(t *testing.T) {
 	if !strings.Contains(stderr, "members=2") || !strings.Contains(stderr, "files_err=0") {
 		t.Fatalf("stderr: %s", stderr)
 	}
-	duckdbEdge(t, csvPath, "cic_direct")
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '05016384'),
+		count(*) FILTER (WHERE source_file = 'CIC-05016384/accounts/financialStatement.xhtml'),
+		count(*) FILTER (WHERE source_file = 'CIC-05016384/cic34/cicReport.xhtml'),
+		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Financial Statements'),
+		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Community Interest Company Report'),
+		count(*) FILTER (WHERE concept = 'DirectorSigningCIC34Report')`)
+	assertCounts(t, got, []string{"79", "0", "60", "19", "1", "1", "1"})
 }
 
 func TestRun_EdgeSampleCICZipNested(t *testing.T) {
@@ -101,5 +127,13 @@ func TestRun_EdgeSampleCICZipNested(t *testing.T) {
 	if !strings.Contains(stderr, "members=1") || !strings.Contains(stderr, "files_err=0") {
 		t.Fatalf("stderr: %s", stderr)
 	}
-	duckdbEdge(t, csvPath, "cic_nested")
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '05016384'),
+		count(*) FILTER (WHERE source_file <> 'Prod223_4320_05016384_20251231_CIC.zip'),
+		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Financial Statements'),
+		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Community Interest Company Report'),
+		count(*) FILTER (WHERE concept = 'DirectorSigningCIC34Report'),
+		count(*) FILTER (WHERE concept = 'ConsultationHasBeenHeldTruefalse')`)
+	assertCounts(t, got, []string{"60", "0", "0", "1", "0", "0", "0"})
 }
