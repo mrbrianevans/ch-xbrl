@@ -37,6 +37,10 @@ const maxMemberSize = 50 << 20
 // can be read without downloading the entire object first. Transient HTTP
 // failures (429, 5xx, connection errors, short range bodies) are retried;
 // 403 and 404 are not.
+//
+// A .zip input (local or remote) also opens members whose names end in .zip,
+// one level (Companies House CIC packages). A zip inside that inner zip is
+// skipped. Tar, directories, and stdin do not open nested zips.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }
@@ -110,8 +114,8 @@ func isXBRLName(name string) bool {
 		strings.HasSuffix(l, ".xml")
 }
 
-// wantMember filters out junk paths and non-XBRL names.
-func wantMember(name string) bool {
+// memberNameOK rejects junk paths shared by instance members and nested zips.
+func memberNameOK(name string) bool {
 	name = filepath.ToSlash(name)
 	if strings.Contains(name, "__MACOSX/") {
 		return false
@@ -120,7 +124,23 @@ func wantMember(name string) bool {
 	if strings.HasPrefix(base, ".") || strings.HasPrefix(base, "__") {
 		return false
 	}
-	return isXBRLName(name)
+	return true
+}
+
+// isZipName reports whether name is a zip archive member.
+func isZipName(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".zip")
+}
+
+// wantMember filters out junk paths and non-XBRL names.
+func wantMember(name string) bool {
+	return memberNameOK(name) && isXBRLName(name)
+}
+
+// wantNestedZip reports whether a member of a zip input should be opened one level.
+// Tar, directories, and stdin do not use this.
+func wantNestedZip(name string) bool {
+	return memberNameOK(name) && isZipName(name)
 }
 
 func emit(ctx context.Context, out chan<- Member, name string, content []byte) error {

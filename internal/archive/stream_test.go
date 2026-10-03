@@ -649,6 +649,8 @@ func TestWantMember(t *testing.T) {
 		{".hidden.html", false},
 		{"__MACOSX/foo.html", false},
 		{"dir/file.xml", true},
+		{"Prod223_4320_05016384_20251231_CIC.zip", false},
+		{"Foo.ZIP", false},
 	}
 	for _, tc := range cases {
 		if got := wantMember(tc.name); got != tc.want {

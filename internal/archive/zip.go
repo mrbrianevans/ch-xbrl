@@ -2,10 +2,12 @@ package archive
 
 import (
 	"archive/zip"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -46,35 +48,99 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 			continue
 		}
 		name := filepath.ToSlash(f.Name)
-		if !wantMember(name) {
+		nested := wantNestedZip(name)
+		if !nested && !wantMember(name) {
 			continue
 		}
-		if f.UncompressedSize64 > maxMemberSize {
-			return n, fmt.Errorf("member %s exceeds size limit", name)
-		}
-		rc, err := f.Open()
+		content, err := readZipFile(f)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return n, err
+		}
+		if nested {
+			added, err := expandNestedZip(ctx, name, content, out)
+			if err != nil {
 				return n, err
 			}
-			return n, fmt.Errorf("open member %s: %w", name, err)
-		}
-		content, err := io.ReadAll(io.LimitReader(rc, maxMemberSize+1))
-		_ = rc.Close()
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return n, err
-			}
-			return n, fmt.Errorf("read %s: %w", name, err)
-		}
-		if len(content) > maxMemberSize {
-			return n, fmt.Errorf("member %s exceeds size limit", name)
+			n += added
+			continue
 		}
 		if err := emit(ctx, out, name, content); err != nil {
 			return n, err
 		}
 		n++
 	}
+	return n, nil
+}
+
+// readZipFile reads one zip member, enforcing maxMemberSize.
+func readZipFile(f *zip.File) ([]byte, error) {
+	name := filepath.ToSlash(f.Name)
+	if f.UncompressedSize64 > maxMemberSize {
+		return nil, fmt.Errorf("member %s exceeds size limit", name)
+	}
+	rc, err := f.Open()
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("open member %s: %w", name, err)
+	}
+	defer func() { _ = rc.Close() }()
+	content, err := io.ReadAll(io.LimitReader(rc, maxMemberSize+1))
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("read %s: %w", name, err)
+	}
+	if len(content) > maxMemberSize {
+		return nil, fmt.Errorf("member %s exceeds size limit", name)
+	}
+	return content, nil
+}
+
+// expandNestedZip opens one already-inflated zip member and emits its iXBRL
+// members. Inner members that are themselves zip files are logged and skipped.
+// Emitted names are the inner member names, matching a run where this zip was
+// the positional input. The 50 MiB cap applies to the wrapper and each inner
+// instance.
+func expandNestedZip(ctx context.Context, name string, content []byte, out chan<- Member) (int, error) {
+	if int64(len(content)) > maxMemberSize {
+		return 0, fmt.Errorf("member %s exceeds size limit", name)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
+	if err != nil {
+		return 0, fmt.Errorf("nested zip %s: %w", name, err)
+	}
+	n := 0
+	for _, f := range zr.File {
+		if err := ctx.Err(); err != nil {
+			return n, err
+		}
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		inner := filepath.ToSlash(f.Name)
+		if !memberNameOK(inner) {
+			continue
+		}
+		if isZipName(inner) {
+			log.Printf("skip nested zip: %s", inner)
+			continue
+		}
+		if !isXBRLName(inner) {
+			continue
+		}
+		body, err := readZipFile(f)
+		if err != nil {
+			return n, err
+		}
+		if err := emit(ctx, out, inner, body); err != nil {
+			return n, err
+		}
+		n++
+	}
+	log.Printf("nested zip: %s (%d members)", name, n)
 	return n, nil
 }
 

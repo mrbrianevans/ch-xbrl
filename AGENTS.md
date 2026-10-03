@@ -56,13 +56,14 @@ Do both of these before the fix is finished:
 1. Document it in markdown, in [`docs/edge-cases.md`](docs/edge-cases.md). Say where it was found (archive URL and member name), what the input actually contains, and the behaviour that must be preserved.
 2. Add a regression test that fails if that behaviour is removed. Commit the real bytes when they are small enough (`internal/ixbrl/testdata/`).
 
-These three are already recorded. Keep the write-up and the tests if you refactor the parser.
+These are already recorded. Keep the write-up and the tests if you refactor the parser.
 
 | Edge case | Found in | Tests |
 |-----------|----------|-------|
 | Corrupt member `Prod224_0088_08972528_20200331.xml` (binary, not XML; parse error) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_ContinueOnErrorSkipsBadMember` |
 | Placeholder member `Prod224_0088_11426842_20200630.xml` (`ATTACHMENTPLACEHOLDER127319911`; parse error, not a successful empty file) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_AttachmentPlaceholderIsAnError` |
 | Legal name in `xbrli:identifier` (`BEST MONEY HOLDING LIMITED` must not become `company_number`; the number is `06651382`) | [Accounts_Monthly_Data-April2010.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip) | `TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName` |
+| CIC wrapper `Prod223_4320_05016384_20251231_CIC.zip` (zip member; accounts and CIC34 report inside) | [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip) | `TestStreamLocalNestedZip`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsDeeperZip` |
 
 ## Layout
 

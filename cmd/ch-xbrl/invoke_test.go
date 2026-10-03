@@ -1,11 +1,14 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
+	"encoding/csv"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -87,6 +90,9 @@ func TestRun_HelpExit0(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "stdin") || !strings.Contains(stderr, ".xhtml") {
 		t.Fatalf("help should list new inputs: %s", stderr)
+	}
+	if !strings.Contains(stderr, "one level") {
+		t.Fatalf("help should mention one-level nested zip: %s", stderr)
 	}
 }
 
@@ -439,6 +445,177 @@ func TestRun_CreateOutputFail(t *testing.T) {
 	}
 	if strings.Contains(stderr, "done:") {
 		t.Fatalf("create failure has no counts, should not log done: %s", stderr)
+	}
+}
+
+func writeZipBytes(t *testing.T, dest string, files map[string][]byte) string {
+	t.Helper()
+	f, err := os.Create(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	zw := zip.NewWriter(f)
+	names := make([]string, 0, len(files))
+	for name := range files {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(files[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dest
+}
+
+func rowsForSource(t *testing.T, csvText, source string) []string {
+	t.Helper()
+	recs, err := csv.NewReader(strings.NewReader(csvText)).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recs) == 0 {
+		t.Fatal("empty csv")
+	}
+	col := -1
+	for i, h := range recs[0] {
+		if h == "source_file" {
+			col = i
+			break
+		}
+	}
+	if col < 0 {
+		t.Fatal("no source_file column")
+	}
+	var rows []string
+	for _, rec := range recs[1:] {
+		if rec[col] != source {
+			continue
+		}
+		rows = append(rows, strings.Join(rec, "\x1f"))
+	}
+	sort.Strings(rows)
+	return rows
+}
+
+func TestRun_NestedZipFactsMatchDirect(t *testing.T) {
+	xhtmlName := "CIC-03024914/accounts/03024914_aa_2023-03-13.xhtml"
+	htmlName := filepath.Base(sampleHTML(t))
+	wrapper := "Prod223_4320_05016384_20251231_CIC.zip"
+	xhtml, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	html, err := os.ReadFile(sampleHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inner := writeZipBytes(t, filepath.Join(dir, "inner.zip"), map[string][]byte{
+		xhtmlName:                 xhtml,
+		"CIC-03024914/readme.txt": []byte("skip"),
+	})
+	innerBytes, err := os.ReadFile(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := writeZipBytes(t, filepath.Join(dir, "outer.zip"), map[string][]byte{
+		wrapper:  innerBytes,
+		htmlName: html,
+	})
+
+	code, directCSV, directErr := runCLI(t, []string{"-o", "-", "-workers", "1", inner}, nil)
+	if code != exitOK {
+		t.Fatalf("direct exit %d stderr=%s", code, directErr)
+	}
+	code, outerCSV, outerErr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
+	if code != exitOK {
+		t.Fatalf("outer exit %d stderr=%s", code, outerErr)
+	}
+	assertCSV(t, directCSV)
+	assertCSV(t, outerCSV)
+
+	directRows := rowsForSource(t, directCSV, xhtmlName)
+	outerRows := rowsForSource(t, outerCSV, xhtmlName)
+	if len(directRows) == 0 {
+		t.Fatal("direct inner zip produced no facts")
+	}
+	if strings.Join(directRows, "\n") != strings.Join(outerRows, "\n") {
+		t.Fatalf("facts for %s differ from opening the inner zip directly\ndirect=%d outer=%d", xhtmlName, len(directRows), len(outerRows))
+	}
+	if len(rowsForSource(t, outerCSV, htmlName)) == 0 {
+		t.Fatal("sibling html missing from outer csv")
+	}
+	if strings.Contains(outerCSV, wrapper) {
+		t.Fatal("wrapper zip name leaked into source_file")
+	}
+	wantLog := "nested zip: " + wrapper + " (1 members)"
+	if !strings.Contains(outerErr, wantLog) {
+		t.Fatalf("stderr missing %q:\n%s", wantLog, outerErr)
+	}
+	if !strings.Contains(outerErr, "files_err=0") {
+		t.Fatalf("stderr: %s", outerErr)
+	}
+	if !strings.Contains(outerErr, "members=2") {
+		t.Fatalf("want members=2 (inner xhtml + sibling), stderr: %s", outerErr)
+	}
+}
+
+func TestRun_NestedZipSkipsDeeperZip(t *testing.T) {
+	keepName := "CIC-03024914/accounts/keep.xhtml"
+	secretName := "secret.xhtml"
+	deeperName := "CIC-03024914/extra/deeper.zip"
+	wrapper := "Prod223_4320_05016384_20251231_CIC.zip"
+	xhtml, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	deeper := writeZipBytes(t, filepath.Join(dir, "deeper.zip"), map[string][]byte{
+		secretName: xhtml,
+	})
+	deeperBytes, err := os.ReadFile(deeper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := writeZipBytes(t, filepath.Join(dir, "inner.zip"), map[string][]byte{
+		keepName:   xhtml,
+		deeperName: deeperBytes,
+	})
+	innerBytes, err := os.ReadFile(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := writeZipBytes(t, filepath.Join(dir, "outer.zip"), map[string][]byte{
+		wrapper: innerBytes,
+	})
+
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
+	if code != exitOK {
+		t.Fatalf("exit %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stdout, keepName) {
+		t.Fatal("kept inner instance missing")
+	}
+	if strings.Contains(stdout, secretName) {
+		t.Fatal("deeper zip was opened")
+	}
+	if !strings.Contains(stderr, "skip nested zip: "+deeperName) {
+		t.Fatalf("stderr missing skip line:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "nested zip: "+wrapper+" (1 members)") {
+		t.Fatalf("stderr missing nested zip summary:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
 	}
 }
 
