@@ -38,7 +38,7 @@ ch-xbrl archive.zip -o facts.csv     # usage error (exit 2)
 
 `-o FILE` is required on a TTY (`-o -` forces stdout). Logs go to stderr. `-V` prints version.
 
-**Input** (one positional): local or `https` `.zip` / `.tar.zst` / `.tar`, a single instance (`.xhtml` `.html` `.htm` `.xbrl` `.xml`), a directory of instances, or `-` (stdin). A `.zip` member inside a `.zip` (Companies House CIC packages) is opened one level; a zip inside that inner zip is skipped. Directories and tar inputs do not open nested zips. Zip on stdin is refused.
+**Input** (one positional): local or `https` `.zip` / `.tar.zst` / `.tar`, a single instance (`.xhtml` `.html` `.htm` `.xbrl` `.xml`), a directory of instances, or `-` (stdin). A `.zip` member inside a `.zip` (Companies House CIC packages) is opened one level; a zip inside that inner zip is skipped. A wrapper `Prod223_4320_05016384_20251231_CIC.zip` is recorded as `Prod223_4320_05016384_20251231_accounts.xhtml` and `Prod223_4320_05016384_20251231_cic34.xhtml`. Directories and tar inputs do not open nested zips. Zip on stdin is refused.
 
 **Exits:** `0` stream finished with `files_ok≥1` and no errors; `1` parse/empty/I/O; `2` usage; `130` interrupt. `--continue-on-error` still writes the CSV and exits `0` when some members fail, as long as `files_ok≥1`. Empty extracts and stream errors stay exit `1`.
 

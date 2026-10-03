@@ -92,6 +92,48 @@ func membersByName(t *testing.T, got []Member) map[string][]byte {
 	return out
 }
 
+func keysOf(m map[string][]byte) []string {
+	names := make([]string, 0, len(m))
+	for name := range m {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func TestNestedInstanceName(t *testing.T) {
+	const wrapper = "Prod223_4320_05016384_20251231_CIC.zip"
+	used := map[string]struct{}{}
+	cases := []struct {
+		inner string
+		want  string
+	}{
+		{"CIC-05016384/accounts/financialStatement.xhtml", "Prod223_4320_05016384_20251231_accounts.xhtml"},
+		{"CIC-05016384/cic34/cicReport.xhtml", "Prod223_4320_05016384_20251231_cic34.xhtml"},
+		{"CIC-05922569/accounts/9881-LTD CH Copy-31_12_2025.html", "Prod223_4320_05016384_20251231_accounts.html"},
+		{"CIC-12072175/cic34/cic34.html", "Prod223_4320_05016384_20251231_cic34.html"},
+		{"CIC-15555663/accounts/cic_accts.xhtml", "Prod223_4320_05016384_20251231_accounts.xhtml"},
+		{"report.xhtml", "Prod223_4320_05016384_20251231.xhtml"},
+	}
+	for _, tc := range cases {
+		used = map[string]struct{}{}
+		if got := nestedInstanceName(wrapper, tc.inner, used); got != tc.want {
+			t.Errorf("nestedInstanceName(%q) = %q, want %q", tc.inner, got, tc.want)
+		}
+	}
+
+	// Two files in the same folder stay distinct. The second keeps its basename.
+	used = map[string]struct{}{}
+	first := nestedInstanceName(wrapper, "CIC-05016384/accounts/financialStatement.xhtml", used)
+	second := nestedInstanceName(wrapper, "CIC-05016384/accounts/notes.xhtml", used)
+	if first != "Prod223_4320_05016384_20251231_accounts.xhtml" {
+		t.Fatalf("first = %q", first)
+	}
+	if second != "Prod223_4320_05016384_20251231_accounts_notes.xhtml" {
+		t.Fatalf("second = %q", second)
+	}
+}
+
 func TestWantNestedZip(t *testing.T) {
 	cases := []struct {
 		name string
@@ -135,6 +177,7 @@ func TestStreamLocalNestedZip(t *testing.T) {
 
 	got := membersByName(t, collect(t, outer))
 	direct := membersByName(t, collect(t, inner))
+	wantXHTML := "Prod223_4320_05016384_20251231_accounts.xhtml"
 
 	if len(direct) != 1 {
 		t.Fatalf("direct inner zip members = %d, want 1", len(direct))
@@ -145,8 +188,8 @@ func TestStreamLocalNestedZip(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("outer members = %d, want xhtml + sibling html", len(got))
 	}
-	if !bytes.Equal(got[xhtmlName], direct[xhtmlName]) {
-		t.Fatal("nested xhtml bytes differ from opening the inner zip directly")
+	if !bytes.Equal(got[wantXHTML], direct[xhtmlName]) {
+		t.Fatalf("nested xhtml bytes differ from the inner file; names=%v", keysOf(got))
 	}
 	if !bytes.Equal(got[htmlName], html) {
 		t.Fatal("sibling html bytes mismatch")
@@ -174,11 +217,12 @@ func TestStreamNestedZipSkipsDeeperZip(t *testing.T) {
 	})
 
 	got := membersByName(t, collect(t, outer))
+	wantKeep := "Prod223_4320_05016384_20251231_accounts.xhtml"
 	if len(got) != 1 {
 		t.Fatalf("members = %d, want 1 (deeper zip skipped)", len(got))
 	}
-	if !bytes.Equal(got[keepName], xhtml) {
-		t.Fatal("kept inner xhtml mismatch")
+	if !bytes.Equal(got[wantKeep], xhtml) {
+		t.Fatalf("kept inner xhtml mismatch, names=%v", keysOf(got))
 	}
 	if _, ok := got[secretName]; ok {
 		t.Fatal("zip inside the inner zip was opened")

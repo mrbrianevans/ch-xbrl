@@ -505,6 +505,12 @@ func TestCompanyNumberAllowsLetters(t *testing.T) {
 	if got := companyFromFilename("Prod224_0088_SC248149_20100331.xml"); got != "SC248149" {
 		t.Fatalf("filename company=%q", got)
 	}
+	if got := companyFromFilename("Prod223_4320_05016384_20251231_accounts.xhtml"); got != "05016384" {
+		t.Fatalf("CIC accounts filename company=%q", got)
+	}
+	if got := companyFromFilename("Prod223_4320_05016384_20251231_cic34.xhtml"); got != "05016384" {
+		t.Fatalf("CIC34 filename company=%q", got)
+	}
 
 	doc := `<?xml version="1.0"?>
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:pt="http://example.com/pt">

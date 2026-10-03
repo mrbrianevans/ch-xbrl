@@ -32,7 +32,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
   DuckDB sql/transform.sql → accounts_wide.parquet
 ```
 
-1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. A `.zip` member inside a `.zip` is opened one level (Companies House CIC packages); a zip inside that inner zip is skipped. Parse instance XML (inline `ix:` facts and non-inline items that carry `contextRef`); emit every fact with period, unit, dimensions (JSON), `schemaRef` href as `taxonomy`, source filename.
+1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. A `.zip` member inside a `.zip` is opened one level (Companies House CIC packages); a zip inside that inner zip is skipped. `source_file` for those inner files keeps the wrapper's company number and period date (`Prod223_4320_05016384_20251231_accounts.xhtml`, `…_cic34.xhtml`). Parse instance XML (inline `ix:` facts and non-inline items that carry `contextRef`); emit every fact with period, unit, dimensions (JSON), `schemaRef` href as `taxonomy`, source filename.
 2. **ch-xbrl-taxonomy** (infrequent) — Seed/download FRC schemas → `concepts.csv`. Not called at extract time.
 3. **Concept map** — Hand-curated `canonical,concept,priority,cast_type`. Lower `priority` wins.
 4. **DuckDB** — Non-dimensional filter, join map, priority-pick, pivot, explicit casts, Parquet.

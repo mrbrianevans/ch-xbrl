@@ -506,6 +506,34 @@ func rowsForSource(t *testing.T, csvText, source string) []string {
 	return rows
 }
 
+func rowsBlankingSource(t *testing.T, csvText, source string) []string {
+	t.Helper()
+	recs, err := csv.NewReader(strings.NewReader(csvText)).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	col := -1
+	for i, h := range recs[0] {
+		if h == "source_file" {
+			col = i
+			break
+		}
+	}
+	if col < 0 {
+		t.Fatal("no source_file column")
+	}
+	var rows []string
+	for _, rec := range recs[1:] {
+		if rec[col] != source {
+			continue
+		}
+		rec[col] = ""
+		rows = append(rows, strings.Join(rec, "\x1f"))
+	}
+	sort.Strings(rows)
+	return rows
+}
+
 func TestRun_NestedZipFactsMatchDirect(t *testing.T) {
 	xhtmlName := "CIC-03024914/accounts/03024914_aa_2023-03-13.xhtml"
 	htmlName := filepath.Base(sampleHTML(t))
@@ -543,13 +571,20 @@ func TestRun_NestedZipFactsMatchDirect(t *testing.T) {
 	assertCSV(t, directCSV)
 	assertCSV(t, outerCSV)
 
-	directRows := rowsForSource(t, directCSV, xhtmlName)
-	outerRows := rowsForSource(t, outerCSV, xhtmlName)
+	wantSource := "Prod223_4320_05016384_20251231_accounts.xhtml"
+	directRows := rowsBlankingSource(t, directCSV, xhtmlName)
+	outerRows := rowsBlankingSource(t, outerCSV, wantSource)
 	if len(directRows) == 0 {
 		t.Fatal("direct inner zip produced no facts")
 	}
 	if strings.Join(directRows, "\n") != strings.Join(outerRows, "\n") {
-		t.Fatalf("facts for %s differ from opening the inner zip directly\ndirect=%d outer=%d", xhtmlName, len(directRows), len(outerRows))
+		t.Fatalf("facts differ from opening the inner zip directly aside from source_file\ndirect=%d outer=%d", len(directRows), len(outerRows))
+	}
+	if strings.Contains(outerCSV, xhtmlName) {
+		t.Fatal("inner path was used as source_file")
+	}
+	if !strings.Contains(outerCSV, wantSource) {
+		t.Fatalf("missing flat source_file %s", wantSource)
 	}
 	if len(rowsForSource(t, outerCSV, htmlName)) == 0 {
 		t.Fatal("sibling html missing from outer csv")
@@ -602,8 +637,11 @@ func TestRun_NestedZipSkipsDeeperZip(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("exit %d stderr=%s", code, stderr)
 	}
-	if !strings.Contains(stdout, keepName) {
-		t.Fatal("kept inner instance missing")
+	if !strings.Contains(stdout, "Prod223_4320_05016384_20251231_accounts.xhtml") {
+		t.Fatal("kept inner instance missing flat source_file")
+	}
+	if strings.Contains(stdout, keepName) {
+		t.Fatal("inner path was used as source_file")
 	}
 	if strings.Contains(stdout, secretName) {
 		t.Fatal("deeper zip was opened")

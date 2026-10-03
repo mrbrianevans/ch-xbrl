@@ -64,7 +64,7 @@ A name ending in `.zip` used to be dropped before it was counted. `ch-xbrl` on t
 Behaviour that must stay:
 
 - Local and remote `.zip` inputs open members whose names end in `.zip`, one level.
-- Each inner iXBRL/XBRL file is emitted. `source_file` is the inner member name (`CIC-05016384/accounts/financialStatement.xhtml`), the same as when that CIC zip is the positional input.
+- Each inner iXBRL/XBRL file is emitted. In a bulk zip, `source_file` is built from the wrapper name so it lines up with the loose members (`Prod223_4320_<company>_<YYYYMMDD>.html`). `Prod223_4320_05016384_20251231_CIC.zip` becomes `Prod223_4320_05016384_20251231_accounts.xhtml` and `Prod223_4320_05016384_20251231_cic34.xhtml`. The inner folder (`accounts` or `cic34`) tells the two documents apart. The inner basename (`financialStatement.xhtml`, `9881-LTD CH Copy-31_12_2025.html`, and similar) is not used unless two files share that folder. Opening the CIC zip itself as the positional input still uses the inner path (`CIC-05016384/accounts/financialStatement.xhtml`), because that run has no wrapper name to copy.
 - A `.zip` inside the inner zip is skipped and logged (`skip nested zip: …`). It is not a parse error (`files_err` stays 0).
 - The 50 MiB member cap applies to the wrapper zip and to each inner instance.
 - Directories, tar archives, and stdin do not open nested zips. Zip on stdin stays refused.
