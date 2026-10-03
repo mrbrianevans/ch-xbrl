@@ -20,3 +20,11 @@ Source:
 The Open Government Licence does not cover personal data. Do not treat
 these filings as a source of personal data except as permitted by
 data-protection law.
+
+Two files are edge-case inputs rather than typical single filings.
+See docs/edge-cases.md.
+
+    Prod223_4320_04986021_20260331.html
+        charity accounts that reference two taxonomies
+    Prod223_4320_05016384_20251231_CIC.zip
+        CIC package (accounts document and CIC34 report)

@@ -59,7 +59,7 @@ internal/          ixbrl, archive, fact, csvout
 mapping/           concept_map.csv
 reference/         concepts.csv
 sql/               DuckDB transforms
-samples/           example iXBRL (OGL; samples/NOTICE)
+samples/           example iXBRL and edge-case filings (OGL; samples/NOTICE)
 verify/arelle/     Arelle fact oracle
 verify/stream-read-xbrl/  wide-row soft oracle
 data/              runtime outputs (not committed)

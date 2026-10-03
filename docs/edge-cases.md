@@ -4,7 +4,11 @@ Maintainer notes. This page is not part of the ch-xbrl SemVer contract in [cli-c
 
 Real Companies House inputs that a straightforward parser gets wrong. Each case below records where it was found and the behaviour the regression tests lock in today. The tests fail if that behaviour is removed. Changing it on purpose means updating this page and the tests in the same change.
 
-When you find another one, add it here (archive URL and member name) and add a test. Do not only patch the code. See `AGENTS.md`.
+When you find another one, do not only patch the code. See `AGENTS.md`.
+
+1. Add it here (archive URL and member name, what the bytes contain, the behaviour that must stay).
+2. Commit a real example under `samples/` when it is small enough. A member that is not an instance stays in `internal/ixbrl/testdata/` so jobs that scan `samples/` for iXBRL do not pick it up.
+3. Add an invoke test that runs `ch-xbrl` on that sample and checks the CSV with DuckDB (`sql/edge_samples.sql`). The `duckdb` CLI has to be on `PATH`. If part of the behaviour is not settled, check the parts that are. The charity accounts sample does this: facts are checked, and the `taxonomy` column is left for a later change.
 
 ## Corrupt member
 
@@ -73,6 +77,27 @@ Behaviour that must stay:
 - The 50 MiB member cap applies to the wrapper zip and to each inner instance.
 - Directories, tar archives, and stdin do not open nested zips. Zip on stdin stays refused.
 
-The day pack is not in git. Tests build a tiny outer zip with one inner zip plus a loose instance.
+The example package is committed at `samples/Prod223_4320_05016384_20251231_CIC.zip`. The day pack is not in git. Other tests still build a tiny outer zip with one inner zip plus a loose instance, for junk names, a deeper zip, and the remote range path.
 
-Tests: `TestStreamLocalNestedZip`, `TestStreamNestedZipKeepsAccountsSkipsCIC34`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsCIC34`, `TestRun_NestedZipSkipsDeeperZip`.
+Tests: `TestRun_EdgeSampleCICZipDirect`, `TestRun_EdgeSampleCICZipNested`, `TestStreamLocalNestedZip`, `TestStreamNestedZipKeepsAccountsSkipsCIC34`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsCIC34`, `TestRun_NestedZipSkipsDeeperZip`.
+
+## Charity accounts with two schemaRefs
+
+Found in [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip), member `Prod223_4320_04986021_20260331.html` (The Captain French Trust, company `04986021`).
+
+Of 9,518 loose instance members in that pack, 9,513 have one `schemaRef`. Five charity accounts have two. This file lists, in order:
+
+```text
+https://xbrl.frc.org.uk/FRS-102/2025-01-01/FRS-102-2025-01-01.xsd
+https://xbrl.frc.org.uk/char/2025-01-01/char-2025-01-01.xsd
+```
+
+The same pair is in `Prod223_4320_05443274_20260331.html`, `Prod223_4320_06322344_20251231.html`, and `Prod223_4320_06513956_20251231.html`. `Prod223_4320_10433813_20260430.html` lists the 2026-01-01 FRS-102 and charity schemas.
+
+`ch-xbrl` copies the first href onto every fact. In this file, 82 facts use the charity namespace `http://xbrl.frc.org.uk/char/2025-01-01` (prefix `frs-char` in this document), including `CharityRegistrationNumberEnglandWales` (`1103254`) and `CharityFunds`. The prefix is a document-local abbreviation of that namespace URI. It is not the schemaRef URL.
+
+The sample is `samples/Prod223_4320_04986021_20260331.html`. The invoke test checks company `04986021`, the charity registration number, the legal name, and a `CharityFunds` figure. It does not check the `taxonomy` column. A later change should attribute each fact to the taxonomy it belongs to and extend `sql/edge_samples.sql`.
+
+The 14 CIC accounts files in that pack each have a single FRS-102 schemaRef. This case is the loose charity accounts, not the CIC34 report.
+
+Test: `TestRun_EdgeSampleCharityAccounts`.
