@@ -13,9 +13,12 @@ import (
 
 // Member is one archive entry (filename + content bytes).
 // Content is fully read into memory (individual iXBRL files are ~100 KB).
+// Err, when set, is a per-member failure (the stream continues). Content is
+// then unused. Callers count it as files_err; it is not a stream error.
 type Member struct {
 	Name    string
 	Content []byte
+	Err     error
 }
 
 // maxMemberSize caps per-file reads to avoid runaway members (50 MiB).
@@ -44,8 +47,8 @@ const maxMemberSize = 50 << 20
 // cic34/ is skipped. XML/XHTML/iXBRL under a .zip name is emitted as one
 // instance. Opening a real nested zip as the input itself still yields every
 // inner instance. A zip inside the inner zip is skipped. A .zip-named member
-// that is neither a zip nor XML stays a stream error. Tar, directories, and
-// stdin do not open nested zips.
+// that is not a valid zip and not XML/HTML is a member error (Member.Err);
+// the stream continues. Tar, directories, and stdin do not open nested zips.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }

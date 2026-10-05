@@ -448,6 +448,36 @@ func TestRun_CreateOutputFail(t *testing.T) {
 	}
 }
 
+type zipNamed struct {
+	name string
+	body []byte
+}
+
+// writeZipOrdered writes members in slice order so tests can put a bad
+// member ahead of a good one.
+func writeZipOrdered(t *testing.T, dest string, entries []zipNamed) string {
+	t.Helper()
+	f, err := os.Create(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	zw := zip.NewWriter(f)
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(e.body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dest
+}
+
 func writeZipBytes(t *testing.T, dest string, files map[string][]byte) string {
 	t.Helper()
 	f, err := os.Create(dest)
@@ -534,31 +564,90 @@ func rowsBlankingSource(t *testing.T, csvText, source string) []string {
 	return rows
 }
 
-func TestRun_InvalidNestedZipIsStreamError(t *testing.T) {
+func TestRun_InvalidNestedZipIsMemberError(t *testing.T) {
 	htmlName := filepath.Base(sampleHTML(t))
 	html, err := os.ReadFile(sampleHTML(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	const badName = "Prod224_0089_00000000_20201231.zip"
-	outer := writeZipBytes(t, filepath.Join(t.TempDir(), "outer.zip"), map[string][]byte{
-		badName:  []byte("this is not a zip"),
-		htmlName: html,
+	// Bad member first: a stream error would drop the html that follows.
+	outer := writeZipOrdered(t, filepath.Join(t.TempDir(), "outer.zip"), []zipNamed{
+		{badName, []byte("this is not a zip")},
+		{htmlName, html},
 	})
+	assertBadNestedZipMember(t, outer, badName)
 
-	code, _, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
+	only := writeZipOrdered(t, filepath.Join(t.TempDir(), "only.zip"), []zipNamed{
+		{badName, []byte("this is not a zip")},
+	})
+	code, _, stderr := runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", only}, nil)
+	if code != exitFail {
+		t.Fatalf("--continue-on-error with no successful member exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if strings.Contains(stderr, "stream:") {
+		t.Fatalf("bad nested zip should not be a stream error:\n%s", stderr)
+	}
+}
+
+func TestRun_ZipNamedAttachmentPlaceholder(t *testing.T) {
+	// Placeholder member from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-October2021.zip
+	// See docs/edge-cases.md.
+	const badName = "Prod224_0095_04869811_20210131.zip"
+	placeholder, err := os.ReadFile(filepath.Join("..", "..", "internal", "ixbrl", "testdata", badName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(placeholder) != "ATTACHMENTPLACEHOLDER137191381" {
+		t.Fatalf("fixture changed: %q", placeholder)
+	}
+	htmlName := filepath.Base(sampleHTML(t))
+	html, err := os.ReadFile(sampleHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := writeZipOrdered(t, filepath.Join(t.TempDir(), "outer.zip"), []zipNamed{
+		{badName, placeholder},
+		{htmlName, html},
+	})
+	assertBadNestedZipMember(t, outer, badName)
+}
+
+// assertBadNestedZipMember checks a .zip-named member that is not a zip.
+// Without --continue-on-error the process exits 1 after the rest of the
+// archive is still read. With the flag it exits 0 when another member succeeds.
+func assertBadNestedZipMember(t *testing.T, outer, badName string) {
+	t.Helper()
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
 	if code != exitFail {
 		t.Fatalf("exit %d, want %d stderr=%s", code, exitFail, stderr)
 	}
+	assertBadNestedZipLogged(t, stdout, stderr, badName)
+
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", outer}, nil)
+	if code != exitOK {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
+	}
+	assertBadNestedZipLogged(t, stdout, stderr, badName)
+}
+
+func assertBadNestedZipLogged(t *testing.T, stdout, stderr, badName string) {
+	t.Helper()
+	if strings.Contains(stderr, "stream:") {
+		t.Fatalf("bad nested zip should not fail the stream:\n%s", stderr)
+	}
 	if !strings.Contains(stderr, "nested zip "+badName) || !strings.Contains(stderr, "not a valid zip file") {
-		t.Fatalf("stderr: %s", stderr)
+		t.Fatalf("stderr should name the bad member:\n%s", stderr)
 	}
-	code, _, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", outer}, nil)
-	if code != exitFail {
-		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitFail, stderr)
+	if !strings.Contains(stderr, "files_err=1") || !strings.Contains(stderr, "members=2") {
+		t.Fatalf("stderr counts:\n%s", stderr)
 	}
-	if !strings.Contains(stderr, "stream:") || !strings.Contains(stderr, "not a valid zip file") {
-		t.Fatalf("--continue-on-error should still fail the stream:\n%s", stderr)
+	if !strings.Contains(stdout, "00134794") {
+		t.Fatal("facts from the good member missing")
+	}
+	if strings.Contains(stdout, badName) {
+		t.Fatal("bad nested zip produced fact rows")
 	}
 }
 

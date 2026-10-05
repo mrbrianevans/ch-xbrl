@@ -5,6 +5,7 @@
 //
 //	.zip / .tar.zst / .tar  — local or http(s); remote zip uses HTTP ranges
 //	.zip member inside a .zip: zip bytes opened one level (CIC); iXBRL bytes parsed
+//	  (a name that is neither is a member error, not a stream error)
 //	.xhtml .html .htm .xbrl .xml — single instance, local or http(s)
 //	http(s) URL with no known extension — GET, follow redirects, sniff body
 //	directory               — non-recursive; top-level instance files only
@@ -99,15 +100,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			noteErr := func(name string, err error) {
+				filesErr.Add(1)
+				errMu.Lock()
+				if len(firstErrs) < 20 {
+					firstErrs = append(firstErrs, fmt.Sprintf("%s: %v", name, err))
+				}
+				errMu.Unlock()
+			}
 			for m := range members {
+				if m.Err != nil {
+					noteErr(m.Name, m.Err)
+					continue
+				}
 				facts, err := ixbrl.ParseBytes(m.Content, m.Name)
 				if err != nil {
-					filesErr.Add(1)
-					errMu.Lock()
-					if len(firstErrs) < 20 {
-						firstErrs = append(firstErrs, fmt.Sprintf("%s: %v", m.Name, err))
-					}
-					errMu.Unlock()
+					noteErr(m.Name, err)
 					continue
 				}
 				if err := csvW.WriteAll(facts); err != nil {

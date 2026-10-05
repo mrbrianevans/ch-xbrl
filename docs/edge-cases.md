@@ -108,14 +108,42 @@ Behaviour that must stay:
 
 - On a local or remote `.zip` input, a member whose name ends in `.zip` is classified by content. Zip magic (`PK` local-file, end-of-central-directory, or spanning header) is opened one level, with the CIC `accounts/` filter above. XML/XHTML/iXBRL (optional BOM, then optional whitespace, then `<`) is emitted as one instance.
 - `source_file` for that instance is the bulk member name (`Prod224_0089_05546298_20201231.zip`). The run logs `instance named .zip: …`. This sample produces 26 facts, all with `company_number` `05546298`, including `EntityCurrentLegalOrRegisteredName` `Imex Consultancy Ltd` and `CashBankInHand` `1` at `2020-12-31`. `files_err` stays 0.
-- A `.zip`-named member that is neither a zip nor XML/HTML stays a stream error (`nested zip …: zip: not a valid zip file`). `--continue-on-error` does not turn that into a skipped member.
+- A `.zip`-named member that is neither a zip nor XML/HTML is a member error, not a stream error. See [Attachment placeholder published under a .zip name](#attachment-placeholder-published-under-a-zip-name).
 - Opening this sample file itself as the positional input still fails. A path ending in `.zip` is an archive, and these bytes are not one. The sniff applies to members inside a zip.
 - A zip inside an inner zip is still skipped by name. This classification is only for a `.zip`-named member of the input zip.
 - Directories, tar archives, and stdin do not apply it.
 
 The example member is `samples/Prod224_0089_05546298_20201231.zip` (the HTML bytes, under the name Companies House used). The invoke test places that file inside an outer zip and runs `ch-xbrl` on the outer zip. The day pack is not in git.
 
-Tests: `TestRun_EdgeSampleMisnamedZipInstance`, `TestStreamZipNamedInstance`, `TestStreamNestedZipInvalid`, `TestRun_InvalidNestedZipIsStreamError`.
+Tests: `TestRun_EdgeSampleMisnamedZipInstance`, `TestStreamZipNamedInstance`, `TestStreamNestedZipInvalid`, `TestRun_InvalidNestedZipIsMemberError`.
+
+## Attachment placeholder published under a .zip name
+
+Found in [Accounts_Monthly_Data-October2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-October2021.zip), member `Prod224_0095_04869811_20210131.zip`.
+
+That monthly pack has 257,100 entries. Nine are named `*.zip`. Seven are iXBRL HTML stored under a `.zip` name, the same shape as the April 2021 case above (leading `\r\n`, then `<?xml`), and the byte sniff parses them. Two are not archives and not XML. Each is 30 bytes, stored uncompressed, and the CRC matches those bytes:
+
+```text
+Prod224_0095_04869811_20210131.zip    ATTACHMENTPLACEHOLDER137191381
+Prod224_0095_12408197_20210131.zip    ATTACHMENTPLACEHOLDER136549101
+```
+
+`Prod224_0095_04869811_20210131.zip` does not start with `PK` and does not start with `<`. It is the same attachment-placeholder text as the March 2021 `.xml` member, under a `.zip` name. It is not a truncated zip. In central-directory order it is wanted member 27,503 of 257,100. The other placeholder is wanted member 212,419.
+
+A name ending in `.zip` that was neither zip magic nor XML used to be passed to `zip.NewReader`. That returns `zip: not a valid zip file` from the archive stream (`stream: nested zip Prod224_0095_04869811_20210131.zip: zip: not a valid zip file`). `--continue-on-error` does not apply to stream errors, so the October 2021 ingest stopped around this member. A finished run would report on the order of 257,100 members. The failing log had `members=26745` and `files_ok=32936` with `files_err=0`: the counts sit on either side of member 27,503 because remote batches run in parallel, and the batch that hits the bad member returns before its already-parsed files are added to `members`. `files_err` stayed 0 because the failure never entered the per-member path. The second placeholder was not reached. The same open error is what a truncated member that does start with `PK` (`PK\x03\x04` and then not a zip) used to raise.
+
+The same scan of every 2021 monthly pack, plus December 2020 and January, March, June and October 2022 and January 2023, found `.zip` members only in April–October 2021. April through September are all iXBRL HTML (the sniff already parses those). Only October has the placeholder. No scanned pack contained a `.zip` member that actually starts with `PK`.
+
+Behaviour that must stay:
+
+- The placeholder is a member error. The run logs `nested zip Prod224_0095_04869811_20210131.zip: zip: not a valid zip file` and counts it in `files_err`. There is no fact row for it. The stream keeps reading later members.
+- Without `--continue-on-error` the process exits 1. With the flag it exits 0 when `files_ok >= 1`. A run whose only member is this placeholder still exits 1.
+- Zip magic that is not a valid zip is the same member error, not a stream error.
+- Opening this file itself as the positional input still fails. A path ending in `.zip` is an archive, and these bytes are not one.
+
+Fixture: `internal/ixbrl/testdata/Prod224_0095_04869811_20210131.zip`. The day pack is not in git. The sibling placeholder is the same 30-byte pattern and is not committed separately.
+
+Tests: `TestParseKnownArchiveAnomalies`, `TestStreamNestedZipInvalid`, `TestRun_ZipNamedAttachmentPlaceholder`, `TestRun_InvalidNestedZipIsMemberError`.
 
 ## Charity accounts with two schemaRefs
 
