@@ -38,12 +38,14 @@ const maxMemberSize = 50 << 20
 // failures (429, 5xx, connection errors, short range bodies) are retried;
 // 403 and 404 are not.
 //
-// A .zip input (local or remote) also opens members whose names end in .zip,
-// one level (Companies House CIC packages). Only inner instances under an
-// accounts directory are emitted; a CIC34 report under cic34/ is skipped.
-// Opening that zip as the input itself still yields every inner instance.
-// A zip inside the inner zip is skipped. Tar, directories, and stdin do not
-// open nested zips.
+// A .zip input (local or remote) also reads members whose names end in .zip.
+// Zip magic is opened one level (Companies House CIC packages). Only inner
+// instances under an accounts directory are emitted; a CIC34 report under
+// cic34/ is skipped. XML/XHTML/iXBRL under a .zip name is emitted as one
+// instance. Opening a real nested zip as the input itself still yields every
+// inner instance. A zip inside the inner zip is skipped. A .zip-named member
+// that is neither a zip nor XML stays a stream error. Tar, directories, and
+// stdin do not open nested zips.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }
@@ -157,8 +159,9 @@ func wantMember(name string) bool {
 	return memberNameOK(name) && isXBRLName(name)
 }
 
-// wantNestedZip reports whether a member of a zip input should be opened one level.
-// Tar, directories, and stdin do not use this.
+// wantNestedZip reports whether a member of a zip input is a .zip-named
+// candidate. The bytes decide zip versus instance. Tar, directories, and
+// stdin do not use this.
 func wantNestedZip(name string) bool {
 	return memberNameOK(name) && isZipName(name)
 }

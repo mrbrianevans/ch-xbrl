@@ -57,7 +57,7 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 			return n, err
 		}
 		if nested {
-			added, err := expandNestedZip(ctx, name, content, out)
+			added, err := openZipNamedMember(ctx, name, content, out)
 			if err != nil {
 				return n, err
 			}
@@ -99,14 +99,36 @@ func readZipFile(f *zip.File) ([]byte, error) {
 	return content, nil
 }
 
+// openZipNamedMember classifies a member whose name ends in .zip.
+// Zip magic is expanded one level. XML/XHTML/iXBRL is one instance: Companies
+// House has published iXBRL under a .zip name, and that must be parsed, not
+// rejected as a corrupt archive. Anything else is still opened as a zip, so a
+// member that is neither stays the existing nested-zip stream error.
+// source_file for an instance is the member name. The positional input is
+// not classified here; a path ending in .zip is still an archive.
+func openZipNamedMember(ctx context.Context, name string, content []byte, out chan<- Member) (int, error) {
+	if isZipMagic(content) {
+		return expandNestedZip(ctx, name, content, out)
+	}
+	if isXMLMagic(content) {
+		if err := emit(ctx, out, name, content); err != nil {
+			return 0, err
+		}
+		log.Printf("instance named .zip: %s", name)
+		return 1, nil
+	}
+	return expandNestedZip(ctx, name, content, out)
+}
+
 // expandNestedZip opens one already-inflated zip member and emits iXBRL
 // members that sit under an accounts directory. Companies House CIC packages
 // store the accounts filing there and a CIC34 report under cic34/; only the
 // accounts file is emitted. Other inner instances are logged and skipped.
-// Inner members that are themselves zip files are logged and skipped.
-// source_file is the wrapper member name, the same name a loose member of
-// this zip would get. The 50 MiB cap applies to the wrapper and each inner
-// instance. This filter is not used when the inner zip is the positional input.
+// Inner members that are themselves zip files are logged and skipped by name
+// (not sniffed). source_file is the wrapper member name, the same name a loose
+// member of this zip would get. The 50 MiB cap applies to the wrapper and each
+// inner instance. This filter is not used when the inner zip is the positional
+// input. Callers must pass zip-magic bytes; a non-zip fails as a stream error.
 func expandNestedZip(ctx context.Context, name string, content []byte, out chan<- Member) (int, error) {
 	if int64(len(content)) > maxMemberSize {
 		return 0, fmt.Errorf("member %s exceeds size limit", name)

@@ -78,6 +78,8 @@ func stdoutIsTerminal() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
+// printUsage writes the CLI help. Describe the primary happy path only.
+// Record edge-case handling in docs/edge-cases.md.
 func printUsage(w io.Writer) {
 	fmt.Fprint(w, `usage: ch-xbrl [-o FILE] [-workers N] [--continue-on-error] <path|url|->
        ch-xbrl -V
@@ -86,8 +88,7 @@ Stream Companies House iXBRL to a long-format fact CSV.
 
 Inputs (one positional):
   archive     local or http(s) .zip, .tar.zst, or .tar
-              a .zip member inside a .zip is opened one level (CIC packages);
-              a zip inside that inner zip is skipped
+              a .zip member inside a .zip is opened one level (CIC packages)
   instance    local or http(s) .xhtml, .html, .htm, .xbrl, or .xml
   remote      URL with no recognised extension: GET, then Content-Disposition
               filename; sniff if none (zip still needs a .zip URL)

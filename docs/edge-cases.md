@@ -69,7 +69,7 @@ A name ending in `.zip` used to be dropped before it was counted. `ch-xbrl` on t
 
 Behaviour that must stay:
 
-- Local and remote `.zip` inputs open members whose names end in `.zip`, one level.
+- Local and remote `.zip` inputs open members whose names end in `.zip` and whose bytes are a zip archive, one level. A `.zip` name whose bytes are iXBRL is an instance; see [iXBRL published under a .zip name](#ixbrl-published-under-a-zip-name).
 - From that inner zip, only iXBRL/XBRL members with a directory segment named `accounts` (case-insensitive) are emitted. A CIC34 report under `cic34/` is skipped and logged (`skip nested member: …`). It is not a parse error (`files_err` stays 0). A nested zip with no `accounts/` segment contributes no members.
 - `source_file` for those facts is the bulk member name unchanged (`Prod223_4320_05016384_20251231_CIC.zip`).
 - Opening the CIC zip itself as the positional input parses every inner instance, including the CIC34 report. `source_file` is then the inner path (`CIC-05016384/accounts/financialStatement.xhtml`), because that path is the member name of that zip. The accounts-only filter applies only when the zip is a member of another zip.
@@ -80,6 +80,42 @@ Behaviour that must stay:
 The example package is committed at `samples/Prod223_4320_05016384_20251231_CIC.zip`. The day pack is not in git. Other tests still build a tiny outer zip with one inner zip plus a loose instance, for junk names, a deeper zip, and the remote range path.
 
 Tests: `TestRun_EdgeSampleCICZipDirect`, `TestRun_EdgeSampleCICZipNested`, `TestStreamLocalNestedZip`, `TestStreamNestedZipKeepsAccountsSkipsCIC34`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsCIC34`, `TestRun_NestedZipSkipsDeeperZip`.
+
+## iXBRL published under a .zip name
+
+Found in [Accounts_Monthly_Data-April2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2021.zip), member `Prod224_0089_05546298_20201231.zip`.
+
+That monthly pack has 304,673 entries. Thirteen are named `*.zip`. None of them is a zip archive. Each is an iXBRL HTML document stored uncompressed, and the CRC matches those bytes. `Prod224_0089_05546298_20201231.zip` is 42,196 bytes. It begins with twelve bytes of `\r\n`, then `<?xml version="1.0" encoding="UTF-8" ?>` and an XHTML document for Imex Consultancy Ltd, company `05546298` (UK GAAP 2009). The other twelve members in that pack have the same shape:
+
+```text
+Prod224_0089_04978153_20200331.zip
+Prod224_0089_06659304_20200731.zip
+Prod224_0089_07215271_20210331.zip
+Prod224_0089_08885106_20210228.zip
+Prod224_0089_10005361_20200229.zip
+Prod224_0089_10005361_20210228.zip
+Prod224_0089_10137999_20200430.zip
+Prod224_0089_10704697_20200430.zip
+Prod224_0089_10925662_20200831.zip
+Prod224_0089_10934423_20200831.zip
+Prod224_0089_11248555_20200331.zip
+Prod224_0089_12162058_20210331.zip
+```
+
+A name ending in `.zip` used to be passed to `zip.NewReader`. That returns `zip: not a valid zip file` from the archive stream (`stream: nested zip Prod224_0089_05546298_20201231.zip: zip: not a valid zip file`). `--continue-on-error` does not apply to stream errors, so the April 2021 ingest stopped even after other members had parsed. Parsing the same bytes as an instance yields 26 facts.
+
+Behaviour that must stay:
+
+- On a local or remote `.zip` input, a member whose name ends in `.zip` is classified by content. Zip magic (`PK` local-file, end-of-central-directory, or spanning header) is opened one level, with the CIC `accounts/` filter above. XML/XHTML/iXBRL (optional BOM, then optional whitespace, then `<`) is emitted as one instance.
+- `source_file` for that instance is the bulk member name (`Prod224_0089_05546298_20201231.zip`). The run logs `instance named .zip: …`. This sample produces 26 facts, all with `company_number` `05546298`, including `EntityCurrentLegalOrRegisteredName` `Imex Consultancy Ltd` and `CashBankInHand` `1` at `2020-12-31`. `files_err` stays 0.
+- A `.zip`-named member that is neither a zip nor XML/HTML stays a stream error (`nested zip …: zip: not a valid zip file`). `--continue-on-error` does not turn that into a skipped member.
+- Opening this sample file itself as the positional input still fails. A path ending in `.zip` is an archive, and these bytes are not one. The sniff applies to members inside a zip.
+- A zip inside an inner zip is still skipped by name. This classification is only for a `.zip`-named member of the input zip.
+- Directories, tar archives, and stdin do not apply it.
+
+The example member is `samples/Prod224_0089_05546298_20201231.zip` (the HTML bytes, under the name Companies House used). The invoke test places that file inside an outer zip and runs `ch-xbrl` on the outer zip. The day pack is not in git.
+
+Tests: `TestRun_EdgeSampleMisnamedZipInstance`, `TestStreamZipNamedInstance`, `TestStreamNestedZipInvalid`, `TestRun_InvalidNestedZipIsStreamError`.
 
 ## Charity accounts with two schemaRefs
 
