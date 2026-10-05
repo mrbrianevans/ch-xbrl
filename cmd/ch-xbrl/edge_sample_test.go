@@ -92,6 +92,58 @@ func TestRun_EdgeSampleCharityAccounts(t *testing.T) {
 	assertCounts(t, got, []string{"159", "0", "0", "3", "8", "6"})
 }
 
+func sampleMisnamedZip(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join("..", "..", "samples", "Prod224_0089_05546298_20201231.zip")
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("misnamed zip sample: %v", err)
+	}
+	return p
+}
+
+func TestRun_EdgeSampleMisnamedZipInstance(t *testing.T) {
+	const member = "Prod224_0089_05546298_20201231.zip"
+	sample := sampleMisnamedZip(t)
+	// A positional path ending in .zip is an archive. These bytes are the
+	// member, so the test nests them the way the monthly pack does.
+	outer := filepath.Join(t.TempDir(), "outer.zip")
+	if err := archive.WriteZip(outer, map[string]string{member: sample}); err != nil {
+		t.Fatal(err)
+	}
+	csvPath, stderr := extractSample(t, outer)
+	if !strings.Contains(stderr, "instance named .zip: "+member) {
+		t.Fatalf("stderr missing instance log:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "nested zip:") {
+		t.Fatalf("misnamed member was opened as a zip:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "members=1") || !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '05546298'),
+		count(*) FILTER (WHERE source_file <> 'Prod224_0089_05546298_20201231.zip'),
+		count(*) FILTER (WHERE concept = 'UKCompaniesHouseRegisteredNumber' AND value = '05546298'),
+		count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'Imex Consultancy Ltd'),
+		count(*) FILTER (
+			WHERE concept = 'CashBankInHand'
+			  AND period_end = '2020-12-31'
+			  AND value = '1'
+			  AND unit = 'iso4217:GBP'
+			  AND dimensions IS NULL
+		)`)
+	assertCounts(t, got, []string{"26", "0", "0", "1", "1", "1"})
+
+	code, _, directErr := runCLI(t, []string{"-o", "-", "-workers", "1", sample}, nil)
+	if code != exitFail {
+		t.Fatalf("positional .zip of these bytes exit %d, want %d stderr=%s", code, exitFail, directErr)
+	}
+	if !strings.Contains(directErr, "not a valid zip file") {
+		t.Fatalf("positional open should fail as an archive:\n%s", directErr)
+	}
+}
+
 func TestRun_EdgeSampleCICZipDirect(t *testing.T) {
 	csvPath, stderr := extractSample(t, sampleCICZip(t))
 	if !strings.Contains(stderr, "members=2") || !strings.Contains(stderr, "files_err=0") {

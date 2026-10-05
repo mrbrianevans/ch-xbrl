@@ -534,6 +534,34 @@ func rowsBlankingSource(t *testing.T, csvText, source string) []string {
 	return rows
 }
 
+func TestRun_InvalidNestedZipIsStreamError(t *testing.T) {
+	htmlName := filepath.Base(sampleHTML(t))
+	html, err := os.ReadFile(sampleHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const badName = "Prod224_0089_00000000_20201231.zip"
+	outer := writeZipBytes(t, filepath.Join(t.TempDir(), "outer.zip"), map[string][]byte{
+		badName:  []byte("this is not a zip"),
+		htmlName: html,
+	})
+
+	code, _, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
+	if code != exitFail {
+		t.Fatalf("exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, "nested zip "+badName) || !strings.Contains(stderr, "not a valid zip file") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	code, _, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", outer}, nil)
+	if code != exitFail {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, "stream:") || !strings.Contains(stderr, "not a valid zip file") {
+		t.Fatalf("--continue-on-error should still fail the stream:\n%s", stderr)
+	}
+}
+
 func TestRun_NestedZipFactsMatchDirect(t *testing.T) {
 	xhtmlName := "CIC-03024914/accounts/03024914_aa_2023-03-13.xhtml"
 	htmlName := filepath.Base(sampleHTML(t))

@@ -145,7 +145,7 @@ func processRemoteBatch(ctx context.Context, client *http.Client, url string, ba
 			return n, fmt.Errorf("extract %s: %w", name, err)
 		}
 		if wantNestedZip(name) {
-			added, err := expandNestedZip(ctx, name, content, out)
+			added, err := openZipNamedMember(ctx, name, content, out)
 			if err != nil {
 				return n, err
 			}

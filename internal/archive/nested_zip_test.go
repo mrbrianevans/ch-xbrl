@@ -248,6 +248,62 @@ func TestStreamNestedZipSkipsDeeperZip(t *testing.T) {
 	}
 }
 
+func misnamedZipSamplePath(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join("..", "..", "samples", "Prod224_0089_05546298_20201231.zip")
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("misnamed zip sample: %v", err)
+	}
+	return p
+}
+
+func TestStreamZipNamedInstance(t *testing.T) {
+	const misnamed = "Prod224_0089_05546298_20201231.zip"
+	instance := readSample(t, misnamedZipSamplePath(t))
+	if isZipMagic(instance) {
+		t.Fatal("sample starts with zip magic")
+	}
+	if !isXMLMagic(instance) {
+		t.Fatal("sample is not XML/XHTML after leading whitespace")
+	}
+	xhtmlName := "CIC-03024914/accounts/03024914_aa_2023-03-13.xhtml"
+	xhtml := readSample(t, sampleXHTMLPath(t))
+	inner := writeZipBytes(t, filepath.Join(t.TempDir(), "inner.zip"), map[string][]byte{
+		xhtmlName: xhtml,
+	})
+	outerPath := writeZipBytes(t, filepath.Join(t.TempDir(), "outer.zip"), map[string][]byte{
+		misnamed:       instance,
+		cicWrapperName: readSample(t, inner),
+	})
+
+	got := membersByName(t, collect(t, outerPath))
+	if len(got) != 2 {
+		t.Fatalf("members = %d, want misnamed instance + CIC accounts", len(got))
+	}
+	if !bytes.Equal(got[misnamed], instance) {
+		t.Fatal("misnamed member was not emitted as its own bytes")
+	}
+	if !bytes.Equal(got[cicWrapperName], xhtml) {
+		t.Fatal("real nested zip was not expanded")
+	}
+
+	data, err := os.ReadFile(outerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := rangeFileServer(t, data)
+	defer srv.Close()
+	remote := membersByName(t, collect(t, srv.URL+"/Accounts_Monthly_Data-April2021.zip"))
+	if len(remote) != len(got) {
+		t.Fatalf("remote members %d, local %d", len(remote), len(got))
+	}
+	for name, body := range got {
+		if !bytes.Equal(remote[name], body) {
+			t.Errorf("%s: remote content mismatch", name)
+		}
+	}
+}
+
 func TestStreamNestedZipInvalid(t *testing.T) {
 	htmlName := "Prod223_4203_00134794_20250927.html"
 	outer := writeZipBytes(t, filepath.Join(t.TempDir(), "outer-bad.zip"), map[string][]byte{
