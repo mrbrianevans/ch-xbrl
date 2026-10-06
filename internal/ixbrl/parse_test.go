@@ -467,12 +467,14 @@ func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
 }
 
 func TestParseKnownArchiveAnomalies(t *testing.T) {
-	// Real members from
-	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip
-	// See docs/edge-cases.md.
+	// Real members from Companies House monthly archives.
+	// See docs/edge-cases.md. The .xml names are from March 2021.
+	// The .zip name is an attachment placeholder from October 2021.
 	cases := []string{
 		"Prod224_0088_11426842_20200630.xml",
 		"Prod224_0088_08972528_20200331.xml",
+		// .zip name, attachment-placeholder bytes. October 2021.
+		"Prod224_0095_04869811_20210131.zip",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {

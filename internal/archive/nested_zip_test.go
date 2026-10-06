@@ -3,7 +3,7 @@ package archive
 import (
 	"archive/zip"
 	"bytes"
-	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -71,6 +71,35 @@ func writeZipBytes(t *testing.T, dest string, files map[string][]byte) string {
 			t.Fatal(err)
 		}
 		if _, err := w.Write(files[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dest
+}
+
+// zipEntry is one member written in the given order (central-directory order).
+type zipEntry struct {
+	name string
+	body []byte
+}
+
+func writeZipOrdered(t *testing.T, dest string, entries []zipEntry) string {
+	t.Helper()
+	f, err := os.Create(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	zw := zip.NewWriter(f)
+	for _, e := range entries {
+		w, err := zw.Create(e.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(e.body); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -306,25 +335,58 @@ func TestStreamZipNamedInstance(t *testing.T) {
 
 func TestStreamNestedZipInvalid(t *testing.T) {
 	htmlName := "Prod223_4203_00134794_20250927.html"
-	outer := writeZipBytes(t, filepath.Join(t.TempDir(), "outer-bad.zip"), map[string][]byte{
-		"Prod223_4320_05016384_20251231_CIC.zip": []byte("this is not a zip"),
-		htmlName:                                 readSample(t, sampleHTMLPath(t)),
+	const badName = "Prod224_0095_04869811_20210131.zip"
+	html := readSample(t, sampleHTMLPath(t))
+	// Real October 2021 member: 30-byte attachment placeholder, not a zip.
+	placeholder := readSample(t, filepath.Join("..", "ixbrl", "testdata", badName))
+	if string(placeholder) != "ATTACHMENTPLACEHOLDER137191381" {
+		t.Fatalf("fixture changed: %q", placeholder)
+	}
+	// Bad member is written first so a stream error would drop the html.
+	outer := writeZipOrdered(t, filepath.Join(t.TempDir(), "outer-bad.zip"), []zipEntry{
+		{badName, placeholder},
+		{htmlName, html},
 	})
 
-	ch := make(chan Member, 4)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for range ch {
-		}
-	}()
-	_, err := Stream(context.Background(), outer, ch)
-	<-done
-	if err == nil {
-		t.Fatal("expected error for a .zip member that is not a zip")
+	assertBadZipThenHTML(t, collect(t, outer), badName, htmlName, html)
+
+	// Zip magic that is not a valid zip is the same member error.
+	const truncName = "Prod224_0095_00000000_20210131.zip"
+	trunc := writeZipOrdered(t, filepath.Join(t.TempDir(), "outer-trunc.zip"), []zipEntry{
+		{truncName, []byte{'P', 'K', 0x03, 0x04, 0x14}},
+		{htmlName, html},
+	})
+	assertBadZipThenHTML(t, collect(t, trunc), truncName, htmlName, html)
+
+	data, err := os.ReadFile(outer)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(err.Error(), "nested zip") {
-		t.Fatalf("error = %v, want nested zip", err)
+	srv := rangeFileServer(t, data)
+	defer srv.Close()
+	assertBadZipThenHTML(t, collect(t, srv.URL+"/Accounts_Monthly_Data-October2021.zip"), badName, htmlName, html)
+}
+
+func assertBadZipThenHTML(t *testing.T, got []Member, badName, htmlName string, html []byte) {
+	t.Helper()
+	if len(got) != 2 {
+		t.Fatalf("members = %d, want 2 (%s and %s)", len(got), badName, htmlName)
+	}
+	var bad, good Member
+	var sawBad, sawGood bool
+	for _, m := range got {
+		switch m.Name {
+		case badName:
+			bad, sawBad = m, true
+		case htmlName:
+			good, sawGood = m, true
+		}
+	}
+	if !sawBad || !errors.Is(bad.Err, zip.ErrFormat) {
+		t.Fatalf("bad member = %+v, want %s with zip.ErrFormat", bad, badName)
+	}
+	if !sawGood || good.Err != nil || !bytes.Equal(good.Content, html) {
+		t.Fatalf("html member = name %q err %v len %d", good.Name, good.Err, len(good.Content))
 	}
 }
 
