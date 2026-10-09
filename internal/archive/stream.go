@@ -15,14 +15,19 @@ import (
 // Content is fully read into memory (individual iXBRL files are ~100 KB).
 // Err, when set, is a per-member failure (the stream continues). Content is
 // then unused. Callers count it as files_err; it is not a stream error.
+// OnlyUKFRS asks the parser to keep facts whose target attribute is UKFRS.
+// Report packages set it; plain instances do not.
 type Member struct {
-	Name    string
-	Content []byte
-	Err     error
+	Name      string
+	Content   []byte
+	Err       error
+	OnlyUKFRS bool
 }
 
-// maxMemberSize caps per-file reads to avoid runaway members (50 MiB).
-const maxMemberSize = 50 << 20
+// maxMemberSize is the Companies House package limit (TIS: 100mb).
+// A member over this is a per-file error, not a stream error.
+// Tests may lower it; they must restore the previous value.
+var maxMemberSize int64 = 100 << 20
 
 // Stream opens source and yields members whose names look like iXBRL/XBRL
 // documents. Members are sent to out; out is closed when the input is exhausted
@@ -41,14 +46,17 @@ const maxMemberSize = 50 << 20
 // failures (429, 5xx, connection errors, short range bodies) are retried;
 // 403 and 404 are not.
 //
-// A .zip input (local or remote) also reads members whose names end in .zip.
-// Zip magic is opened one level (Companies House CIC packages). Only inner
-// instances under an accounts directory are emitted; a CIC34 report under
-// cic34/ is skipped. XML/XHTML/iXBRL under a .zip name is emitted as one
-// instance. Opening a real nested zip as the input itself still yields every
-// inner instance. A zip inside the inner zip is skipped. A .zip-named member
-// that is not a valid zip and not XML/HTML is a member error (Member.Err);
-// the stream continues. Tar, directories, and stdin do not open nested zips.
+// A .zip input (local or remote) is either a bulk archive or one accounts
+// package. A package (XBRL report package, or a single PREFIX-CRN folder)
+// is one filing: report packages yield the §5.2 reports and only UKFRS
+// facts; Companies House packages yield subsidiary-accounts, or accounts
+// when that folder is absent. A bulk archive also reads members whose names
+// end in .zip. Zip magic is opened one level with the same package rules.
+// XML/XHTML/iXBRL under a .zip name is emitted as one instance. A zip inside
+// an inner zip is skipped. A .zip-named member that is not a valid zip and
+// not XML/HTML is a member error (Member.Err). A package with no reports,
+// and a member over the 100 MiB limit, are member errors too. The stream
+// continues. Tar, directories, and stdin do not open nested zips.
 func Stream(ctx context.Context, source string, out chan<- Member) (int, error) {
 	return StreamFrom(ctx, source, os.Stdin, out)
 }
@@ -170,10 +178,14 @@ func wantNestedZip(name string) bool {
 }
 
 func emit(ctx context.Context, out chan<- Member, name string, content []byte) error {
+	return emitMember(ctx, out, Member{Name: name, Content: content})
+}
+
+func emitMember(ctx context.Context, out chan<- Member, m Member) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case out <- Member{Name: name, Content: content}:
+	case out <- m:
 		return nil
 	}
 }

@@ -153,19 +153,23 @@ func TestRun_EdgeSampleMisnamedZipInstance(t *testing.T) {
 }
 
 func TestRun_EdgeSampleCICZipDirect(t *testing.T) {
-	csvPath, stderr := extractSample(t, sampleCICZip(t))
-	if !strings.Contains(stderr, "members=2") || !strings.Contains(stderr, "files_err=0") {
+	sample := sampleCICZip(t)
+	csvPath, stderr := extractSample(t, sample)
+	base := filepath.Base(sample)
+	if !strings.Contains(stderr, "members=1") || !strings.Contains(stderr, "files_err=0") {
 		t.Fatalf("stderr: %s", stderr)
+	}
+	if !strings.Contains(stderr, "skip nested member: CIC-05016384/cic34/cicReport.xhtml") {
+		t.Fatalf("stderr missing cic34 skip:\n%s", stderr)
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
 		count(*) FILTER (WHERE company_number <> '05016384'),
-		count(*) FILTER (WHERE source_file = 'CIC-05016384/accounts/financialStatement.xhtml'),
-		count(*) FILTER (WHERE source_file = 'CIC-05016384/cic34/cicReport.xhtml'),
+		count(*) FILTER (WHERE source_file <> '`+base+`'),
 		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Financial Statements'),
 		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Community Interest Company Report'),
 		count(*) FILTER (WHERE concept = 'DirectorSigningCIC34Report')`)
-	assertCounts(t, got, []string{"79", "0", "60", "19", "1", "1", "1"})
+	assertCounts(t, got, []string{"60", "0", "0", "1", "0", "0"})
 }
 
 func TestRun_EdgeSampleCICZipNested(t *testing.T) {

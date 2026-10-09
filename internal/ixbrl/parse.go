@@ -79,6 +79,17 @@ func Parse(r io.Reader, sourceFile string) ([]fact.Fact, error) {
 
 // ParseBytes is like Parse but from a byte slice.
 func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
+	return parseBytes(data, sourceFile, "")
+}
+
+// ParseBytesOnlyTarget is ParseBytes restricted to facts whose target
+// attribute equals target. Facts with no target attribute are left out.
+// Report packages pass "UKFRS" so the company's own statements are kept.
+func ParseBytesOnlyTarget(data []byte, sourceFile, target string) ([]fact.Fact, error) {
+	return parseBytes(data, sourceFile, target)
+}
+
+func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error) {
 	// Strip BOM / leading junk before the first '<' (seen in older CH dumps).
 	data = stripXMLPreamble(data)
 
@@ -122,6 +133,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		IsNumeric   bool
 		Value       string
 		ContinuedAt string // head of ix:continuation chain, if any
+		Target      string // ix:target; empty when the attribute is absent
 	}
 	type factFrame struct {
 		fact  pendingFact
@@ -140,7 +152,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		}
 		if err != nil {
 			// Recover: many CH files are not well-formed XML; try a lenient pass.
-			return parseLenient(data, sourceFile)
+			return parseLenient(data, sourceFile, onlyTarget)
 		}
 
 		switch t := tok.(type) {
@@ -209,6 +221,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 					Decimals:    attrAny(t, "decimals"),
 					IsNumeric:   local == "nonFraction",
 					ContinuedAt: attrAny(t, "continuedAt"),
+					Target:      attrAny(t, "target"),
 				}
 				// nilled / empty elements still count as facts
 				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
@@ -391,6 +404,9 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		if pf.Name == "" {
 			continue
 		}
+		if onlyTarget != "" && pf.Target != onlyTarget {
+			continue
+		}
 		ctx := contexts[pf.ContextRef]
 		company := fileCompany
 		periodStart, periodEnd := "", ""
@@ -568,15 +584,16 @@ func qnameLocal(q string) string {
 
 // Filename patterns seen in Companies House dumps:
 //   - {company}_{type}_{date}.xhtml   e.g. 03024914_aa_2023-03-13.xhtml
-//   - Prod{run}_{batch}_{company}_{yyyymmdd}.{html|xml|xhtml}
+//   - Prod{run}_{batch}_{company}_{yyyymmdd}[_{UKSEF|CIC|AUDIT_EXEMPT}].{html|xml|xhtml|zip}
 //     e.g. Prod223_4203_00134794_20250927.html
+//     e.g. Prod223_4320_05016384_20251231_CIC.zip
 //
 // A company number is a string, not an integer. Letters are normal:
 // SC (Scotland), NI (Northern Ireland), OC/SO (LLP), NC, R, and similar
 // prefixes. Do not require an all-digit value and do not cast to an integer.
 var (
 	// Prefer Prod* first so the middle company field is not confused with batch numbers.
-	prodFileRE = regexp.MustCompile(`(?i)^Prod\d+_\d+_([A-Z]{0,2}\d{6,8})_\d{8}\.(html|htm|xml|xhtml|zip)$`)
+	prodFileRE = regexp.MustCompile(`(?i)^Prod\d+_\d+_([A-Z]{0,2}\d{6,8})_\d{8}(?:_(?:UKSEF|CIC|AUDIT_EXEMPT))?\.(html|htm|xml|xhtml|zip)$`)
 	// Leading company id before underscore or extension.
 	companyFileRE = regexp.MustCompile(`(?i)^([0-9]{6,8}|[A-Z]{2}[0-9]{6})[_\.]`)
 	// Fallback: company number anywhere in the basename (letters allowed).
@@ -883,7 +900,7 @@ func documentNamespaces(s string) map[string]string {
 	return ns
 }
 
-func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
+func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error) {
 	data = stripXMLPreamble(data)
 	s := string(data)
 	docNS := documentNamespaces(s)
@@ -963,6 +980,9 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 		am := parseAttrs(attrs)
 		name := am["name"]
 		if name == "" {
+			return
+		}
+		if onlyTarget != "" && am["target"] != onlyTarget {
 			return
 		}
 		nsURI, badPrefix := inlineNamespace(name, docNS)

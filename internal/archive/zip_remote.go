@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -25,10 +26,14 @@ var (
 )
 
 // memberBatch is a contiguous byte range covering one or more ZIP local files.
+// sourceName, when set, is the filing name written on every emitted member
+// (a package input). onlyUKFRS selects the report-package fact filter.
 type memberBatch struct {
-	start   int64 // inclusive absolute offset
-	end     int64 // inclusive absolute offset
-	entries []cdEntry
+	start      int64 // inclusive absolute offset
+	end        int64 // inclusive absolute offset
+	entries    []cdEntry
+	sourceName string
+	onlyUKFRS  bool
 }
 
 // streamZipRemote loads the central directory with a few range requests, packs
@@ -49,10 +54,23 @@ func streamZipRemoteWithClient(ctx context.Context, client *http.Client, source 
 		return 0, err
 	}
 
+	names := make([]string, len(dir.Entries))
+	for i, e := range dir.Entries {
+		names[i] = filepath.ToSlash(e.Name)
+	}
+	if sel := selectPackage(names); sel.Kind != packageBulk {
+		return streamRemotePackage(ctx, client, source, dir, sel, out)
+	}
+
+	nBig, err := emitOversizedEntries(ctx, dir.Entries, out)
+	if err != nil {
+		return nBig, err
+	}
+
 	// Fence ends with CD start so the last member's span does not run into the directory.
 	batches := packMemberBatches(dir.Entries, dir.CDOffset, remoteRangeTarget, remoteRangeMax, remoteGapSplit)
 	if len(batches) == 0 {
-		return 0, nil
+		return nBig, nil
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
@@ -113,7 +131,7 @@ func streamZipRemoteWithClient(ctx context.Context, client *http.Client, source 
 	close(jobs)
 	wg.Wait()
 
-	n := int(emitted.Load())
+	n := nBig + int(emitted.Load())
 	if firstErr != nil {
 		return n, firstErr
 	}
@@ -121,6 +139,80 @@ func streamZipRemoteWithClient(ctx context.Context, client *http.Client, source 
 		return n, err
 	}
 	return n, nil
+}
+
+// streamRemotePackage fetches only the selected reports and emits them as one
+// filing. source_file is the URL basename. An empty selection, or a selected
+// report over the size limit, is a member error.
+func streamRemotePackage(ctx context.Context, client *http.Client, source string, dir *zipDirectory, sel packageSelection, out chan<- Member) (int, error) {
+	sourceName := instanceName(source)
+	if len(sel.Files) == 0 {
+		return emitNoReports(ctx, sourceName, out)
+	}
+	allow := map[string]bool{}
+	for _, p := range sel.Files {
+		allow[p] = true
+	}
+	for _, e := range dir.Entries {
+		if !allow[normZipName(e.Name)] {
+			continue
+		}
+		if e.UncompressedSize > uint64(maxMemberSize) {
+			return emitTooBig(ctx, sourceName, out)
+		}
+	}
+	batches := packMemberBatchesIf(dir.Entries, dir.CDOffset, remoteRangeTarget, remoteRangeMax, remoteGapSplit, allow)
+	for i := range batches {
+		batches[i].sourceName = sourceName
+		batches[i].onlyUKFRS = sel.UKFRS
+	}
+	if len(batches) == 0 {
+		return emitNoReports(ctx, sourceName, out)
+	}
+	// One package is small. Read it on this goroutine.
+	n := 0
+	for _, batch := range batches {
+		added, err := processRemoteBatch(ctx, client, source, batch, out)
+		if err != nil {
+			return n, err
+		}
+		n += added
+	}
+	if n == 0 {
+		return emitNoReports(ctx, sourceName, out)
+	}
+	logPackageSkips(namesOf(dir), sel.Files)
+	logPackage(sourceName, n, false)
+	return n, nil
+}
+
+// emitOversizedEntries reports wanted bulk members over the size limit and
+// does not read them. They are left out of the range batches.
+func emitOversizedEntries(ctx context.Context, entries []cdEntry, out chan<- Member) (int, error) {
+	n := 0
+	for _, e := range entries {
+		name := filepath.ToSlash(e.Name)
+		if !wantMember(name) && !wantNestedZip(name) {
+			continue
+		}
+		if e.UncompressedSize <= uint64(maxMemberSize) {
+			continue
+		}
+		added, err := emitTooBig(ctx, name, out)
+		if err != nil {
+			return n, err
+		}
+		n += added
+	}
+	return n, nil
+}
+
+func namesOf(dir *zipDirectory) []string {
+	names := make([]string, len(dir.Entries))
+	for i, e := range dir.Entries {
+		names[i] = filepath.ToSlash(e.Name)
+	}
+	return names
 }
 
 func processRemoteBatch(ctx context.Context, client *http.Client, url string, batch memberBatch, out chan<- Member) (int, error) {
@@ -137,14 +229,31 @@ func processRemoteBatch(ctx context.Context, client *http.Client, url string, ba
 			return n, err
 		}
 		name := filepath.ToSlash(e.Name)
-		if e.UncompressedSize > maxMemberSize {
-			return n, fmt.Errorf("member %s exceeds size limit", name)
+		emitName := name
+		if batch.sourceName != "" {
+			emitName = batch.sourceName
+		}
+		if e.UncompressedSize > uint64(maxMemberSize) {
+			added, err := emitTooBig(ctx, emitName, out)
+			if err != nil {
+				return n, err
+			}
+			n += added
+			continue
 		}
 		content, err := extractMemberFromRange(data, batch.start, e)
+		if errors.Is(err, errMemberTooBig) {
+			added, err := emitTooBig(ctx, emitName, out)
+			if err != nil {
+				return n, err
+			}
+			n += added
+			continue
+		}
 		if err != nil {
 			return n, fmt.Errorf("extract %s: %w", name, err)
 		}
-		if wantNestedZip(name) {
+		if batch.sourceName == "" && wantNestedZip(name) {
 			added, err := openZipNamedMember(ctx, name, content, out)
 			if err != nil {
 				return n, err
@@ -152,7 +261,7 @@ func processRemoteBatch(ctx context.Context, client *http.Client, url string, ba
 			n += added
 			continue
 		}
-		if err := emit(ctx, out, name, content); err != nil {
+		if err := emitMember(ctx, out, Member{Name: emitName, Content: content, OnlyUKFRS: batch.onlyUKFRS}); err != nil {
 			return n, err
 		}
 		n++
@@ -164,6 +273,12 @@ func processRemoteBatch(ctx context.Context, client *http.Client, url string, ba
 // all entries (wanted and not) are used as offset fences so local-header sizing
 // does not depend on guessing extra-field lengths.
 func packMemberBatches(all []cdEntry, cdOffset, target, maxSpan, gapSplit int64) []memberBatch {
+	return packMemberBatchesIf(all, cdOffset, target, maxSpan, gapSplit, nil)
+}
+
+// packMemberBatchesIf is packMemberBatches. allow, when non-nil, keeps only
+// those normalised entry names (a package's selected reports).
+func packMemberBatchesIf(all []cdEntry, cdOffset, target, maxSpan, gapSplit int64, allow map[string]bool) []memberBatch {
 	if len(all) == 0 {
 		return nil
 	}
@@ -207,6 +322,12 @@ func packMemberBatches(all []cdEntry, cdOffset, target, maxSpan, gapSplit int64)
 	for i, e := range sorted {
 		name := filepath.ToSlash(e.Name)
 		if !wantMember(name) && !wantNestedZip(name) {
+			continue
+		}
+		if allow != nil && !allow[normZipName(name)] {
+			continue
+		}
+		if e.UncompressedSize > uint64(maxMemberSize) {
 			continue
 		}
 
@@ -272,8 +393,8 @@ func extractMemberFromRange(data []byte, rangeStart int64, e cdEntry) ([]byte, e
 	}
 	comp := data[bodyOff : bodyOff+int(compSize)]
 
-	if e.UncompressedSize > maxMemberSize {
-		return nil, fmt.Errorf("member %s exceeds size limit", e.Name)
+	if e.UncompressedSize > uint64(maxMemberSize) {
+		return nil, fmt.Errorf("member %s: %w", e.Name, errMemberTooBig)
 	}
 
 	var raw []byte
@@ -290,7 +411,7 @@ func extractMemberFromRange(data []byte, rangeStart int64, e cdEntry) ([]byte, e
 			return nil, err
 		}
 		if int64(len(raw)) > maxMemberSize {
-			return nil, fmt.Errorf("member %s exceeds size limit", e.Name)
+			return nil, fmt.Errorf("member %s: %w", e.Name, errMemberTooBig)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported compression method %d for %s", e.Method, e.Name)

@@ -39,6 +39,10 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 		return 0, fmt.Errorf("zip: %w", err)
 	}
 
+	if sel := selectPackage(zipNames(zr)); sel.Kind != packageBulk {
+		return emitPackage(ctx, instanceName(source), zr, sel, false, out)
+	}
+
 	n := 0
 	for _, f := range zr.File {
 		if err := ctx.Err(); err != nil {
@@ -52,7 +56,23 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 		if !nested && !wantMember(name) {
 			continue
 		}
+		if f.UncompressedSize64 > uint64(maxMemberSize) {
+			added, err := emitTooBig(ctx, name, out)
+			if err != nil {
+				return n, err
+			}
+			n += added
+			continue
+		}
 		content, err := readZipFile(f)
+		if errors.Is(err, errMemberTooBig) {
+			added, emitErr := emitTooBig(ctx, name, out)
+			if emitErr != nil {
+				return n, emitErr
+			}
+			n += added
+			continue
+		}
 		if err != nil {
 			return n, err
 		}
@@ -72,11 +92,17 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 	return n, nil
 }
 
+// errMemberTooBig is a per-file size failure. Callers emit it as Member.Err.
+var errMemberTooBig = errors.New("exceeds size limit")
+
+// errNoReports is a package that contained no selected report.
+var errNoReports = errors.New("no reports")
+
 // readZipFile reads one zip member, enforcing maxMemberSize.
 func readZipFile(f *zip.File) ([]byte, error) {
 	name := filepath.ToSlash(f.Name)
-	if f.UncompressedSize64 > maxMemberSize {
-		return nil, fmt.Errorf("member %s exceeds size limit", name)
+	if f.UncompressedSize64 > uint64(maxMemberSize) {
+		return nil, fmt.Errorf("member %s: %w", name, errMemberTooBig)
 	}
 	rc, err := f.Open()
 	if err != nil {
@@ -93,10 +119,26 @@ func readZipFile(f *zip.File) ([]byte, error) {
 		}
 		return nil, fmt.Errorf("read %s: %w", name, err)
 	}
-	if len(content) > maxMemberSize {
-		return nil, fmt.Errorf("member %s exceeds size limit", name)
+	if int64(len(content)) > maxMemberSize {
+		return nil, fmt.Errorf("member %s: %w", name, errMemberTooBig)
 	}
 	return content, nil
+}
+
+func emitTooBig(ctx context.Context, name string, out chan<- Member) (int, error) {
+	log.Printf("member %s exceeds size limit", name)
+	if err := emitMember(ctx, out, Member{Name: name, Err: errMemberTooBig}); err != nil {
+		return 0, err
+	}
+	return 1, nil
+}
+
+func emitNoReports(ctx context.Context, name string, out chan<- Member) (int, error) {
+	log.Printf("package %s: no reports", name)
+	if err := emitMember(ctx, out, Member{Name: name, Err: errNoReports}); err != nil {
+		return 0, err
+	}
+	return 1, nil
 }
 
 // errBadNestedZip marks zip bytes that are not an archive. openZipNamedMember
@@ -142,19 +184,15 @@ func emitBadZipMember(ctx context.Context, name string, out chan<- Member) (int,
 	}
 }
 
-// expandNestedZip opens one already-inflated zip member and emits iXBRL
-// members that sit under an accounts directory. Companies House CIC packages
-// store the accounts filing there and a CIC34 report under cic34/; only the
-// accounts file is emitted. Other inner instances are logged and skipped.
-// Inner members that are themselves zip files are logged and skipped by name
-// (not sniffed). source_file is the wrapper member name, the same name a loose
-// member of this zip would get. The 50 MiB cap applies to the wrapper and each
-// inner instance. This filter is not used when the inner zip is the positional
-// input. Zip magic that is not a valid zip returns errBadNestedZip so the
-// caller can count a member error. Other failures stay stream errors.
+// expandNestedZip opens one already-inflated zip member. A report package or
+// a Companies House package is one filing: source_file is the wrapper name,
+// and a package with no selected report is a member error. A nested zip that
+// is neither keeps the accounts-directory filter. Inner zips are not opened.
+// Zip magic that is not a valid zip returns errBadNestedZip so the caller can
+// count a member error. Other failures stay stream errors.
 func expandNestedZip(ctx context.Context, name string, content []byte, out chan<- Member) (int, error) {
 	if int64(len(content)) > maxMemberSize {
-		return 0, fmt.Errorf("member %s exceeds size limit", name)
+		return emitTooBig(ctx, name, out)
 	}
 	zr, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
@@ -163,6 +201,77 @@ func expandNestedZip(ctx context.Context, name string, content []byte, out chan<
 		}
 		return 0, fmt.Errorf("nested zip %s: %w", name, err)
 	}
+	sel := selectPackage(zipNames(zr))
+	if sel.Kind == packageBulk {
+		return expandAccountsOnly(ctx, name, zr, out)
+	}
+	return emitPackage(ctx, name, zr, sel, true, out)
+}
+
+// emitPackage emits the selected reports of a package as one filing.
+// sourceName is the bulk member name, or the positional input basename.
+// nested selects the log line used by the existing nested-zip tests.
+func emitPackage(ctx context.Context, sourceName string, zr *zip.Reader, sel packageSelection, nested bool, out chan<- Member) (int, error) {
+	if len(sel.Files) == 0 {
+		return emitNoReports(ctx, sourceName, out)
+	}
+	files := zipFilesByName(zr)
+	for _, p := range sel.Files {
+		f := files[p]
+		if f != nil && f.UncompressedSize64 > uint64(maxMemberSize) {
+			return emitTooBig(ctx, sourceName, out)
+		}
+	}
+	logPackageSkips(zipNames(zr), sel.Files)
+	n := 0
+	for _, p := range sel.Files {
+		if err := ctx.Err(); err != nil {
+			return n, err
+		}
+		f := files[p]
+		if f == nil {
+			continue
+		}
+		body, err := readZipFile(f)
+		if errors.Is(err, errMemberTooBig) {
+			return emitTooBig(ctx, sourceName, out)
+		}
+		if err != nil {
+			return n, err
+		}
+		if err := emitMember(ctx, out, Member{Name: sourceName, Content: body, OnlyUKFRS: sel.UKFRS}); err != nil {
+			return n, err
+		}
+		n++
+	}
+	if n == 0 {
+		return emitNoReports(ctx, sourceName, out)
+	}
+	logPackage(sourceName, n, nested)
+	return n, nil
+}
+
+func logPackage(sourceName string, n int, nested bool) {
+	if nested {
+		log.Printf("nested zip: %s (%d members)", sourceName, n)
+	} else {
+		log.Printf("package: %s (%d members)", sourceName, n)
+	}
+}
+
+func logPackageSkips(names, selected []string) {
+	zips, skipped := packageSkipNames(names, selected)
+	for _, inner := range zips {
+		log.Printf("skip nested zip: %s", inner)
+	}
+	for _, inner := range skipped {
+		log.Printf("skip nested member: %s", inner)
+	}
+}
+
+// expandAccountsOnly is the filter for a nested zip that is not a package.
+// Only iXBRL/XBRL members under an accounts directory are emitted.
+func expandAccountsOnly(ctx context.Context, name string, zr *zip.Reader, out chan<- Member) (int, error) {
 	n := 0
 	for _, f := range zr.File {
 		if err := ctx.Err(); err != nil {
@@ -186,7 +295,13 @@ func expandNestedZip(ctx context.Context, name string, content []byte, out chan<
 			log.Printf("skip nested member: %s", inner)
 			continue
 		}
+		if f.UncompressedSize64 > uint64(maxMemberSize) {
+			return emitTooBig(ctx, name, out)
+		}
 		body, err := readZipFile(f)
+		if errors.Is(err, errMemberTooBig) {
+			return emitTooBig(ctx, name, out)
+		}
 		if err != nil {
 			return n, err
 		}
@@ -197,6 +312,37 @@ func expandNestedZip(ctx context.Context, name string, content []byte, out chan<
 	}
 	log.Printf("nested zip: %s (%d members)", name, n)
 	return n, nil
+}
+
+func zipNames(zr *zip.Reader) []string {
+	names := make([]string, 0, len(zr.File))
+	for _, f := range zr.File {
+		names = append(names, filepath.ToSlash(f.Name))
+	}
+	return names
+}
+
+func zipFilesByName(zr *zip.Reader) map[string]*zip.File {
+	files := make(map[string]*zip.File, len(zr.File))
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		key := normZipName(f.Name)
+		if key == "" {
+			continue
+		}
+		files[key] = f
+	}
+	return files
+}
+
+func normZipName(name string) string {
+	got := normaliseZipNames([]string{name})
+	if len(got) == 0 {
+		return ""
+	}
+	return got[0]
 }
 
 // WriteZip packs files into a .zip archive at dest.

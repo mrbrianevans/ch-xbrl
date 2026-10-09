@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-09
+
+### Changed
+
+- An accounts package is one filing, whether it is the input or a member of a bulk zip. A UKSEF report package keeps facts with `target="UKFRS"`. A CIC package keeps `accounts/`. An audit-exempt package keeps `subsidiary-accounts/`.
+- `source_file` for a package is the package name. Prod names may end in `_UKSEF`, `_CIC`, or `_AUDIT_EXEMPT`.
+
+### Fixed
+
+- A package with no selected report, and a member over 100 MiB, are per-file errors. They do not abort the archive.
+
 ## [0.4.0] - 2026-10-09
 
 ### Changed
@@ -88,7 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.6...v0.4.0
 [0.3.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.4...v0.3.5
