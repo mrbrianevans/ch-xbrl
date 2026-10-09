@@ -4,7 +4,7 @@
 // Supported inputs (one positional path, URL, or "-"):
 //
 //	.zip / .tar.zst / .tar  — local or http(s); remote zip uses HTTP ranges
-//	.zip member inside a .zip: zip bytes opened one level (CIC); iXBRL bytes parsed
+//	.zip member inside a .zip: zip bytes opened one level (accounts package); iXBRL bytes parsed
 //	  (a name that is neither is a member error, not a stream error)
 //	.xhtml .html .htm .xbrl .xml — single instance, local or http(s)
 //	http(s) URL with no known extension — GET, follow redirects, sniff body
@@ -37,6 +37,7 @@ import (
 
 	"github.com/mrbrianevans/ch-xbrl/internal/archive"
 	"github.com/mrbrianevans/ch-xbrl/internal/csvout"
+	"github.com/mrbrianevans/ch-xbrl/internal/fact"
 	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl"
 )
 
@@ -113,7 +114,13 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 					noteErr(m.Name, m.Err)
 					continue
 				}
-				facts, err := ixbrl.ParseBytes(m.Content, m.Name)
+				var facts []fact.Fact
+				var err error
+				if m.OnlyUKFRS {
+					facts, err = ixbrl.ParseBytesOnlyTarget(m.Content, m.Name, "UKFRS")
+				} else {
+					facts, err = ixbrl.ParseBytes(m.Content, m.Name)
+				}
 				if err != nil {
 					noteErr(m.Name, err)
 					continue

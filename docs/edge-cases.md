@@ -70,11 +70,11 @@ A name ending in `.zip` used to be dropped before it was counted. `ch-xbrl` on t
 Behaviour that must stay:
 
 - Local and remote `.zip` inputs open members whose names end in `.zip` and whose bytes are a zip archive, one level. A `.zip` name whose bytes are iXBRL is an instance; see [iXBRL published under a .zip name](#ixbrl-published-under-a-zip-name).
-- From that inner zip, only iXBRL/XBRL members with a directory segment named `accounts` (case-insensitive) are emitted. A CIC34 report under `cic34/` is skipped and logged (`skip nested member: …`). It is not a parse error (`files_err` stays 0). A nested zip with no `accounts/` segment contributes no members.
-- `source_file` for those facts is the bulk member name unchanged (`Prod223_4320_05016384_20251231_CIC.zip`).
-- Opening the CIC zip itself as the positional input parses every inner instance, including the CIC34 report. `source_file` is then the inner path (`CIC-05016384/accounts/financialStatement.xhtml`), because that path is the member name of that zip. The accounts-only filter applies only when the zip is a member of another zip.
-- A `.zip` inside the inner zip is skipped and logged (`skip nested zip: …`). It is not a parse error (`files_err` stays 0).
-- The 50 MiB member cap applies to the wrapper zip and to each inner instance.
+- A CIC zip is a Companies House package: one top-level folder `CIC-<CRN>`. Only the iXBRL file under `accounts/` (case-insensitive, exact segment) is emitted. The CIC34 report under `cic34/` is skipped and logged (`skip nested member: …`). It is not a parse error (`files_err` stays 0).
+- That selection applies both when the CIC zip is a bulk member and when it is the positional input. `source_file` is the zip name in both cases (`Prod223_4320_05016384_20251231_CIC.zip` when that file is the input or the bulk member). The inner path is not a `source_file`.
+- A `.zip` inside the package is skipped and logged (`skip nested zip: …`). It is not a parse error (`files_err` stays 0).
+- A package with no selected report is a member error (`no reports`), not a silent empty member and not a stream error.
+- A member over 100 MiB is a member error (`exceeds size limit`). The rest of the archive is still read.
 - Directories, tar archives, and stdin do not open nested zips. Zip on stdin stays refused.
 
 The example package is committed at `samples/Prod223_4320_05016384_20251231_CIC.zip`. The day pack is not in git. Other tests still build a tiny outer zip with one inner zip plus a loose instance, for junk names, a deeper zip, and the remote range path.
@@ -106,7 +106,7 @@ A name ending in `.zip` used to be passed to `zip.NewReader`. That returns `zip:
 
 Behaviour that must stay:
 
-- On a local or remote `.zip` input, a member whose name ends in `.zip` is classified by content. Zip magic (`PK` local-file, end-of-central-directory, or spanning header) is opened one level, with the CIC `accounts/` filter above. XML/XHTML/iXBRL (optional BOM, then optional whitespace, then `<`) is emitted as one instance.
+- On a local or remote `.zip` input, a member whose name ends in `.zip` is classified by content. Zip magic (`PK` local-file, end-of-central-directory, or spanning header) is opened one level, with the package rules above. XML/XHTML/iXBRL (optional BOM, then optional whitespace, then `<`) is emitted as one instance.
 - `source_file` for that instance is the bulk member name (`Prod224_0089_05546298_20201231.zip`). The run logs `instance named .zip: …`. This sample produces 26 facts, all with `company_number` `05546298`, including `EntityCurrentLegalOrRegisteredName` `Imex Consultancy Ltd` and `CashBankInHand` `1` at `2020-12-31`. `files_err` stays 0.
 - A `.zip`-named member that is neither a zip nor XML/HTML is a member error, not a stream error. See [Attachment placeholder published under a .zip name](#attachment-placeholder-published-under-a-zip-name).
 - Opening this sample file itself as the positional input still fails. A path ending in `.zip` is an archive, and these bytes are not one. The sniff applies to members inside a zip.
@@ -165,3 +165,46 @@ The sample is `samples/Prod223_4320_04986021_20260331.html`. The invoke test che
 The 14 CIC accounts files in that pack each have a single FRS-102 schemaRef. This case is the loose charity accounts, not the CIC34 report.
 
 Test: `TestRun_EdgeSampleCharityAccounts`.
+
+## Filing-history accounts
+
+These are public document downloads, not members of an Accounts Data Product zip. Each is one filing. A plain `.xhtml` is parsed as an instance. A `.zip` is an accounts package: `source_file` is the zip basename, and one report is emitted.
+
+| Sample | Company | What it is |
+|---|---|---|
+| `samples/00003284_aa_2024-12-31.xhtml` | `00003284` | Plain iXBRL. Fenny Compton Water Company Limited(The). `NetAssetsLiabilities` `8536` at `2024-12-31`. [Filing](https://find-and-update.company-information.service.gov.uk/company/00003284/filing-history/MzQ2NTE3MTE3MmFkaXF6a2N4/document?format=xhtml&download=1). |
+| `samples/OC300293_aa_2026-03-31.xhtml` | `OC300293` | LLP. `LegalFormEntity` dimension `LimitedLiabilityPartnershipLLP`. [Filing](https://find-and-update.company-information.service.gov.uk/company/OC300293/filing-history/MzU0ODE4Nzk2NmFkaXF6a2N4/document?format=xhtml&download=1). |
+| `samples/16138242_aa_2025-12-31.xhtml` | `16138242` | Dormant. `EntityDormantTruefalse` `true`. [Filing](https://find-and-update.company-information.service.gov.uk/company/16138242/filing-history/MzU0Mzg4MjcwOWFkaXF6a2N4/document?format=xhtml&download=1). |
+| `samples/12978643_aa_2025-12-31.xhtml` | `12978643` | Group accounts as one iXBRL instance, not a zip package. `ScopeAccounts` dimension `ConsolidatedGroupCompanyAccounts`. It must not be unpacked. [Filing](https://find-and-update.company-information.service.gov.uk/company/12978643/filing-history/MzU0ODQzMDgyN2FkaXF6a2N4/document?format=xhtml&download=1). |
+
+Tests: `TestRun_FilingHistoryPlainInstances`.
+
+## UKSEF report package
+
+Two filing-history zips. Both are report packages under one top-level directory. Reports are discovered with XBRL Report Package §5.2 (the file directly in `reports/`). Directory entries are not required for that. Only facts with `target="UKFRS"` are emitted. Other targets in the same document, including facts with no `target` attribute, are left out. `Assets` is one of those left-out concepts in both files.
+
+`samples/03033634_uksef.zip` (Primary Health Properties PLC, `03033634`) has no `META-INF/reportPackage.json`. The marker is `213800Y5CJHXOATK7X11-2024-12-31/reports/`. 24 facts, including `ProfitLoss` `59100000` at `2024-12-31`. [Filing](https://find-and-update.company-information.service.gov.uk/company/03033634/filing-history/MzQ2NjkwNTg3OWFkaXF6a2N4/document?format=zip&download=1).
+
+`samples/00185647_uksef.zip` (J Sainsbury plc, `00185647`) has `META-INF/reportPackage.json` under `213800VGZAAJIKJ9Y484-2025-03-01/`. 26 facts, including `NameEntityAuditors` `Ernst & Young LLP`. [Filing](https://find-and-update.company-information.service.gov.uk/company/00185647/filing-history/MzQ2ODYzNzU5MGFkaXF6a2N4/document?format=zip&download=1).
+
+When either zip is a bulk member, `source_file` is the member name. The Prod pattern accepts a `_UKSEF` suffix, so `Prod224_0001_03033634_20241231_UKSEF.zip` yields company `03033634`.
+
+Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
+
+## Audit-exempt subsidiary package
+
+TIS §4.5: a zip whose top-level folder is `AUDITEXEMPT-<CRN>`, with `subsidiary-accounts`, `consolidated-accounts`, `agreement`, and `guarantee`. Only `subsidiary-accounts` is emitted. The other three are skipped and logged. `DateSigningDSEPAgreement` is not in the CSV. The folder match is the whole segment, case-insensitive, so `parent-accounts` is not `accounts`.
+
+`samples/04973629_audit_exempt.zip` stores directory entries. Subsidiary accounts are Hastings Specsavers Limited, company `04973629`, 175 facts. [Filing](https://find-and-update.company-information.service.gov.uk/company/04973629/filing-history/MzU0MDI1NjkzM2FkaXF6a2N4/document?format=zip&download=1).
+
+`samples/13515245_audit_exempt.zip` has the same four paths and no directory entries. The paths alone are enough. Subsidiary accounts are LANCE MORTGAGES LIMITED, company `13515245`, 83 facts. [Filing](https://find-and-update.company-information.service.gov.uk/company/13515245/filing-history/MzU0ODQ4ODE1MmFkaXF6a2N4/document?format=zip&download=1).
+
+A Prod member name may end in `_AUDIT_EXEMPT` before the extension. The company number is the field before the date, not the date.
+
+Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
+
+## CIC package from filing history
+
+`samples/10878733_cic.zip` is the same shape as the bulk CIC wrapper above, for Upbeat Life C.I.C., company `10878733`: `CIC-10878733/accounts/financialStatement.xhtml` and `CIC-10878733/cic34/cicReport.xhtml`. Opening it emits the accounts file only (52 facts, `ReportTitle` `Financial Statements`, no `DirectorSigningCIC34Report`). [Filing](https://find-and-update.company-information.service.gov.uk/company/10878733/filing-history/MzUxNzQzNTgyMWFkaXF6a2N4/document?format=zip&download=1).
+
+Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.

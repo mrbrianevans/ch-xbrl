@@ -17,6 +17,10 @@ Source:
 
     https://download.companieshouse.gov.uk/en_accountsdata.html
 
+Some files are single filing-history document downloads rather than
+members of an Accounts Data Product zip. The filing URL is recorded
+in docs/edge-cases.md. They are the same public register filings.
+
 The Open Government Licence does not cover personal data. Do not treat
 these filings as a source of personal data except as permitted by
 data-protection law.

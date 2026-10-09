@@ -688,7 +688,7 @@ func TestRun_NestedZipFactsMatchDirect(t *testing.T) {
 	assertCSV(t, directCSV)
 	assertCSV(t, outerCSV)
 
-	directRows := rowsBlankingSource(t, directCSV, xhtmlName)
+	directRows := rowsBlankingSource(t, directCSV, filepath.Base(inner))
 	outerRows := rowsBlankingSource(t, outerCSV, wrapper)
 	if len(directRows) == 0 {
 		t.Fatal("direct inner zip produced no facts")
@@ -747,10 +747,16 @@ func TestRun_NestedZipSkipsCIC34(t *testing.T) {
 		t.Fatalf("outer exit %d stderr=%s", code, outerErr)
 	}
 
-	directAccounts := rowsBlankingSource(t, directCSV, accountsName)
-	directReport := rowsBlankingSource(t, directCSV, reportName)
-	if len(directAccounts) == 0 || strings.Join(directAccounts, "\n") != strings.Join(directReport, "\n") {
-		t.Fatalf("direct CIC zip should parse both instances, accounts=%d cic34=%d", len(directAccounts), len(directReport))
+	directName := filepath.Base(inner)
+	directAccounts := rowsBlankingSource(t, directCSV, directName)
+	if len(directAccounts) == 0 {
+		t.Fatal("direct CIC package produced no facts")
+	}
+	if len(rowsForSource(t, directCSV, reportName)) != 0 || len(rowsForSource(t, directCSV, accountsName)) != 0 {
+		t.Fatal("direct open used an inner path as source_file")
+	}
+	if !strings.Contains(directErr, "skip nested member: "+reportName) {
+		t.Fatalf("direct stderr missing cic34 skip:\n%s", directErr)
 	}
 	outerRows := rowsBlankingSource(t, outerCSV, wrapper)
 	if strings.Join(directAccounts, "\n") != strings.Join(outerRows, "\n") {
@@ -820,6 +826,49 @@ func TestRun_NestedZipSkipsDeeperZip(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "files_err=0") {
 		t.Fatalf("stderr: %s", stderr)
+	}
+}
+
+func TestRun_PackageNoReportsContinueOnError(t *testing.T) {
+	xhtml, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlName := filepath.Base(sampleXHTML(t))
+	const wrapper = "Prod224_0001_00000001_20201231_CIC.zip"
+	dir := t.TempDir()
+	inner := writeZipBytes(t, filepath.Join(dir, "empty.zip"), map[string][]byte{
+		"CIC-00000001/cic34/only.xhtml": []byte(`<html xmlns="http://www.w3.org/1999/xhtml"></html>`),
+	})
+	innerBytes, err := os.ReadFile(inner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := writeZipBytes(t, filepath.Join(dir, "outer.zip"), map[string][]byte{
+		wrapper:  innerBytes,
+		htmlName: xhtml,
+	})
+
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", outer}, nil)
+	if code != exitFail {
+		t.Fatalf("default exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, "no reports") || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	if strings.Contains(stderr, "stream:") {
+		t.Fatalf("empty package aborted the archive:\n%s", stderr)
+	}
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("partial CSV should still contain facts from the good member")
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", outer}, nil)
+	if code != exitOK {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
+	}
+	if !strings.Contains(stdout, "03024914") || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("continue-on-error lost the good member or the error:\n%s", stderr)
 	}
 }
 

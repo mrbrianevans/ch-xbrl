@@ -164,17 +164,18 @@ func TestStreamLocalNestedZip(t *testing.T) {
 
 	got := membersByName(t, collect(t, outer))
 	direct := membersByName(t, collect(t, inner))
+	directName := filepath.Base(inner)
 
 	if len(direct) != 1 {
 		t.Fatalf("direct inner zip members = %d, want 1", len(direct))
 	}
-	if !bytes.Equal(direct[xhtmlName], xhtml) {
-		t.Fatalf("direct inner member %s content mismatch", xhtmlName)
+	if !bytes.Equal(direct[directName], xhtml) {
+		t.Fatalf("direct package source %s content mismatch", directName)
 	}
 	if len(got) != 2 {
 		t.Fatalf("outer members = %d, want xhtml + sibling html", len(got))
 	}
-	if !bytes.Equal(got[cicWrapperName], direct[xhtmlName]) {
+	if !bytes.Equal(got[cicWrapperName], direct[directName]) {
 		t.Fatal("nested xhtml bytes differ from the inner file")
 	}
 	if !bytes.Equal(got[htmlName], html) {
@@ -239,12 +240,20 @@ func TestStreamNestedZipKeepsAccountsSkipsCIC34(t *testing.T) {
 		t.Fatalf("contents = %#v", seen)
 	}
 
-	direct := membersByName(t, collect(t, inner))
-	if len(direct) != 4 {
-		t.Fatalf("direct CIC zip members = %d, want every instance", len(direct))
+	direct := collect(t, inner)
+	directName := filepath.Base(inner)
+	if len(direct) != 2 {
+		t.Fatalf("direct CIC zip members = %d, want 2 accounts files", len(direct))
 	}
-	if !bytes.Equal(direct[accountsName], accounts) || !bytes.Equal(direct[reportName], report) {
-		t.Fatal("direct open dropped an inner instance")
+	seenDirect := map[string]int{}
+	for _, m := range direct {
+		if m.Name != directName {
+			t.Fatalf("direct member name %q, want %q", m.Name, directName)
+		}
+		seenDirect[string(m.Content)]++
+	}
+	if seenDirect[string(accounts)] != 1 || seenDirect[string(cased)] != 1 || seenDirect[string(report)] != 0 {
+		t.Fatalf("direct contents = %#v", seenDirect)
 	}
 }
 
@@ -468,6 +477,79 @@ func TestStreamDirDoesNotExpandZip(t *testing.T) {
 	}
 	if _, ok := got[htmlName]; !ok {
 		t.Fatalf("missing top-level html, got %v", got)
+	}
+}
+
+func TestStreamPackageWithNoReportsIsMemberError(t *testing.T) {
+	const wrapper = "Prod224_0001_00000001_20201231_CIC.zip"
+	htmlName := "Prod223_4203_00134794_20250927.html"
+	html := readSample(t, sampleHTMLPath(t))
+	inner := writeZipBytes(t, filepath.Join(t.TempDir(), "empty-package.zip"), map[string][]byte{
+		"CIC-00000001/cic34/only.xhtml": []byte(`<html xmlns="http://www.w3.org/1999/xhtml"></html>`),
+	})
+	outer := writeZipOrdered(t, filepath.Join(t.TempDir(), "outer.zip"), []zipEntry{
+		{wrapper, readSample(t, inner)},
+		{htmlName, html},
+	})
+	got := collect(t, outer)
+	if len(got) != 2 {
+		t.Fatalf("members = %d, want package error + html", len(got))
+	}
+	var bad, good Member
+	for _, m := range got {
+		switch m.Name {
+		case wrapper:
+			bad = m
+		case htmlName:
+			good = m
+		}
+	}
+	if !errors.Is(bad.Err, errNoReports) {
+		t.Fatalf("package error = %v, want no reports", bad.Err)
+	}
+	if good.Err != nil || !bytes.Equal(good.Content, html) {
+		t.Fatalf("html member err=%v", good.Err)
+	}
+
+	direct := collect(t, inner)
+	if len(direct) != 1 || direct[0].Name != filepath.Base(inner) || !errors.Is(direct[0].Err, errNoReports) {
+		t.Fatalf("direct empty package = %+v", direct)
+	}
+}
+
+func TestStreamMemberOverLimitIsMemberError(t *testing.T) {
+	prev := maxMemberSize
+	if prev != 100<<20 {
+		t.Fatalf("maxMemberSize = %d, want 100 MiB", prev)
+	}
+	htmlName := "Prod223_4203_00134794_20250927.html"
+	html := readSample(t, sampleHTMLPath(t))
+	// Just over the cap, and still under the real html member. The production
+	// cap is 100 MiB; the test lowers it so the suite does not write that many bytes.
+	maxMemberSize = int64(len(html))
+	t.Cleanup(func() { maxMemberSize = prev })
+	outer := writeZipOrdered(t, filepath.Join(t.TempDir(), "big.zip"), []zipEntry{
+		{"big.xhtml", bytes.Repeat([]byte{0}, int(maxMemberSize)+1)},
+		{htmlName, html},
+	})
+	got := collect(t, outer)
+	if len(got) != 2 {
+		t.Fatalf("members = %d, want oversized error + html", len(got))
+	}
+	var bad, good Member
+	for _, m := range got {
+		switch m.Name {
+		case "big.xhtml":
+			bad = m
+		case htmlName:
+			good = m
+		}
+	}
+	if !errors.Is(bad.Err, errMemberTooBig) {
+		t.Fatalf("oversized err = %v", bad.Err)
+	}
+	if good.Err != nil || !bytes.Equal(good.Content, html) {
+		t.Fatalf("later member dropped, err=%v", good.Err)
 	}
 }
 

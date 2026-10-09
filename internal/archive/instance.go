@@ -47,7 +47,7 @@ func streamInstanceReader(ctx context.Context, r io.Reader, name string, out cha
 	if err != nil {
 		return 0, fmt.Errorf("read %s: %w", name, err)
 	}
-	if len(content) > maxMemberSize {
+	if int64(len(content)) > maxMemberSize {
 		return 0, fmt.Errorf("member %s exceeds size limit", name)
 	}
 	if err := emit(ctx, out, name, content); err != nil {
@@ -98,7 +98,7 @@ func readLimitedFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
-	if len(content) > maxMemberSize {
+	if int64(len(content)) > maxMemberSize {
 		return nil, fmt.Errorf("member %s exceeds size limit", path)
 	}
 	return content, nil

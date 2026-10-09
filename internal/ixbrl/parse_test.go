@@ -510,6 +510,17 @@ func TestCompanyNumberAllowsLetters(t *testing.T) {
 	if got := companyFromFilename("Prod223_4320_05016384_20251231_CIC.zip"); got != "05016384" {
 		t.Fatalf("CIC wrapper filename company=%q", got)
 	}
+	suffixes := []struct{ name, want string }{
+		{"Prod224_0088_SC248149_20200331_UKSEF.zip", "SC248149"},
+		{"Prod224_0088_SC248149_20200331_CIC.zip", "SC248149"},
+		{"Prod224_0088_SC248149_20200331_AUDIT_EXEMPT.zip", "SC248149"},
+		{"Prod224_0088_08972528_20200331_UKSEF.html", "08972528"},
+	}
+	for _, tc := range suffixes {
+		if got := companyFromFilename(tc.name); got != tc.want {
+			t.Fatalf("filename %s company=%q want %s", tc.name, got, tc.want)
+		}
+	}
 
 	doc := `<?xml version="1.0"?>
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:pt="http://example.com/pt">
@@ -528,6 +539,39 @@ func TestCompanyNumberAllowsLetters(t *testing.T) {
 	}
 	if facts[0].CompanyNumber != "SC248149" {
 		t.Fatalf("company_number=%q", facts[0].CompanyNumber)
+	}
+}
+
+func TestParseOnlyUKFRS(t *testing.T) {
+	doc := `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
+  <ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c" target="UKFRS">Keep Ltd</ix:nonNumeric>
+  <ix:nonNumeric name="bus:ProfitLoss" contextRef="c" target="ESEF">9</ix:nonNumeric>
+  <ix:nonNumeric name="bus:Other" contextRef="c">Drop</ix:nonNumeric>
+</html>`
+	all, err := ParseBytes([]byte(doc), "uksef.xhtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("unfiltered facts = %d, want 3", len(all))
+	}
+	kept, err := ParseBytesOnlyTarget([]byte(doc), "uksef.xhtml", "UKFRS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 1 || kept[0].Concept != "EntityCurrentLegalOrRegisteredName" || kept[0].Value != "Keep Ltd" {
+		t.Fatalf("UKFRS facts = %+v", kept)
+	}
+
+	// Lenient path: an unclosed tag forces the regex fallback.
+	broken := doc + "<ix:nonNumeric"
+	kept, err = parseLenient([]byte(broken), "uksef.xhtml", "UKFRS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 1 || kept[0].Value != "Keep Ltd" {
+		t.Fatalf("lenient UKFRS facts = %+v", kept)
 	}
 }
 
