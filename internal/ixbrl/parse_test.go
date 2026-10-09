@@ -335,6 +335,145 @@ func TestContinuationOnSample09652677(t *testing.T) {
 	}
 }
 
+func ixDoc(body string) string {
+	return `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:bus="http://example.com/bus"
+      xmlns:core="http://example.com/core">
+<body>
+<link:schemaRef xlink:href="https://example.com/t.xsd"/>
+` + body + `
+<xbrli:unit id="GBP"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01922327</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</body>
+</html>`
+}
+
+func factsByConcept(t *testing.T, doc string) map[string]fact.Fact {
+	t.Helper()
+	facts, err := ParseBytes([]byte(doc), "test.xhtml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]fact.Fact{}
+	for _, f := range facts {
+		if _, ok := got[f.Concept]; ok {
+			t.Fatalf("duplicate concept %s", f.Concept)
+		}
+		got[f.Concept] = f
+	}
+	return got
+}
+
+// A numeric fact nested in ix:continuation is its own fact. Its text is also
+// part of the continuation, so the outer continued fact still contains it.
+func TestFactInsideContinuation(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1" continuedAt="f-204-1">Fees of </ix:nonNumeric><ix:continuation id="f-204-1"><ix:nonFraction name="core:ProfessionalConsultancyFees" contextRef="c1" unitRef="GBP" decimals="0">107,816</ix:nonFraction></ix:continuation>`)
+	got := factsByConcept(t, doc)
+	fee, ok := got["ProfessionalConsultancyFees"]
+	if !ok {
+		t.Fatalf("missing ProfessionalConsultancyFees in %v", got)
+	}
+	if fee.Value != "107816" || fee.Decimals != "0" {
+		t.Fatalf("fee value=%q decimals=%q", fee.Value, fee.Decimals)
+	}
+	policy := got["Policy"].Value
+	if !strings.Contains(policy, "107,816") || !strings.Contains(policy, "Fees of") {
+		t.Fatalf("policy=%q", policy)
+	}
+}
+
+// Nested ix:continuation elements each keep their own text, and that text
+// includes descendant continuations. Joining needs no date-specific rule.
+func TestNestedContinuations(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="bus:DateA" contextRef="c1" continuedAt="f-34-1"><ix:nonNumeric name="bus:DateB" contextRef="c1" continuedAt="f-35-1"><ix:nonNumeric name="bus:DateC" contextRef="c1" continuedAt="f-36-1">31 December</ix:nonNumeric></ix:nonNumeric></ix:nonNumeric><ix:continuation id="f-34-1"><ix:continuation id="f-35-1"><ix:continuation id="f-36-1"> 2025</ix:continuation></ix:continuation></ix:continuation>`)
+	got := factsByConcept(t, doc)
+	for _, concept := range []string{"DateA", "DateB", "DateC"} {
+		if got[concept].Value != "31 December 2025" {
+			t.Errorf("%s=%q", concept, got[concept].Value)
+		}
+	}
+}
+
+// ix:exclude hides text from the surrounding fact, including the text of a
+// fact nested inside the exclude. The nested fact keeps its own value.
+func TestFactInsideExclude(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1">before<ix:exclude> hidden <ix:nonNumeric name="core:HiddenFact" contextRef="c1">kept</ix:nonNumeric> tail</ix:exclude> after</ix:nonNumeric>`)
+	got := factsByConcept(t, doc)
+	if got["Policy"].Value != "before after" {
+		t.Fatalf("policy=%q", got["Policy"].Value)
+	}
+	if got["HiddenFact"].Value != "kept" {
+		t.Fatalf("hidden=%q", got["HiddenFact"].Value)
+	}
+}
+
+// A bullet inside ix:exclude must not become part of the continuation.
+func TestExcludeInsideContinuation(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1" continuedAt="c0">Cash</ix:nonNumeric><ix:continuation id="c0"><ix:exclude>•</ix:exclude> and bank</ix:continuation>`)
+	got := factsByConcept(t, doc)
+	if got["Policy"].Value != "Cash and bank" {
+		t.Fatalf("policy=%q", got["Policy"].Value)
+	}
+}
+
+// The regex fallback used to stop at the first closing continuation tag.
+// A trailing broken tag forces that path; the three dates still reassemble.
+func TestNestedContinuationsLenient(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="bus:DateA" contextRef="c1" continuedAt="f-34-1">31 December</ix:nonNumeric><ix:nonNumeric name="bus:DateB" contextRef="c1" continuedAt="f-35-1">31 December</ix:nonNumeric><ix:nonNumeric name="bus:DateC" contextRef="c1" continuedAt="f-36-1">31 December</ix:nonNumeric><ix:continuation id="f-34-1"><ix:continuation id="f-35-1"><ix:continuation id="f-36-1"> 2025</ix:continuation></ix:continuation></ix:continuation>`) + "<ix:nonNumeric"
+	got := factsByConcept(t, doc)
+	for _, concept := range []string{"DateA", "DateB", "DateC"} {
+		if got[concept].Value != "31 December 2025" {
+			t.Errorf("%s=%q", concept, got[concept].Value)
+		}
+	}
+}
+
+func TestContinuationChainLenient(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="core:CashCashEquivalentsPolicy" contextRef="c1" continuedAt="c0"><span>Cash and cash equivalents</span></ix:nonNumeric><ix:continuation id="c0" continuedAt="c1"><span>are basic financial assets</span></ix:continuation><ix:continuation id="c1"><span> and</span></ix:continuation>`) + "<ix:nonNumeric"
+	got := factsByConcept(t, doc)
+	want := "Cash and cash equivalentsare basic financial assets and"
+	if got["CashCashEquivalentsPolicy"].Value != want {
+		t.Fatalf("value=%q want %q", got["CashCashEquivalentsPolicy"].Value, want)
+	}
+}
+
+// Hand-read from samples/00340611_aa_2026-01-31.xhtml (LONDON SAILPLANES LIMITED).
+// The compliance statement is one ix:nonNumeric. The title of FRS 102 and
+// "Small Entities" are in double quotes in the source.
+const sailplanesComplianceStatement = `These financial statements have been prepared in accordance with Financial Reporting Standard 102 "The Financial Reporting Standard applicable in the UK and Republic of Ireland" including the provisions of Section 1A "Small Entities" and the Companies Act 2006. The financial statements have been prepared under the historical cost convention.`
+
+func TestQuotesKeptInSailplanesComplianceStatement(t *testing.T) {
+	facts := loadSample(t, "00340611_aa_2026-01-31.xhtml")
+	var got []string
+	for _, f := range facts {
+		if f.Concept != "StatementComplianceWithApplicableReportingFramework" {
+			continue
+		}
+		if f.PeriodStart != "2025-02-01" || f.PeriodEnd != "2026-01-31" {
+			continue
+		}
+		got = append(got, f.Value)
+	}
+	if len(got) != 1 || got[0] != sailplanesComplianceStatement {
+		t.Fatalf("values=%q", got)
+	}
+}
+
+func TestUnbalancedContinuationIsError(t *testing.T) {
+	doc := ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1" continuedAt="c0">Head</ix:nonNumeric><ix:continuation id="c0">tail`) + "<ix:nonNumeric"
+	_, err := ParseBytes([]byte(doc), "broken.xhtml")
+	if err == nil || !strings.Contains(err.Error(), "unbalanced ix:continuation") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestParseClassicXBRL(t *testing.T) {
 	doc := `<?xml version="1.0" encoding="utf-8"?>
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"
