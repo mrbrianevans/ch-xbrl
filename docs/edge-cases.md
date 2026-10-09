@@ -263,3 +263,23 @@ Behaviour that must stay, for this file:
 - 591 facts. Every row has `company_number` `07068009` and `source_file` `07068009_aa_2025-12-31.xhtml`.
 
 Tests: `TestNestedContinuations`, `TestNestedContinuationsLenient`, `TestRun_EdgeSampleNestedContinuations`.
+
+## Double quotes in non-numeric text
+
+`normaliseNonNumeric` used to delete every `"` from a non-numeric value. The comment said that was to drop quotes around an entity name. It ran on every non-numeric fact, on both the XML path and the regex fallback.
+
+In the 25 September 2026 daily, 3,290 facts in 18.8% of documents had a quote removed. In [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip), 41,943 facts in 15.9% of documents did.
+
+One of those is member `Prod224_2608_00340611_20260131.html` (LONDON SAILPLANES LIMITED, company `00340611`). The sample is the filing-history iXBRL, `samples/00340611_aa_2026-01-31.xhtml`. [Filing](https://find-and-update.company-information.service.gov.uk/company/00340611/filing-history/MzUzOTMzOTU2MGFkaXF6a2N4/document?format=xhtml&download=1).
+
+`StatementComplianceWithApplicableReportingFramework` for `2025-02-01` to `2026-01-31` is this text, quotes included:
+
+```text
+These financial statements have been prepared in accordance with Financial Reporting Standard 102 "The Financial Reporting Standard applicable in the UK and Republic of Ireland" including the provisions of Section 1A "Small Entities" and the Companies Act 2006. The financial statements have been prepared under the historical cost convention.
+```
+
+Whitespace is still collapsed. The quotes stay. The CSV writer escapes a field that contains `"`. The value is not wrapped in an extra pair of quotes.
+
+88 facts. Every row has `company_number` `00340611` and `source_file` `00340611_aa_2026-01-31.xhtml`. The legal name is `LONDON SAILPLANES LIMITED`.
+
+Tests: `TestQuotesKeptInSailplanesComplianceStatement`, `TestRun_EdgeSampleQuotesKept`.

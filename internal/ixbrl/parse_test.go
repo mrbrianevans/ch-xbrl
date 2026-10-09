@@ -444,6 +444,28 @@ func TestContinuationChainLenient(t *testing.T) {
 	}
 }
 
+// Hand-read from samples/00340611_aa_2026-01-31.xhtml (LONDON SAILPLANES LIMITED).
+// The compliance statement is one ix:nonNumeric. The title of FRS 102 and
+// "Small Entities" are in double quotes in the source.
+const sailplanesComplianceStatement = `These financial statements have been prepared in accordance with Financial Reporting Standard 102 "The Financial Reporting Standard applicable in the UK and Republic of Ireland" including the provisions of Section 1A "Small Entities" and the Companies Act 2006. The financial statements have been prepared under the historical cost convention.`
+
+func TestQuotesKeptInSailplanesComplianceStatement(t *testing.T) {
+	facts := loadSample(t, "00340611_aa_2026-01-31.xhtml")
+	var got []string
+	for _, f := range facts {
+		if f.Concept != "StatementComplianceWithApplicableReportingFramework" {
+			continue
+		}
+		if f.PeriodStart != "2025-02-01" || f.PeriodEnd != "2026-01-31" {
+			continue
+		}
+		got = append(got, f.Value)
+	}
+	if len(got) != 1 || got[0] != sailplanesComplianceStatement {
+		t.Fatalf("values=%q", got)
+	}
+}
+
 func TestUnbalancedContinuationIsError(t *testing.T) {
 	doc := ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1" continuedAt="c0">Head</ix:nonNumeric><ix:continuation id="c0">tail`) + "<ix:nonNumeric"
 	_, err := ParseBytes([]byte(doc), "broken.xhtml")

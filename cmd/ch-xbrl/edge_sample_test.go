@@ -266,3 +266,29 @@ func TestRun_EdgeSampleNestedContinuations(t *testing.T) {
 		)`)
 	assertCounts(t, got, []string{"591", "0", "0", "40", "20", "0"})
 }
+
+func TestRun_EdgeSampleQuotesKept(t *testing.T) {
+	const file = "00340611_aa_2026-01-31.xhtml"
+	csvPath, stderr := extractSample(t, samplePath(t, file))
+	if !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	// The compliance statement is hand-read from the iXBRL, quotes included.
+	// DuckDB returns the CSV field after unescaping, so this checks that
+	// encoding/csv quoted the embedded " rather than the value being rewritten.
+	const statement = `These financial statements have been prepared in accordance with Financial Reporting Standard 102 "The Financial Reporting Standard applicable in the UK and Republic of Ireland" including the provisions of Section 1A "Small Entities" and the Companies Act 2006. The financial statements have been prepared under the historical cost convention.`
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '00340611'),
+		count(*) FILTER (WHERE source_file <> '`+file+`'),
+		count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'LONDON SAILPLANES LIMITED'),
+		count(*) FILTER (
+			WHERE concept = 'StatementComplianceWithApplicableReportingFramework'
+			  AND period_start = '2025-02-01'
+			  AND period_end = '2026-01-31'
+			  AND value = '`+statement+`'
+			  AND dimensions IS NULL
+			  AND namespace = 'http://xbrl.frc.org.uk/fr/2025-01-01/core'
+		)`)
+	assertCounts(t, got, []string{"88", "0", "0", "1", "1"})
+}

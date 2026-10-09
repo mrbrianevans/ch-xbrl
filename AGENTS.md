@@ -74,6 +74,7 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 | Attachment placeholder named `.zip` `Prod224_0095_04869811_20210131.zip` (`ATTACHMENTPLACEHOLDER137191381`; member error, not a stream error) | [Accounts_Monthly_Data-October2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-October2021.zip) | `TestParseKnownArchiveAnomalies`, `TestStreamNestedZipInvalid`, `TestRun_ZipNamedAttachmentPlaceholder`, `TestRun_InvalidNestedZipIsMemberError` |
 | Fact inside `ix:continuation` `samples/01922327_aa_2025-12-31.xhtml` (`ProfessionalConsultancyFees` `107816000`, `decimals` `-3`) | [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip) member `Prod224_2608_01922327_20251231.html` | `TestFactInsideContinuation`, `TestRun_EdgeSampleFactInsideContinuation` |
 | Nested `ix:continuation` `samples/07068009_aa_2025-12-31.xhtml` (date facts `31 December 2025`) | same August 2026 monthly, member `Prod224_2608_07068009_20251231.html` | `TestNestedContinuations`, `TestRun_EdgeSampleNestedContinuations` |
+| Double quotes kept in non-numeric text `samples/00340611_aa_2026-01-31.xhtml` (FRS 102 title stays quoted) | [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip) member `Prod224_2608_00340611_20260131.html` | `TestQuotesKeptInSailplanesComplianceStatement`, `TestRun_EdgeSampleQuotesKept` |
 
 ## Layout
 

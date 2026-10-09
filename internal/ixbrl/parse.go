@@ -729,9 +729,9 @@ func normaliseNonNumeric(val, format string) string {
 	case "nocontent":
 		return ""
 	}
-	// Collapse whitespace / drop surrounding quotes (entity names etc.).
+	// Collapse whitespace. Quotes in the filer's text stay; the CSV writer
+	// escapes a field that contains one.
 	val = strings.Join(strings.Fields(val), " ")
-	val = strings.ReplaceAll(val, `"`, "")
 	return val
 }
 
