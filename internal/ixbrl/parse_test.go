@@ -139,7 +139,10 @@ func TestNestedNonNumeric(t *testing.T) {
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
       xmlns:xbrli="http://www.xbrl.org/2003/instance"
       xmlns:link="http://www.xbrl.org/2003/linkbase"
-      xmlns:xlink="http://www.w3.org/1999/xlink">
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:bus="http://example.com/bus"
+      xmlns:direp="http://example.com/direp"
+      xmlns:core="http://example.com/core">
 <body>
 <link:schemaRef xlink:href="https://example.com/t.xsd"/>
 <ix:nonNumeric contextRef="c1" name="bus:NameEntityOfficer">
@@ -209,7 +212,8 @@ func TestDecimalsAttribute(t *testing.T) {
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
       xmlns:xbrli="http://www.xbrl.org/2003/instance"
       xmlns:link="http://www.xbrl.org/2003/linkbase"
-      xmlns:xlink="http://www.w3.org/1999/xlink">
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:core="http://example.com/core">
 <body>
 <link:schemaRef xlink:href="https://example.com/t.xsd"/>
 <ix:nonFraction name="core:FixedAssets" contextRef="c1" unitRef="GBP" decimals="0">100</ix:nonFraction>
@@ -265,7 +269,8 @@ func TestContinuationChain(t *testing.T) {
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
       xmlns:xbrli="http://www.xbrl.org/2003/instance"
       xmlns:link="http://www.xbrl.org/2003/linkbase"
-      xmlns:xlink="http://www.w3.org/1999/xlink">
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:core="http://example.com/core">
 <body>
 <link:schemaRef xlink:href="https://example.com/t.xsd"/>
 <ix:nonNumeric name="core:CashCashEquivalentsPolicy" contextRef="c1" continuedAt="c0"><span>Cash and cash equivalents</span></ix:nonNumeric>
@@ -406,8 +411,13 @@ func TestParseClassicXBRL(t *testing.T) {
 	if sh.CompanyNumber != "08974483" {
 		t.Fatalf("name-identifier context company=%q want registered-number backfill", sh.CompanyNumber)
 	}
-	if sh.Taxonomy != "http://www.companieshouse.gov.uk/ef/xbrl/uk/fr/gaap/ae/2009-06-21/uk-gaap-ae-2009-06-21.xsd" {
-		t.Fatalf("taxonomy=%q", sh.Taxonomy)
+	if sh.Namespace != "http://www.xbrl.org/uk/fr/gaap/pt/2004-12-01" {
+		t.Fatalf("namespace=%q", sh.Namespace)
+	}
+
+	reg := mustOne(t, byConcept, "CompaniesHouseRegisteredNumber")
+	if reg.Namespace != "http://www.companieshouse.gov.uk/ef/xbrl/uk/fr/gaap/ae/2009-06-21" {
+		t.Fatalf("registered number namespace=%q", reg.Namespace)
 	}
 
 	name := mustOne(t, byConcept, "NameApprovingDirector")
@@ -528,6 +538,162 @@ func TestCompanyNumberAllowsLetters(t *testing.T) {
 	}
 	if facts[0].CompanyNumber != "SC248149" {
 		t.Fatalf("company_number=%q", facts[0].CompanyNumber)
+	}
+	if facts[0].Namespace != "http://example.com/pt" {
+		t.Fatalf("namespace=%q", facts[0].Namespace)
+	}
+}
+
+func TestInlineNamespaces(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<html xmlns="http://example.com/default"
+      xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:core="http://example.com/core"
+      xmlns:frs-char="http://xbrl.frc.org.uk/char/2025-01-01">
+<ix:nonNumeric name="core:EntityCurrentLegalOrRegisteredName" contextRef="c1">Acme Ltd</ix:nonNumeric>
+<ix:nonNumeric name="frs-char:CharityFunds" contextRef="c1">1397</ix:nonNumeric>
+<ix:nonNumeric name="Unprefixed" contextRef="c1">plain</ix:nonNumeric>
+<ix:nonNumeric name="{http://example.com/clark}ClarkFact" contextRef="c1">c</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</html>`
+	facts, err := ParseBytes([]byte(doc), "inline.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, f := range facts {
+		got[f.Concept] = f.Namespace
+	}
+	want := map[string]string{
+		"EntityCurrentLegalOrRegisteredName": "http://example.com/core",
+		"CharityFunds":                       "http://xbrl.frc.org.uk/char/2025-01-01",
+		"Unprefixed":                         "",
+		"ClarkFact":                          "http://example.com/clark",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("facts=%v", got)
+	}
+	for concept, ns := range want {
+		if got[concept] != ns {
+			t.Errorf("%s namespace=%q want %q", concept, got[concept], ns)
+		}
+	}
+}
+
+func TestClassicDefaultNamespace(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<xbrli:xbrl xmlns="http://example.com/default" xmlns:xbrli="http://www.xbrl.org/2003/instance">
+  <Cash contextRef="c" decimals="0">1</Cash>
+  <xbrli:context id="c">
+    <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2020-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "classic.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 || facts[0].Concept != "Cash" {
+		t.Fatalf("facts=%+v", facts)
+	}
+	if facts[0].Namespace != "http://example.com/default" {
+		t.Fatalf("namespace=%q", facts[0].Namespace)
+	}
+}
+
+func TestClassicUnprefixedWithoutDefault(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance">
+  <Cash contextRef="c" decimals="0">1</Cash>
+  <xbrli:context id="c">
+    <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2020-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "classic.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 || facts[0].Namespace != "" {
+		t.Fatalf("namespace=%q facts=%d", facts[0].Namespace, len(facts))
+	}
+}
+
+func TestUndeclaredPrefixDropsFacts(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:core="http://example.com/core">
+<ix:nonNumeric name="core:Ok" contextRef="c1">yes</ix:nonNumeric>
+<ix:nonNumeric name="missing:CharityFunds" contextRef="c1">1</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</html>`
+	facts, err := ParseBytes([]byte(doc), "bad.html")
+	if err == nil {
+		t.Fatalf("expected error, got %d facts", len(facts))
+	}
+	if facts != nil {
+		t.Fatalf("facts=%d, want none", len(facts))
+	}
+	if !strings.Contains(err.Error(), `undeclared prefix "missing"`) || !strings.Contains(err.Error(), "CharityFunds") || !strings.Contains(err.Error(), "bad.html") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestUndeclaredClassicPrefixDropsFacts(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance">
+  <pt:Cash contextRef="c" decimals="0">1</pt:Cash>
+  <xbrli:context id="c">
+    <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2020-03-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+</xbrli:xbrl>`
+	facts, err := ParseBytes([]byte(doc), "classic.xml")
+	if err == nil {
+		t.Fatalf("expected error, got %d facts", len(facts))
+	}
+	if facts != nil {
+		t.Fatal("facts returned")
+	}
+	if !strings.Contains(err.Error(), `undeclared prefix "pt"`) || !strings.Contains(err.Error(), "Cash") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestParseLenientNamespace(t *testing.T) {
+	// A NUL makes the XML decoder fail so the regex fallback runs.
+	good := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:core="http://example.com/core">
+<ix:nonNumeric name="core:Ok" contextRef="c">yes</ix:nonNumeric>
+` + "\x00" + `</html>`)
+	facts, err := ParseBytes(good, "lenient.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 || facts[0].Concept != "Ok" || facts[0].Namespace != "http://example.com/core" {
+		t.Fatalf("facts=%+v", facts)
+	}
+
+	bad := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:core="http://example.com/core">
+<ix:nonNumeric name="core:Ok" contextRef="c">yes</ix:nonNumeric>
+<ix:nonNumeric name="missing:CharityFunds" contextRef="c">1</ix:nonNumeric>
+` + "\x00" + `</html>`)
+	facts, err = ParseBytes(bad, "lenient-bad.html")
+	if err == nil {
+		t.Fatalf("expected error, got %d facts", len(facts))
+	}
+	if facts != nil {
+		t.Fatal("facts returned")
+	}
+	if !strings.Contains(err.Error(), `undeclared prefix "missing"`) || !strings.Contains(err.Error(), "lenient-bad.html") {
+		t.Fatalf("err=%v", err)
 	}
 }
 

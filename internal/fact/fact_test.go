@@ -9,6 +9,9 @@ func TestCSVHeaderAndRecord(t *testing.T) {
 	if CSVHeader[0] != "company_number" {
 		t.Fatalf("CSVHeader[0]=%q want company_number", CSVHeader[0])
 	}
+	if CSVHeader[7] != "namespace" {
+		t.Fatalf("CSVHeader[7]=%q want namespace", CSVHeader[7])
+	}
 	if CSVHeader[9] != "decimals" {
 		t.Fatalf("CSVHeader[9]=%q want decimals", CSVHeader[9])
 	}
@@ -20,13 +23,16 @@ func TestCSVHeaderAndRecord(t *testing.T) {
 		Value:         "100",
 		Unit:          "iso4217:GBP",
 		Dimensions:    "",
-		Taxonomy:      "t.xsd",
+		Namespace:     "http://example.com/core",
 		SourceFile:    "a.html",
 		Decimals:      "INF",
 	}
 	rec := f.Record()
 	if len(rec) != 10 {
 		t.Fatalf("Record len=%d want 10", len(rec))
+	}
+	if rec[7] != "http://example.com/core" {
+		t.Fatalf("namespace=%q", rec[7])
 	}
 	if rec[9] != "INF" {
 		t.Fatalf("decimals=%q want INF", rec[9])

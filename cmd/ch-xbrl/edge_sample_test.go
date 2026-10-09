@@ -73,13 +73,15 @@ func TestRun_EdgeSampleCharityAccounts(t *testing.T) {
 	if !strings.Contains(stderr, "files_err=0") {
 		t.Fatalf("stderr: %s", stderr)
 	}
-	// taxonomy is intentionally not selected. This file lists two schemaRefs
-	// and every fact currently stores the first href.
 	got := duckdbCounts(t, csvPath, `
 		count(*),
 		count(*) FILTER (WHERE company_number <> '04986021'),
 		count(*) FILTER (WHERE source_file <> 'Prod223_4320_04986021_20260331.html'),
-		count(*) FILTER (WHERE concept = 'CharityRegistrationNumberEnglandWales' AND value = '1103254'),
+		count(*) FILTER (
+			WHERE concept = 'CharityRegistrationNumberEnglandWales'
+			  AND value = '1103254'
+			  AND namespace = 'http://xbrl.frc.org.uk/char/2025-01-01'
+		),
 		count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'The Captain French Trust'),
 		count(*) FILTER (
 			WHERE concept = 'CharityFunds'
@@ -88,8 +90,14 @@ func TestRun_EdgeSampleCharityAccounts(t *testing.T) {
 			  AND value = '1397'
 			  AND unit = 'iso4217:GBP'
 			  AND dimensions IS NULL
+			  AND namespace = 'http://xbrl.frc.org.uk/char/2025-01-01'
+		),
+		count(*) FILTER (WHERE namespace = 'http://xbrl.frc.org.uk/char/2025-01-01'),
+		count(*) FILTER (
+			WHERE concept IN ('CharityRegistrationNumberEnglandWales', 'CharityFunds')
+			  AND namespace <> 'http://xbrl.frc.org.uk/char/2025-01-01'
 		)`)
-	assertCounts(t, got, []string{"159", "0", "0", "3", "8", "6"})
+	assertCounts(t, got, []string{"159", "0", "0", "3", "8", "6", "82", "0"})
 }
 
 func sampleMisnamedZip(t *testing.T) string {

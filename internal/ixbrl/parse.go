@@ -26,6 +26,7 @@ const (
 	nsLink   = "http://www.xbrl.org/2003/linkbase"
 	nsXLink  = "http://www.w3.org/1999/xlink"
 	nsXMLNS  = "http://www.w3.org/2000/xmlns/"
+	nsXML    = "http://www.w3.org/XML/1998/namespace"
 )
 
 type contextInfo struct {
@@ -90,7 +91,6 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 	ns := map[string]string{}
 	contexts := map[string]*contextInfo{}
 	units := map[string]*unitInfo{}
-	var schemaRefs []string
 
 	// Active parse state for nested context/unit construction.
 	var curCtx *contextInfo
@@ -114,6 +114,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		Name        string
 		ContextRef  string
 		UnitRef     string
+		Namespace   string
 		Scale       string
 		Sign        string
 		Format      string
@@ -156,13 +157,6 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			}
 
 			switch {
-			case isNS(space, nsLink) && local == "schemaRef":
-				if href := attr(t, nsXLink, "href"); href != "" {
-					schemaRefs = append(schemaRefs, href)
-				} else if href := attrAny(t, "href"); href != "" {
-					schemaRefs = append(schemaRefs, href)
-				}
-
 			case isNS(space, nsXBRLI) && local == "context":
 				curCtx = &contextInfo{
 					ID:         attrAny(t, "id"),
@@ -199,10 +193,16 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 				curUnit = &unitInfo{ID: attrAny(t, "id")}
 
 			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
+				qname := attrAny(t, "name")
+				nsURI, badPrefix := inlineNamespace(qname, ns)
+				if badPrefix != "" {
+					return nil, errUndeclaredPrefix(sourceFile, qnameLocal(qname), badPrefix)
+				}
 				pf := pendingFact{
-					Name:        attrAny(t, "name"),
+					Name:        qname,
 					ContextRef:  attrAny(t, "contextRef"),
 					UnitRef:     attrAny(t, "unitRef"),
+					Namespace:   nsURI,
 					Scale:       attrAny(t, "scale"),
 					Sign:        attrAny(t, "sign"),
 					Format:      attrAny(t, "format"),
@@ -221,12 +221,20 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			case isClassicItem(space, t):
 				// Non-inline XBRL: an item is an element with contextRef
 				// (tuple wrappers have no contextRef and are not facts).
+				// encoding/xml has already resolved the prefix. A blank
+				// prefix is the in-scope default xmlns. An unbound prefix
+				// is left as the prefix string.
+				nsURI, badPrefix := classicNamespace(space, ns)
+				if badPrefix != "" {
+					return nil, errUndeclaredPrefix(sourceFile, local, badPrefix)
+				}
 				unitRef := attrAny(t, "unitRef")
 				decimals := attrAny(t, "decimals")
 				pf := pendingFact{
 					Name:       local,
 					ContextRef: attrAny(t, "contextRef"),
 					UnitRef:    unitRef,
+					Namespace:  nsURI,
 					Scale:      attrAny(t, "scale"),
 					Sign:       attrAny(t, "sign"),
 					Format:     attrAny(t, "format"),
@@ -375,11 +383,6 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 		}
 	}
 
-	taxonomy := ""
-	if len(schemaRefs) > 0 {
-		taxonomy = schemaRefs[0]
-	}
-
 	// Fallback company id from filename (e.g. 03024914_aa_2023-03-13.xhtml)
 	fileCompany := companyFromFilename(sourceFile)
 
@@ -436,7 +439,7 @@ func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
 			Value:         val,
 			Unit:          unit,
 			Dimensions:    dimsJSON,
-			Taxonomy:      taxonomy,
+			Namespace:     pf.Namespace,
 			SourceFile:    sourceFile,
 			Decimals:      decimals,
 		})
@@ -458,20 +461,68 @@ func isNS(space, want string) bool {
 	return space == want
 }
 
+// mergeNS records xmlns declarations on se.
+// encoding/xml presents xmlns:prefix as Space="xmlns" Local=prefix, and a
+// default xmlns as Space="" Local="xmlns". A prefixed declaration must not
+// replace the default.
 func mergeNS(ns map[string]string, se xml.StartElement) {
 	for _, a := range se.Attr {
-		if a.Name.Space == "xmlns" || (a.Name.Space == "" && a.Name.Local == "xmlns") {
-			ns[""] = a.Value
-		} else if a.Name.Space == "xmlns" || a.Name.Space == nsXMLNS {
+		switch {
+		case (a.Name.Space == "xmlns" || a.Name.Space == nsXMLNS) && a.Name.Local != "":
 			ns[a.Name.Local] = a.Value
-		} else if a.Name.Local == "xmlns" {
+		case a.Name.Local == "xmlns" && a.Name.Space == "":
 			ns[""] = a.Value
-		}
-		// encoding/xml puts xmlns:foo as Space="xmlns" Local="foo" or Space="" Local with prefix
-		if a.Name.Space == "xmlns" {
-			ns[a.Name.Local] = a.Value
 		}
 	}
+}
+
+// inlineNamespace resolves an ix: name QName. A name with no prefix is empty
+// and does not use the default xmlns. Clark notation {uri}local uses uri.
+// The second result is the prefix when it is not declared.
+func inlineNamespace(name string, ns map[string]string) (uri, undeclared string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", ""
+	}
+	if strings.HasPrefix(name, "{") {
+		if i := strings.Index(name, "}"); i > 1 && i < len(name)-1 {
+			return name[1:i], ""
+		}
+	}
+	prefix, _, found := strings.Cut(name, ":")
+	if !found || prefix == "" {
+		return "", ""
+	}
+	if prefix == "xml" {
+		if declared, ok := ns["xml"]; ok {
+			return declared, ""
+		}
+		return nsXML, ""
+	}
+	declared, ok := ns[prefix]
+	if !ok {
+		return "", prefix
+	}
+	return declared, ""
+}
+
+// classicNamespace accepts the element namespace encoding/xml already resolved.
+// A blank prefix arrives as the in-scope default xmlns, or empty when none is
+// in scope. An unbound prefix is left as the prefix string.
+func classicNamespace(space string, ns map[string]string) (uri, undeclared string) {
+	if space == "" || space == nsXML {
+		return space, ""
+	}
+	for _, v := range ns {
+		if v == space {
+			return space, ""
+		}
+	}
+	return "", space
+}
+
+func errUndeclaredPrefix(sourceFile, concept, prefix string) error {
+	return fmt.Errorf("undeclared prefix %q on %s in %s", prefix, concept, sourceFile)
 }
 
 func attr(se xml.StartElement, space, local string) string {
@@ -798,7 +849,7 @@ func trimTrailingZeros(s string) string {
 // --- Lenient fallback parser using regex when strict XML fails ----------------
 
 var (
-	reSchemaRef        = regexp.MustCompile(`(?is)<[^>]*schemaRef[^>]+href=["']([^"']+)["']`)
+	reXMLNS            = regexp.MustCompile(`(?i)(?:\s|^)xmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*["']([^"']*)["']`)
 	reContext          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?context\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?context>`)
 	reIdentifier       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?identifier\b([^>]*)>([^<]*)</(?:[\w.]+:)?identifier>`)
 	reStartDate        = regexp.MustCompile(`(?is)<(?:[\w.]+:)?startDate[^>]*>([^<]*)</(?:[\w.]+:)?startDate>`)
@@ -820,13 +871,23 @@ func errNoFacts(sourceFile string) error {
 	return fmt.Errorf("no facts extracted from %s", sourceFile)
 }
 
+func documentNamespaces(s string) map[string]string {
+	ns := map[string]string{}
+	for _, m := range reXMLNS.FindAllStringSubmatch(s, -1) {
+		if m[1] == "" {
+			ns[""] = m[2]
+			continue
+		}
+		ns[m[1]] = m[2]
+	}
+	return ns
+}
+
 func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	data = stripXMLPreamble(data)
 	s := string(data)
-	taxonomy := ""
-	if m := reSchemaRef.FindStringSubmatch(s); len(m) > 1 {
-		taxonomy = m[1]
-	}
+	docNS := documentNamespaces(s)
+	var nsErr error
 
 	contexts := map[string]*contextInfo{}
 	for _, m := range reContext.FindAllStringSubmatch(s, -1) {
@@ -896,9 +957,17 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 	}
 
 	collect := func(attrs, body string, numeric bool) {
+		if nsErr != nil {
+			return
+		}
 		am := parseAttrs(attrs)
 		name := am["name"]
 		if name == "" {
+			return
+		}
+		nsURI, badPrefix := inlineNamespace(name, docNS)
+		if badPrefix != "" {
+			nsErr = errUndeclaredPrefix(sourceFile, qnameLocal(name), badPrefix)
 			return
 		}
 		ctxRef := am["contextref"]
@@ -964,7 +1033,7 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 			Value:         val,
 			Unit:          unit,
 			Dimensions:    dimsJSON,
-			Taxonomy:      taxonomy,
+			Namespace:     nsURI,
 			SourceFile:    sourceFile,
 			Decimals:      decimals,
 		})
@@ -983,6 +1052,9 @@ func parseLenient(data []byte, sourceFile string) ([]fact.Fact, error) {
 		collect(m[1], "", false)
 	}
 
+	if nsErr != nil {
+		return nil, nsErr
+	}
 	if len(out) == 0 {
 		return nil, errNoFacts(sourceFile)
 	}

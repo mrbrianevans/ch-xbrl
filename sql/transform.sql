@@ -16,7 +16,7 @@ SELECT
   CAST(value AS VARCHAR) AS value,
   unit,
   dimensions,
-  taxonomy,
+  namespace,
   source_file,
   decimals
 FROM read_csv(
@@ -70,7 +70,7 @@ SELECT
   f.concept,
   NULLIF(TRIM(f.value), '') AS value,
   f.unit,
-  f.taxonomy,
+  f.namespace,
   f.source_file
 FROM facts_plain f
 INNER JOIN concept_map m
