@@ -7,9 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-09
+
 ### Changed
 
 - A date format writes `value` as the registry form (`YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date). A date that cannot be transformed, including an unimplemented date format, fails that member. `--continue-on-error` skips it.
+- A fact inside `ix:continuation` keeps its own value, and each nested continuation keeps its text. A date format is applied after that join.
+- Double quotes in non-numeric text stay. Whitespace is still collapsed.
 
 ## [0.4.1] - 2026-10-09
 
@@ -103,7 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.6...v0.4.0
 [0.3.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.5...v0.3.6
