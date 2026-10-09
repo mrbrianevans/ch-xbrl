@@ -345,19 +345,35 @@ func TestGolden_14256400_Workiva(t *testing.T) {
 	})
 }
 
-// Taxonomy / schemaRef on the three small files (hand-checked schemaRef href).
-func TestGolden_SchemaRefs(t *testing.T) {
-	cases := map[string]string{
-		"06760773_aa_2025-09-26.xhtml": "https://xbrl.frc.org.uk/FRS-102/2023-01-01/FRS-102-2023-01-01.xsd",
-		"03024914_aa_2023-03-13.xhtml": "https://xbrl.frc.org.uk/FRS-102/2021-01-01/FRS-102-2021-01-01.xsd",
-		"09652677_aa_2026-03-25.xhtml": "https://xbrl.frc.org.uk/FRS-102/2025-01-01/FRS-102-2025-01-01.xsd",
+// Concept namespace on the three small files (prefix resolved, not the schemaRef href).
+func TestGolden_ConceptNamespaces(t *testing.T) {
+	cases := []struct {
+		file, namespace string
+	}{
+		{"06760773_aa_2025-09-26.xhtml", "http://xbrl.frc.org.uk/cd/2023-01-01/business"},
+		{"03024914_aa_2023-03-13.xhtml", "http://xbrl.frc.org.uk/cd/2021-01-01/business"},
+		{"09652677_aa_2026-03-25.xhtml", "http://xbrl.frc.org.uk/cd/2025-01-01/business"},
 	}
-	for name, want := range cases {
-		name, want := name, want
-		t.Run(name, func(t *testing.T) {
-			facts := loadSample(t, name)
-			if facts[0].Taxonomy != want {
-				t.Errorf("taxonomy=%q want %q", facts[0].Taxonomy, want)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.file, func(t *testing.T) {
+			facts := loadSample(t, tc.file)
+			var got string
+			var n int
+			for _, f := range facts {
+				if strings.Contains(f.Namespace, ".xsd") {
+					t.Errorf("namespace is a schemaRef href: %q", f.Namespace)
+				}
+				if f.Concept == "UKCompaniesHouseRegisteredNumber" {
+					n++
+					got = f.Namespace
+				}
+			}
+			if n == 0 {
+				t.Fatal("UKCompaniesHouseRegisteredNumber missing")
+			}
+			if got != tc.namespace {
+				t.Errorf("namespace=%q want %q", got, tc.namespace)
 			}
 		})
 	}

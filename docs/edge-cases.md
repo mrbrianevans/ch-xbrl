@@ -8,7 +8,7 @@ When you find another one, do not only patch the code. See `AGENTS.md`.
 
 1. Add it here (archive URL and member name, what the bytes contain, the behaviour that must stay).
 2. Commit a real example under `samples/` when it is small enough. A member that is not an instance stays in `internal/ixbrl/testdata/` so jobs that scan `samples/` for iXBRL do not pick it up.
-3. Add an invoke test that runs `ch-xbrl` on that sample and checks the CSV. Assert in Go. A short DuckDB query from the test is fine when it makes the CSV easier to read. Do not collect edge cases into one SQL file. If part of the behaviour is not settled, check the parts that are. The charity accounts sample does this: facts are checked, and the `taxonomy` column is left for a later change.
+3. Add an invoke test that runs `ch-xbrl` on that sample and checks the CSV. Assert in Go. A short DuckDB query from the test is fine when it makes the CSV easier to read. Do not collect edge cases into one SQL file. If part of the behaviour is not settled, check the parts that are.
 
 ## Corrupt member
 
@@ -158,9 +158,9 @@ https://xbrl.frc.org.uk/char/2025-01-01/char-2025-01-01.xsd
 
 The same pair is in `Prod223_4320_05443274_20260331.html`, `Prod223_4320_06322344_20251231.html`, and `Prod223_4320_06513956_20251231.html`. `Prod223_4320_10433813_20260430.html` lists the 2026-01-01 FRS-102 and charity schemas.
 
-`ch-xbrl` copies the first href onto every fact. In this file, 82 facts use the charity namespace `http://xbrl.frc.org.uk/char/2025-01-01` (prefix `frs-char` in this document), including `CharityRegistrationNumberEnglandWales` (`1103254`) and `CharityFunds`. The prefix is a document-local abbreviation of that namespace URI. It is not the schemaRef URL.
+`namespace` is the URI the concept prefix resolves to. schemaRef hrefs are not copied onto the row. In this file, 82 facts have `namespace` `http://xbrl.frc.org.uk/char/2025-01-01` (prefix `frs-char`), including `CharityRegistrationNumberEnglandWales` (`1103254`) and `CharityFunds`. The prefix is a document-local abbreviation of that namespace URI. It is not the schemaRef URL.
 
-The sample is `samples/Prod223_4320_04986021_20260331.html`. The invoke test checks company `04986021`, the charity registration number, the legal name, and a `CharityFunds` figure. It does not check the `taxonomy` column. A later change should attribute each fact to the taxonomy it belongs to and query that column from the test.
+The sample is `samples/Prod223_4320_04986021_20260331.html`. The invoke test checks company `04986021`, the charity registration number, the legal name, a `CharityFunds` figure, and that those facts carry the charity namespace.
 
 The 14 CIC accounts files in that pack each have a single FRS-102 schemaRef. This case is the loose charity accounts, not the CIC34 report.
 

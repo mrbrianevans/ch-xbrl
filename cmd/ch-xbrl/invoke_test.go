@@ -419,6 +419,73 @@ func TestRun_AttachmentPlaceholderIsAnError(t *testing.T) {
 	}
 }
 
+func TestRun_UndeclaredPrefixIsMemberError(t *testing.T) {
+	dir := t.TempDir()
+	good, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodName := filepath.Base(sampleXHTML(t))
+	if err := os.WriteFile(filepath.Join(dir, goodName), good, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const badName = "undeclared.html"
+	const bad = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:core="http://example.com/core">
+<ix:nonNumeric name="core:EntityCurrentLegalOrRegisteredName" contextRef="c1">Should Not Appear</ix:nonNumeric>
+<ix:nonNumeric name="missing:CharityFunds" contextRef="c1">1</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2025-03-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</html>`
+	if err := os.WriteFile(filepath.Join(dir, badName), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", dir}, nil)
+	if code != exitFail {
+		t.Fatalf("default exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, `undeclared prefix "missing"`) || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	if strings.Contains(stdout, "Should Not Appear") || strings.Contains(stdout, "CharityFunds") {
+		t.Fatal("undeclared member contributed facts")
+	}
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("partial CSV should still contain facts from the good member")
+	}
+
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", dir}, nil)
+	if code != exitOK {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
+	}
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "files_err=1") || !strings.Contains(stderr, "files_ok=1") {
+		t.Fatalf("--continue-on-error stderr: %s", stderr)
+	}
+	if strings.Contains(stdout, "Should Not Appear") || strings.Contains(stdout, "CharityFunds") {
+		t.Fatal("undeclared member contributed facts")
+	}
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("good member facts missing")
+	}
+
+	only := t.TempDir()
+	if err := os.WriteFile(filepath.Join(only, badName), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", only}, nil)
+	if code != exitFail {
+		t.Fatalf("undeclared-only run exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no CSV, got %q", stdout)
+	}
+}
+
 func TestRun_EmptyDirectory(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("skip"), 0o644); err != nil {

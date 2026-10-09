@@ -54,7 +54,7 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | `value` | String (scale / sign / iXT applied) |
 | `unit` | Measure, if any |
 | `dimensions` | JSON map; empty if none |
-| `taxonomy` | First `schemaRef` href (copied, not resolved) |
+| `namespace` | Namespace URI for the concept's prefix |
 | `source_file` | Archive member or basename |
 | `decimals` | Raw iXBRL `decimals` (`INF` kept); empty if absent |
 

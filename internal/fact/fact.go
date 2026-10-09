@@ -10,7 +10,7 @@ type Fact struct {
 	Value         string // raw/effective value as string
 	Unit          string // unit measure or unitRef
 	Dimensions    string // JSON object dimension→member; empty if none
-	Taxonomy      string // schemaRef href
+	Namespace     string // concept prefix resolved to a namespace URI; empty if the inline name has no prefix
 	SourceFile    string // archive member name
 	Decimals      string // raw iXBRL decimals attribute (INF stays INF); empty if absent / non-numeric
 }
@@ -24,7 +24,7 @@ var CSVHeader = []string{
 	"value",
 	"unit",
 	"dimensions",
-	"taxonomy",
+	"namespace",
 	"source_file",
 	"decimals",
 }
@@ -39,7 +39,7 @@ func (f Fact) Record() []string {
 		f.Value,
 		f.Unit,
 		f.Dimensions,
-		f.Taxonomy,
+		f.Namespace,
 		f.SourceFile,
 		f.Decimals,
 	}

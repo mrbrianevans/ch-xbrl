@@ -64,7 +64,7 @@ A frozen column meaning is what a caller can rely on. The procedure that fills t
 Column order is frozen:
 
 ```text
-company_number,period_start,period_end,concept,value,unit,dimensions,taxonomy,source_file,decimals
+company_number,period_start,period_end,concept,value,unit,dimensions,namespace,source_file,decimals
 ```
 
 | Column | Frozen meaning |
@@ -75,7 +75,7 @@ company_number,period_start,period_end,concept,value,unit,dimensions,taxonomy,so
 | `value` | Effective string (scale / sign / iXT applied for numerics) |
 | `unit` | Unit measure(s), empty if none |
 | `dimensions` | JSON object of local-name → member; empty if none |
-| `taxonomy` | A schema reference href from the instance, or empty |
+| `namespace` | Namespace URI for the concept's prefix, taken from the document's `xmlns` declarations. The prefix itself is never written, and a `schemaRef` href is not written. An inline `ix:` name with no prefix is empty; the default `xmlns` is not used. A classic item with no prefix uses the in-scope default `xmlns`, or is empty when none is in scope. |
 | `source_file` | Archive member name, instance basename, or `-` for a stdin instance |
 | `decimals` | Raw iXBRL `decimals` attribute (`INF` stays `INF`); empty when absent or non-numeric |
 
@@ -87,7 +87,6 @@ Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstrea
 - Exact numeric pretty-print / trailing zeros.
 - Full narrative prose (nested `ix:exclude` or similar may still truncate). Fact **inventory** (concepts present, periods, numeric values) must still match.
 - How `company_number` is chosen. Today that can be the context identifier, the filename, or a registered-number fact such as `UKCompaniesHouseRegisteredNumber` / `CompaniesHouseRegisteredNumber`. A minor version may add or remove a source, including the filename.
-- Which schema reference is copied into `taxonomy` when an instance has more than one.
 - Which component folders of a Companies House package are selected, beyond the rules in [edge-cases.md](./edge-cases.md). `source_file` for a package filing is the package name.
 - How tuples are represented. See [Tuples](#tuples). Shipping `v1.0.0` does not freeze this. A minor release after v1.0 may change it.
 - Stderr wording, including the text of a parse error.
@@ -116,6 +115,8 @@ Do not change the CSV for tuples until a count of real filings shows children th
 A partial extract (some members OK, some not) is **not** success unless `--continue-on-error` was set. `--continue-on-error` does not turn an empty extract or a stream failure into success.
 
 A member that yields no facts is a failed member (`files_err`), not a successful empty file. That is part of the exit-code meanings above. The log text is not frozen.
+
+A concept prefix that is not declared in the document is a failed member. No facts from that member are written. It counts only in `files_err`, so `files_ok + files_err` stays equal to `members`. `--continue-on-error` skips it like any other parse error. A blank inline name, and a classic item that uses the default `xmlns`, are not this error.
 
 ## SemVer
 
