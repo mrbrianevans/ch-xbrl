@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
+
 ### Changed
 
 - Replaced the `taxonomy` column with `namespace`, the namespace URI for the concept's prefix.
@@ -86,7 +88,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.6...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.6...v0.4.0
 [0.3.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.5...v0.3.6
 [0.3.5]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.4...v0.3.5
 [0.3.4]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.3...v0.3.4
