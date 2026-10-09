@@ -109,16 +109,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 	var inPeriod, inEntity bool
 	var textBuf strings.Builder
 	var captureText bool
-	var excludeDepth int // skip text under ix:exclude (iXBRL)
 	var lastStart xml.StartElement
 	var explicitDim string // dimension attr while reading explicitMember text
 
 	// ix:continuation fragments (id → text + next continuedAt).
 	// Used to reassemble nonNumeric/nonFraction values split across the document.
 	continuations := map[string]*continuationPart{}
-	var curContID, curContNext string
-	var contBuf strings.Builder
-	var captureCont bool
 
 	// Facts collected as we stream (ix:nonFraction / ix:nonNumeric).
 	type pendingFact struct {
@@ -135,15 +131,27 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 		ContinuedAt string // head of ix:continuation chain, if any
 		Target      string // ix:target; empty when the attribute is absent
 	}
-	type factFrame struct {
-		fact  pendingFact
-		buf   strings.Builder
-		space string
-		local string
+	// Open facts, continuations, and excludes share one stack. Text is
+	// written only to the innermost frame. On close, that text is stored
+	// and copied onto the parent unless the parent is ix:exclude.
+	type openKind int
+	const (
+		openFact openKind = iota
+		openContinuation
+		openExclude
+	)
+	type openFrame struct {
+		kind     openKind
+		fact     pendingFact
+		contID   string
+		contNext string
+		buf      strings.Builder
+		space    string
+		local    string
 	}
 	var curIdentScheme string
 	var facts []pendingFact
-	var factStack []*factFrame
+	var openStack []*openFrame
 
 	for {
 		tok, err := dec.Token()
@@ -162,9 +170,10 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 			space := t.Name.Space
 			lastStart = t
 
-			// ix:exclude content must not contribute to fact text.
+			// ix:exclude hides its text from ancestor facts and continuations.
+			// A fact nested inside it is still its own frame.
 			if isIX(space) && local == "exclude" {
-				excludeDepth++
+				openStack = append(openStack, &openFrame{kind: openExclude, space: space, local: local})
 				continue
 			}
 
@@ -229,7 +238,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 				}
 				// Nested ix:nonNumeric / ix:nonFraction (Workiva wraps one
 				// fact inside another). Each layer is a separate fact.
-				factStack = append(factStack, &factFrame{fact: pf, space: space, local: local})
+				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
 
 			case isClassicItem(space, t):
 				// Non-inline XBRL: an item is an element with contextRef
@@ -257,24 +266,23 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
 					pf.Value = ""
 				}
-				factStack = append(factStack, &factFrame{fact: pf, space: space, local: local})
+				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
 
 			case isIX(space) && local == "continuation":
 				// Continuation of a prior fact (continuedAt chain).
-				curContID = attrAny(t, "id")
-				curContNext = attrAny(t, "continuedAt")
-				captureCont = true
-				contBuf.Reset()
+				// Nested continuations each keep their own frame.
+				openStack = append(openStack, &openFrame{
+					kind:     openContinuation,
+					contID:   attrAny(t, "id"),
+					contNext: attrAny(t, "continuedAt"),
+					space:    space,
+					local:    local,
+				})
 			}
 
 		case xml.CharData:
-			if excludeDepth > 0 {
-				break
-			}
-			if captureCont {
-				contBuf.Write(t)
-			} else if n := len(factStack); n > 0 {
-				factStack[n-1].buf.Write(t)
+			if n := len(openStack); n > 0 {
+				openStack[n-1].buf.Write(t)
 			} else if captureText {
 				textBuf.Write(t)
 			}
@@ -282,32 +290,32 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 		case xml.EndElement:
 			local := t.Name.Local
 			space := t.Name.Space
-			if isIX(space) && local == "exclude" {
-				if excludeDepth > 0 {
-					excludeDepth--
-				}
-				continue
-			}
-			if isIX(space) && local == "continuation" {
-				if curContID != "" {
-					continuations[curContID] = &continuationPart{
-						Text:        contBuf.String(),
-						ContinuedAt: curContNext,
+			if n := len(openStack); n > 0 && openStack[n-1].local == local && openStack[n-1].space == space {
+				fr := openStack[n-1]
+				openStack = openStack[:n-1]
+				raw := fr.buf.String()
+				bubble := raw
+				switch fr.kind {
+				case openFact:
+					fr.fact.Value = raw
+					facts = append(facts, fr.fact)
+				case openContinuation:
+					if fr.contID != "" {
+						continuations[fr.contID] = &continuationPart{
+							Text:        raw,
+							ContinuedAt: fr.contNext,
+						}
 					}
+				case openExclude:
+					// Excluded text, including a nested fact already stored,
+					// does not belong to ancestor facts or continuations.
+					bubble = ""
 				}
-				curContID, curContNext = "", ""
-				captureCont = false
-				contBuf.Reset()
-				continue
-			}
-			if n := len(factStack); n > 0 && factStack[n-1].local == local && factStack[n-1].space == space {
-				fr := factStack[n-1]
-				factStack = factStack[:n-1]
-				fr.fact.Value = fr.buf.String()
-				facts = append(facts, fr.fact)
-				// Nested fact text is also the parent's visible content.
-				if len(factStack) > 0 {
-					factStack[len(factStack)-1].buf.WriteString(fr.fact.Value)
+				if bubble != "" && len(openStack) > 0 && openStack[len(openStack)-1].kind != openExclude {
+					openStack[len(openStack)-1].buf.WriteString(bubble)
+				}
+				if fr.kind != openFact {
+					continue
 				}
 			}
 			text := strings.TrimSpace(textBuf.String())
@@ -379,7 +387,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 			}
 
 			if captureText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
-				if len(factStack) == 0 {
+				if len(openStack) == 0 {
 					captureText = false
 					textBuf.Reset()
 				}
@@ -729,9 +737,9 @@ func normaliseNonNumeric(val, format string) (string, error) {
 	case "nocontent":
 		return "", nil
 	}
-	// Collapse whitespace / drop surrounding quotes (entity names etc.).
+	// Collapse whitespace. Quotes in the filer's text stay; the CSV writer
+	// escapes a field that contains one.
 	val = strings.Join(strings.Fields(val), " ")
-	val = strings.ReplaceAll(val, `"`, "")
 	out, err := transformDate(fl, val)
 	if err != nil {
 		return val, err
@@ -892,12 +900,70 @@ var (
 	reNonNumeric       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)>(.*?)</(?:[\w.]+:)?nonNumeric>`)
 	reNonFractionEmpty = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonFraction\b([^>]*)/>`)
 	reNonNumericEmpty  = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)/>`)
-	reContinuation     = regexp.MustCompile(`(?is)<(?:[\w.]+:)?continuation\b([^>]*)>(.*?)</(?:[\w.]+:)?continuation>`)
-	reAttr             = regexp.MustCompile(`(?i)([:\w]+)\s*=\s*["']([^"']*)["']`)
+	// Open, close, or empty ix:continuation. Group 1 is "/" for a close tag,
+	// group 2 is the attribute text, group 3 is "/" for an empty element.
+	reContTag = regexp.MustCompile(`(?is)<(/)?(?:[\w.]+:)?continuation\b([^>]*?)(/?)>`)
+	reAttr    = regexp.MustCompile(`(?i)([:\w]+)\s*=\s*["']([^"']*)["']`)
 )
 
 func errNoFacts(sourceFile string) error {
 	return fmt.Errorf("no facts extracted from %s", sourceFile)
+}
+
+// indexContinuations records every ix:continuation, including ones nested
+// inside another. Each part's text is the descendant text of that element
+// (tags removed, ix:exclude dropped), so an outer continuation includes the
+// inner one's text. Unbalanced tags are an error: a partial map would
+// reassemble facts with the wrong chain.
+func indexContinuations(s string) (map[string]*continuationPart, error) {
+	locs := reContTag.FindAllStringSubmatchIndex(s, -1)
+	type frame struct {
+		id, next     string
+		contentStart int
+	}
+	var st []frame
+	out := map[string]*continuationPart{}
+	for _, loc := range locs {
+		isClose := loc[2] >= 0 && loc[3] > loc[2]
+		selfClose := loc[6] >= 0 && loc[7] > loc[6]
+		if isClose {
+			if len(st) == 0 {
+				return nil, fmt.Errorf("unbalanced ix:continuation")
+			}
+			fr := st[len(st)-1]
+			st = st[:len(st)-1]
+			if fr.id != "" {
+				out[fr.id] = &continuationPart{
+					Text:        xmlUnescape(stripTags(s[fr.contentStart:loc[0]])),
+					ContinuedAt: fr.next,
+				}
+			}
+			continue
+		}
+		attrs := ""
+		if loc[4] >= 0 && loc[5] >= loc[4] {
+			attrs = s[loc[4]:loc[5]]
+		}
+		am := parseAttrs(attrs)
+		id := am["id"]
+		next := ""
+		for k, v := range am {
+			if strings.EqualFold(k, "continuedAt") {
+				next = v
+			}
+		}
+		if selfClose {
+			if id != "" {
+				out[id] = &continuationPart{ContinuedAt: next}
+			}
+			continue
+		}
+		st = append(st, frame{id: id, next: next, contentStart: loc[1]})
+	}
+	if len(st) != 0 {
+		return nil, fmt.Errorf("unbalanced ix:continuation")
+	}
+	return out, nil
 }
 
 func documentNamespaces(s string) map[string]string {
@@ -967,23 +1033,11 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 	var out []fact.Fact
 
 	// Index ix:continuation fragments for continuedAt chains.
-	continuations := map[string]*continuationPart{}
-	for _, m := range reContinuation.FindAllStringSubmatch(s, -1) {
-		am := parseAttrs(m[1])
-		id := am["id"]
-		if id == "" {
-			continue
-		}
-		next := ""
-		for k, v := range am {
-			if strings.EqualFold(k, "continuedAt") {
-				next = v
-			}
-		}
-		continuations[id] = &continuationPart{
-			Text:        xmlUnescape(stripTags(m[2])),
-			ContinuedAt: next,
-		}
+	// Nested continuations need a matching-tag scan; a non-greedy match
+	// would stop at the first close and drop the outer ids.
+	continuations, contErr := indexContinuations(s)
+	if contErr != nil {
+		return nil, fmt.Errorf("%s: %w", sourceFile, contErr)
 	}
 
 	collect := func(attrs, body string, numeric bool) {
