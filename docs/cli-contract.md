@@ -61,7 +61,7 @@ UTF-8, RFC 4180-style quoting (`encoding/csv`). Header row, then one row per fac
 
 A frozen column meaning is what a caller can rely on. The procedure that fills the column is not frozen: a minor version may change it, as long as the column still means what this table says.
 
-Column order is frozen. Before `v1.0.0`, `taxonomy` (a schemaRef href) was replaced by `namespace`. The list below is the v1.0 shape.
+Column order is frozen:
 
 ```text
 company_number,period_start,period_end,concept,value,unit,dimensions,namespace,source_file,decimals
