@@ -54,9 +54,15 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | `value` | String (scale / sign / iXT applied) |
 | `unit` | Measure, if any |
 | `dimensions` | JSON map; empty if none |
-| `taxonomy` | First `schemaRef` href (copied, not resolved) |
+| `namespace` | Namespace URI for the concept's prefix (`xmlns` in the document). Empty when an inline name has no prefix. A classic item with no prefix uses the default `xmlns` |
 | `source_file` | Archive member or basename |
 | `decimals` | Raw iXBRL `decimals` (`INF` kept); empty if absent |
+
+## Changelog
+
+### Unreleased, before v1.0
+
+- Replaced `taxonomy` (the `schemaRef` href) with `namespace`, the URI for that row's concept prefix. `schemaRef` hrefs are not written. An undeclared prefix fails the member: no facts from it, `files_err` only, and `--continue-on-error` skips it like any other bad member.
 
 ## Licence
 
