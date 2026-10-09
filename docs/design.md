@@ -45,7 +45,8 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 - Go ↔ DuckDB is **CSV**; final artefact is **Parquet**.
 - Taxonomy processing is decoupled from the instance parser.
 - Explicit casts in DuckDB over silent type inference.
-- Instants: `period_start = period_end`.
+- Instants: `period_start = period_end`. Those columns are the fact's context period. `BalanceSheetDate` in `value` is the period-end fact.
+- A date format writes `value` as the registry form (`YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD`). No date format leaves the text. A date that cannot be transformed fails that member and contributes no facts.
 - `company_number` stays a string. Letters are part of the number (`SC`, `NI`, `OC`). Do not cast it to an integer.
 - A member with no facts is a parse error. Known archive edge cases, including where they were found: [edge-cases.md](./edge-cases.md).
 

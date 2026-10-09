@@ -440,7 +440,11 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 		if pf.IsNumeric {
 			val = normaliseNumeric(val, pf.Scale, pf.Sign, pf.Format)
 		} else {
-			val = normaliseNonNumeric(val, pf.Format)
+			var err error
+			val, err = normaliseNonNumeric(val, pf.Format)
+			if err != nil {
+				return nil, errDateTransform(sourceFile, qnameLocal(pf.Name), pf.Format, val, err)
+			}
 		}
 
 		decimals := ""
@@ -539,6 +543,10 @@ func classicNamespace(space string, ns map[string]string) (uri, undeclared strin
 
 func errUndeclaredPrefix(sourceFile, concept, prefix string) error {
 	return fmt.Errorf("undeclared prefix %q on %s in %s", prefix, concept, sourceFile)
+}
+
+func errDateTransform(sourceFile, concept, format, text string, err error) error {
+	return fmt.Errorf("date transform %s format %q value %q in %s: %v", concept, format, text, sourceFile, err)
 }
 
 func attr(se xml.StartElement, space, local string) string {
@@ -711,20 +719,24 @@ func formatLocal(format string) string {
 	return format
 }
 
-func normaliseNonNumeric(val, format string) string {
+func normaliseNonNumeric(val, format string) (string, error) {
 	fl := formatLocal(format)
 	switch fl {
 	case "booleantrue":
-		return "true"
+		return "true", nil
 	case "booleanfalse":
-		return "false"
+		return "false", nil
 	case "nocontent":
-		return ""
+		return "", nil
 	}
 	// Collapse whitespace / drop surrounding quotes (entity names etc.).
 	val = strings.Join(strings.Fields(val), " ")
 	val = strings.ReplaceAll(val, `"`, "")
-	return val
+	out, err := transformDate(fl, val)
+	if err != nil {
+		return val, err
+	}
+	return out, nil
 }
 
 // humanNumericPrefixRE strips junk like "2017 - 2" or "employees: 12" → residual number part.
@@ -905,6 +917,7 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 	s := string(data)
 	docNS := documentNamespaces(s)
 	var nsErr error
+	var dateErr error
 
 	contexts := map[string]*contextInfo{}
 	for _, m := range reContext.FindAllStringSubmatch(s, -1) {
@@ -974,7 +987,7 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 	}
 
 	collect := func(attrs, body string, numeric bool) {
-		if nsErr != nil {
+		if nsErr != nil || dateErr != nil {
 			return
 		}
 		am := parseAttrs(attrs)
@@ -1043,7 +1056,12 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 			decimals = am["decimals"]
 			val = normaliseNumeric(val, scale, sign, format)
 		} else {
-			val = normaliseNonNumeric(val, format)
+			var nerr error
+			val, nerr = normaliseNonNumeric(val, format)
+			if nerr != nil {
+				dateErr = errDateTransform(sourceFile, qnameLocal(name), format, val, nerr)
+				return
+			}
 		}
 		out = append(out, fact.Fact{
 			CompanyNumber: company,
@@ -1074,6 +1092,9 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 
 	if nsErr != nil {
 		return nil, nsErr
+	}
+	if dateErr != nil {
+		return nil, dateErr
 	}
 	if len(out) == 0 {
 		return nil, errNoFacts(sourceFile)

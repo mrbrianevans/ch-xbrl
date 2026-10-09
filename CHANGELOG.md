@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A date format writes `value` as the registry form (`YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date). A date that cannot be transformed, including an unimplemented date format, fails that member. `--continue-on-error` skips it.
+
 ## [0.4.1] - 2026-10-09
 
 ### Changed

@@ -939,6 +939,142 @@ func TestRun_PackageNoReportsContinueOnError(t *testing.T) {
 	}
 }
 
+func conceptValues(t *testing.T, stdout, concept string) []string {
+	t.Helper()
+	r := csv.NewReader(strings.NewReader(stdout))
+	rows, err := r.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 {
+		t.Fatal("empty CSV")
+	}
+	ci, vi := -1, -1
+	for i, h := range rows[0] {
+		switch h {
+		case "concept":
+			ci = i
+		case "value":
+			vi = i
+		}
+	}
+	if ci < 0 || vi < 0 {
+		t.Fatalf("header %v", rows[0])
+	}
+	var vals []string
+	for _, row := range rows[1:] {
+		if row[ci] == concept {
+			vals = append(vals, row[vi])
+		}
+	}
+	return vals
+}
+
+func TestRun_SampleDatesAreISO(t *testing.T) {
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", sampleXHTML(t)}, nil)
+	if code != exitOK {
+		t.Fatalf("exit %d stderr=%s", code, stderr)
+	}
+	assertCSV(t, stdout)
+	for _, tc := range []struct{ concept, want string }{
+		{"BalanceSheetDate", "2022-03-31"},
+		{"StartDateForPeriodCoveredByReport", "2021-04-01"},
+	} {
+		vals := conceptValues(t, stdout, tc.concept)
+		if len(vals) == 0 {
+			t.Fatalf("missing %s", tc.concept)
+		}
+		for _, v := range vals {
+			if v != tc.want {
+				t.Errorf("%s value %q, want %q", tc.concept, v, tc.want)
+			}
+		}
+	}
+}
+
+func dateMemberHTML(format, text string) string {
+	return `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:bus="http://example.com/bus">
+<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c1">Should Not Appear</ix:nonNumeric>
+<ix:nonNumeric name="bus:BalanceSheetDate" contextRef="c1" format="` + format + `">` + text + `</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</html>`
+}
+
+func TestRun_UntransformableDateFailsMember(t *testing.T) {
+	// Synthetic on purpose: Arelle and stream-read-xbrl scan samples/.
+	// A year that lives only in an unlinked continuation is this failure.
+	const badName = "year-in-continuation.xhtml"
+	bad := dateMemberHTML("ixt2:datedaymonthyearen", "31 December")
+
+	only := t.TempDir()
+	if err := os.WriteFile(filepath.Join(only, badName), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "1", only}, nil)
+	if code != exitFail {
+		t.Fatalf("exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if strings.Contains(stdout, "Should Not Appear") || strings.Contains(stdout, "BalanceSheetDate") || strings.Count(stdout, "\n") > 0 {
+		t.Fatalf("bad member wrote fact rows:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "31 December") ||
+		!strings.Contains(stderr, "datedaymonthyearen") || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+
+	dir := t.TempDir()
+	good, err := os.ReadFile(sampleXHTML(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	goodName := filepath.Base(sampleXHTML(t))
+	if err := os.WriteFile(filepath.Join(dir, goodName), good, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, badName), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "1", dir}, nil)
+	if code != exitOK {
+		t.Fatalf("--continue-on-error exit %d, want %d stderr=%s", code, exitOK, stderr)
+	}
+	assertCSV(t, stdout)
+	if strings.Contains(stdout, "Should Not Appear") {
+		t.Fatal("bad member contributed facts")
+	}
+	if !strings.Contains(stdout, "03024914") {
+		t.Fatal("good member facts missing")
+	}
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "31 December") ||
+		!strings.Contains(stderr, "files_err=1") || !strings.Contains(stderr, "files_ok=1") {
+		t.Fatalf("--continue-on-error stderr: %s", stderr)
+	}
+
+	const unimplName = "unimplemented-date.xhtml"
+	unimpl := dateMemberHTML("ixt:date-day-monthname-year-de", "31. Dezember 2025")
+	unimplDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(unimplDir, unimplName), []byte(unimpl), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr = runCLI(t, []string{"-o", "-", "-workers", "1", unimplDir}, nil)
+	if code != exitFail {
+		t.Fatalf("unimplemented exit %d, want %d stderr=%s", code, exitFail, stderr)
+	}
+	if strings.Contains(stdout, "Should Not Appear") || strings.Count(stdout, "\n") > 0 {
+		t.Fatalf("unimplemented member wrote fact rows:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, unimplName) || !strings.Contains(stderr, "date-day-monthname-year-de") ||
+		!strings.Contains(stderr, "unimplemented") || !strings.Contains(stderr, "files_err=1") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+}
+
 func TestRun_OutputFile(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "facts.csv")
 	code, stdout, stderr := runCLI(t, []string{"-o", out, "-workers", "1", sampleXHTML(t)}, nil)

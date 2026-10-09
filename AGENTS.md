@@ -72,6 +72,7 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 | Charity accounts `samples/Prod223_4320_04986021_20260331.html` (FRS-102 and charity schemaRefs; 82 facts use namespace `http://xbrl.frc.org.uk/char/2025-01-01`; schemaRef hrefs are not copied) | [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip) | `TestRun_EdgeSampleCharityAccounts` |
 | iXBRL HTML named `.zip` `samples/Prod224_0089_05546298_20201231.zip` (sniff and parse as an instance; `source_file` stays the `.zip` name) | [Accounts_Monthly_Data-April2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2021.zip) | `TestRun_EdgeSampleMisnamedZipInstance`, `TestStreamZipNamedInstance`, `TestRun_InvalidNestedZipIsMemberError` |
 | Attachment placeholder named `.zip` `Prod224_0095_04869811_20210131.zip` (`ATTACHMENTPLACEHOLDER137191381`; member error, not a stream error) | [Accounts_Monthly_Data-October2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-October2021.zip) | `TestParseKnownArchiveAnomalies`, `TestStreamNestedZipInvalid`, `TestRun_ZipNamedAttachmentPlaceholder`, `TestRun_InvalidNestedZipIsMemberError` |
+| Untransformable date (`31 December` with `datedaymonthyearen`; synthetic, not under `samples/`) | continuation year is out of scope; see `docs/edge-cases.md` | `TestBadDateDropsMember`, `TestRun_UntransformableDateFailsMember` |
 
 ## Layout
 

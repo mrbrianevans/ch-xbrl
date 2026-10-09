@@ -175,8 +175,8 @@ func TestNestedNonNumeric(t *testing.T) {
 		"NameEntityOfficer":                  "CSC Directors Limited",
 		"DirectorSigningDirectorsReport":     "",
 		"DirectorSigningFinancialStatements": "",
-		"EndDateForPeriodCoveredByReport":    "23 September 2025",
-		"BalanceSheetDate":                   "23 September 2025",
+		"EndDateForPeriodCoveredByReport":    "2025-09-23",
+		"BalanceSheetDate":                   "2025-09-23",
 	}
 	if len(got) != len(want) {
 		t.Errorf("fact count=%d want %d (%v)", len(got), len(want), got)
@@ -185,6 +185,46 @@ func TestNestedNonNumeric(t *testing.T) {
 		if got[concept] != val {
 			t.Errorf("%s value=%q want %q", concept, got[concept], val)
 		}
+	}
+}
+
+func TestBadDateDropsMember(t *testing.T) {
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:bus="http://example.com/bus">
+<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c1">Should Not Appear</ix:nonNumeric>
+<ix:nonNumeric name="bus:BalanceSheetDate" contextRef="c1" format="ixt2:datedaymonthyearen">31 December</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">01234567</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2025-12-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+</html>`
+	facts, err := ParseBytes([]byte(doc), "bad-date.xhtml")
+	if err == nil {
+		t.Fatal("want date transform error")
+	}
+	if facts != nil {
+		t.Fatalf("facts=%v, want none", facts)
+	}
+	if !strings.Contains(err.Error(), "BalanceSheetDate") ||
+		!strings.Contains(err.Error(), "datedaymonthyearen") ||
+		!strings.Contains(err.Error(), "31 December") ||
+		!strings.Contains(err.Error(), "bad-date.xhtml") {
+		t.Fatalf("error: %v", err)
+	}
+
+	// A NUL makes the XML decoder fail so the regex fallback runs.
+	broken := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
+<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c1">Should Not Appear</ix:nonNumeric>
+<ix:nonNumeric name="bus:BalanceSheetDate" contextRef="c1" format="ixt:date-day-monthname-year-de">31. Dezember 2025</ix:nonNumeric>
+` + "\x00" + `</html>`)
+	facts, err = ParseBytes(broken, "unimplemented.xhtml")
+	if err == nil || facts != nil {
+		t.Fatalf("lenient facts=%v err=%v", facts, err)
+	}
+	if !strings.Contains(err.Error(), "unimplemented") || !strings.Contains(err.Error(), "date-day-monthname-year-de") {
+		t.Fatalf("error: %v", err)
 	}
 }
 

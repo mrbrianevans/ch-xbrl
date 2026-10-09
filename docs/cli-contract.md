@@ -70,9 +70,9 @@ company_number,period_start,period_end,concept,value,unit,dimensions,namespace,s
 | Column | Frozen meaning |
 |--------|----------------|
 | `company_number` | Populated with the company's registered number, as a string. The value may contain letters. It is not an integer. |
-| `period_start` / `period_end` | ISO dates. Instant: `period_start` = `period_end` |
+| `period_start` / `period_end` | ISO dates from the fact's context. Instant: `period_start` = `period_end`. This is not the period-end fact: cast `BalanceSheetDate`. |
 | `concept` | **Local name** (not a namespace-qualified QName) |
-| `value` | Effective string (scale / sign / iXT applied for numerics) |
+| `value` | Effective string (scale / sign / iXT applied). A date format writes the registry form: `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. |
 | `unit` | Unit measure(s), empty if none |
 | `dimensions` | JSON object of local-name → member; empty if none |
 | `namespace` | Namespace URI for the concept's prefix, taken from the document's `xmlns` declarations. The prefix itself is never written, and a `schemaRef` href is not written. An inline `ix:` name with no prefix is empty; the default `xmlns` is not used. A classic item with no prefix uses the in-scope default `xmlns`, or is empty when none is in scope. |
@@ -117,6 +117,8 @@ A partial extract (some members OK, some not) is **not** success unless `--conti
 A member that yields no facts is a failed member (`files_err`), not a successful empty file. That is part of the exit-code meanings above. The log text is not frozen.
 
 A concept prefix that is not declared in the document is a failed member. No facts from that member are written. It counts only in `files_err`, so `files_ok + files_err` stays equal to `members`. `--continue-on-error` skips it like any other parse error. A blank inline name, and a classic item that uses the default `xmlns`, are not this error.
+
+A date format that cannot be transformed is a failed member in the same way. That includes text that does not match the format, a date the calendar rejects, and a date format this extractor does not implement. No facts from that file are written. `--continue-on-error` skips it. The log names the source file, concept, format, and the text. A fact with no date format is not this error.
 
 ## SemVer
 

@@ -49,9 +49,9 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | Column | Meaning |
 |--------|---------|
 | `company_number` | Companies House number (string; may include letters, e.g. `SC123456`). Not an integer |
-| `period_start` / `period_end` | ISO dates (instants: both equal) |
+| `period_start` / `period_end` | ISO dates from the fact's context (instants: both equal). The period-end fact to cast is `BalanceSheetDate` |
 | `concept` | Local name |
-| `value` | String (scale / sign / iXT applied) |
+| `value` | String (scale / sign / iXT applied). A date format is `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. A date that cannot be transformed, including an unimplemented date format, fails that member (`--continue-on-error` skips it) |
 | `unit` | Measure, if any |
 | `dimensions` | JSON map; empty if none |
 | `namespace` | Namespace URI for the concept's prefix |

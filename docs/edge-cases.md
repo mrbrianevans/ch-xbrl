@@ -208,3 +208,42 @@ Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
 `samples/10878733_cic.zip` is the same shape as the bulk CIC wrapper above, for Upbeat Life C.I.C., company `10878733`: `CIC-10878733/accounts/financialStatement.xhtml` and `CIC-10878733/cic34/cicReport.xhtml`. Opening it emits the accounts file only (52 facts, `ReportTitle` `Financial Statements`, no `DirectorSigningCIC34Report`). [Filing](https://find-and-update.company-information.service.gov.uk/company/10878733/filing-history/MzUxNzQzNTgyMWFkaXF6a2N4/document?format=zip&download=1).
 
 Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
+
+## Untransformable date
+
+A fact tagged with a date format that cannot be transformed fails the member. Nothing from that file is written. It counts in `files_err`. Without `--continue-on-error` the process exits 1. With the flag the member is logged and skipped. The log names the source file, concept, format, and the text.
+
+The locked example is synthetic, and it is not stored under `samples/` because the Arelle and stream-read-xbrl jobs scan that directory. The fact is `BalanceSheetDate` with `ixt2:datedaymonthyearen` and the text `31 December`. The same document also has a name fact. Both are absent from the CSV. A year that sits only in a continuation this fact does not reference is this failure today. Joining continuations is a separate change.
+
+An impossible calendar day fails the same way (`30/02/2025` with `dateslasheu`). A partial format that matches is not an error (`2025-12`, `--12-31`). A format that is not a date (`nummcommadot`, `fixed-zero`) leaves the text.
+
+Tests: `TestBadDateDropsMember`, `TestRun_UntransformableDateFailsMember`, `TestRun_SampleDatesAreISO`.
+
+## Month-name length
+
+`datelonguk` and `datelongus` take a full English month name. `dateshortuk` and `dateshortus` take the three-letter name. `May` is both, so both formats accept it. Every 2017 monthly archive, [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/Accounts_Monthly_Data-August2026.zip), and [Accounts_Bulk_Data-2026-10-08.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-08.zip) were scanned. None of them contain a `datelongus` or `datelonguk` fact whose month is a three-letter name other than May, or a `dateshortuk` or `dateshortus` fact whose month is a long name.
+
+Arelle (`arelleCmdLine -f FILE --facts OUT --logLevel error`, taxonomy loaded) on the real members:
+
+| Archive | Member | Format | Text | Arelle `value` |
+|---------|--------|--------|------|----------------|
+| [Accounts_Monthly_Data-June2017.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-June2017.zip) | `Prod224_0043_06548972_20170331.html` | `ixt:dateshortus` | `Mar 31, 2017` | `2017-03-31` |
+| same | same | `ixt:dateshortus` | `Jun 21, 2017` | `2017-06-21` |
+| same | `Prod224_0043_02859051_20160930.html` | `ixt:datelongus` | `September 30, 2016` | `2016-09-30` |
+| same | same | `ixt:datelongus` | `May 3, 2017` | `2017-05-03` |
+| [Accounts_Monthly_Data-January2017.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-January2017.zip) | `Prod224_0038_09850775_20161130.html` | `ixt:dateshortuk` | `30 Nov 2016` | `2016-11-30` |
+| same | same | `ixt:datelonguk` | `29 December 2016` | `2016-12-29` |
+
+The mismatched lengths are not in those packs. Arelle on the same members, with only the displayed text changed, logs `ix10.10.1.1:transformValueError` and does not emit an ISO value:
+
+| Member | Format | Text | Arelle |
+|--------|--------|------|--------|
+| `Prod224_0043_02859051_20160930.html` | `ixt:datelongus` | `Mar 31, 2017` | `transformValueError` |
+| `Prod224_0038_09850775_20161130.html` | `ixt:datelonguk` | `29 Dec 2016` | `transformValueError` |
+| same | `ixt:dateshortuk` | `30 November 2016` | `transformValueError` |
+
+This extractor fails the member for those three pairs. `dateshortus` still accepts `Mar 31, 2017`.
+
+## French date format on a UKSEF report
+
+`samples/03033634_uksef.zip` has one `EndDateForPeriodCoveredByReport` tagged `ixt4:date-day-monthname-year-fr` with the text `31 December 2024`. Arelle's French transform returns `2024-12-31`: the abbreviation `Dec` matches the start of `December`. This extractor does the same, so the package still emits its `target="UKFRS"` facts. Other non-English date formats are not implemented and fail the member.
