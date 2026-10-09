@@ -201,3 +201,68 @@ func TestRun_EdgeSampleCICZipNested(t *testing.T) {
 		count(*) FILTER (WHERE concept = 'ConsultationHasBeenHeldTruefalse')`)
 	assertCounts(t, got, []string{"60", "0", "0", "1", "0", "0", "0"})
 }
+
+func TestRun_EdgeSampleFactInsideContinuation(t *testing.T) {
+	const file = "01922327_aa_2025-12-31.xhtml"
+	csvPath, stderr := extractSample(t, samplePath(t, file))
+	if !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '01922327'),
+		count(*) FILTER (WHERE source_file <> '`+file+`'),
+		count(*) FILTER (
+			WHERE concept = 'ProfessionalConsultancyFees'
+			  AND value = '107816000'
+			  AND decimals = '-3'
+			  AND period_start = '2025-01-01'
+			  AND period_end = '2025-12-31'
+			  AND unit = 'iso4217:GBP'
+			  AND dimensions IS NULL
+		),
+		count(*) FILTER (
+			WHERE concept = 'ProfessionalConsultancyFees'
+			  AND value = '104907000'
+			  AND decimals = '-3'
+			  AND period_start = '2024-01-01'
+			  AND period_end = '2024-12-31'
+			  AND unit = 'iso4217:GBP'
+			  AND dimensions IS NULL
+		),
+		count(*) FILTER (
+			WHERE concept = 'TurnoverRevenueFree-textComment'
+			  AND period_start = '2025-01-01'
+			  AND period_end = '2025-12-31'
+			  AND contains(value, '107,816')
+			  AND contains(value, 'civil engineering consultancy')
+		)`)
+	assertCounts(t, got, []string{"589", "0", "0", "1", "1", "1"})
+}
+
+func TestRun_EdgeSampleNestedContinuations(t *testing.T) {
+	const file = "07068009_aa_2025-12-31.xhtml"
+	csvPath, stderr := extractSample(t, samplePath(t, file))
+	if !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '07068009'),
+		count(*) FILTER (WHERE source_file <> '`+file+`'),
+		count(*) FILTER (
+			WHERE concept = 'EndDateForPeriodCoveredByReport'
+			  AND value = '31 December 2025'
+			  AND period_end = '2025-12-31'
+		),
+		count(*) FILTER (
+			WHERE concept = 'BalanceSheetDate'
+			  AND value = '31 December 2025'
+			  AND period_end = '2025-12-31'
+		),
+		count(*) FILTER (
+			WHERE concept IN ('EndDateForPeriodCoveredByReport', 'BalanceSheetDate')
+			  AND value = '31 December'
+		)`)
+	assertCounts(t, got, []string{"591", "0", "0", "40", "20", "0"})
+}

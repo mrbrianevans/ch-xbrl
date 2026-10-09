@@ -208,3 +208,58 @@ Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
 `samples/10878733_cic.zip` is the same shape as the bulk CIC wrapper above, for Upbeat Life C.I.C., company `10878733`: `CIC-10878733/accounts/financialStatement.xhtml` and `CIC-10878733/cic34/cicReport.xhtml`. Opening it emits the accounts file only (52 facts, `ReportTitle` `Financial Statements`, no `DirectorSigningCIC34Report`). [Filing](https://find-and-update.company-information.service.gov.uk/company/10878733/filing-history/MzUxNzQzNTgyMWFkaXF6a2N4/document?format=zip&download=1).
 
 Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
+
+## Fact inside a continuation
+
+Found in [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip), member `Prod224_2608_01922327_20251231.html` (AMEY OW LIMITED, company `01922327`). That monthly has 49 facts with this empty value. [Accounts_Bulk_Data-2026-09-25.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-09-25.zip) has 1.
+
+The sample is the filing-history iXBRL for those accounts, not the bulk member bytes: `samples/01922327_aa_2025-12-31.xhtml`. [Filing](https://find-and-update.company-information.service.gov.uk/company/01922327/filing-history/MzUzOTM1MjUwOGFkaXF6a2N4/document?format=xhtml&download=1).
+
+`core:TurnoverRevenueFree-textComment` (`id="f-204"`, context `c-34`) has `continuedAt="f-204-1"`. The continuation is the revenue note, and it contains the division table. Two facts sit in that table:
+
+```xml
+<ix:nonFraction contextRef="c-1" decimals="-3" format="ixt:numdotdecimal" id="f-205" name="core:ProfessionalConsultancyFees" scale="3" unitRef="u-1">107,816</ix:nonFraction>
+<ix:nonFraction contextRef="c-5" decimals="-3" format="ixt:numdotdecimal" id="f-206" name="core:ProfessionalConsultancyFees" scale="3" unitRef="u-1">104,907</ix:nonFraction>
+```
+
+While a continuation was the open capture, every text node was written to the continuation buffer. The inner fact's own buffer stayed empty, so both rows came out as `value=""` with `decimals="-3"` kept. The continuation text already included `107,816` and `104,907`, so the narrative fact was unaffected.
+
+Behaviour that must stay:
+
+- `ProfessionalConsultancyFees` for `2025-01-01` to `2025-12-31` is `107816000` (`107,816` with `scale="3"`), `decimals` `-3`, unit `iso4217:GBP`, no dimensions.
+- The 2024 comparative is `104907000`, same decimals and unit, period `2024-01-01` to `2024-12-31`.
+- `TurnoverRevenueFree-textComment` for that 2025 period still contains `107,816` and `civil engineering consultancy`. The nested fact's text is part of the continuation.
+- 589 facts. Every row has `company_number` `01922327` and `source_file` `01922327_aa_2025-12-31.xhtml`.
+
+Tests: `TestFactInsideContinuation`, `TestRun_EdgeSampleFactInsideContinuation`.
+
+## Nested continuations
+
+Found in the same August 2026 monthly, member `Prod224_2608_07068009_20251231.html` (AMEY INVESTMENTS LIMITED, company `07068009`). Nineteen files in that monthly use this nesting.
+
+The sample is the filing-history iXBRL: `samples/07068009_aa_2025-12-31.xhtml`. [Filing](https://find-and-update.company-information.service.gov.uk/company/07068009/filing-history/MzUzOTEyNjY0M2FkaXF6a2N4/document?format=xhtml&download=1).
+
+One occurrence, repeated through the document:
+
+```xml
+<ix:nonNumeric id="f-34" name="bus:EndDateForPeriodCoveredByReport" contextRef="c-2" continuedAt="f-34-1" format="ixt:datedaymonthyearen">
+  <ix:nonNumeric id="f-35" name="bus:BalanceSheetDate" contextRef="c-2" continuedAt="f-35-1" format="ixt:datedaymonthyearen">
+    <ix:nonNumeric id="f-36" name="bus:EndDateForPeriodCoveredByReport" contextRef="c-2" continuedAt="f-36-1" format="ixt:datedaymonthyearen">31 December </ix:nonNumeric>
+  </ix:nonNumeric>
+</ix:nonNumeric>
+<ix:continuation id="f-34-1"><ix:continuation id="f-35-1"><ix:continuation id="f-36-1">2025</ix:continuation></ix:continuation></ix:continuation>
+```
+
+Each opening `ix:continuation` used to replace the previous id and reset the buffer. The innermost close saved `f-36-1` as `2025` and cleared that state, so `f-34-1` and `f-35-1` were never stored. `f-36` became `31 December 2025`. `f-34` and `f-35` stayed `31 December`.
+
+Each continuation is its own frame. Closing it stores that id and copies the text onto the parent continuation, so every continuation in the nest is `2025`. `joinContinuation` is unchanged. The fact text is `31 December ` and the continuation is `2025`, which joins as `31 December 2025`. The parser does not apply a date format. The CSV value is that string. The verify date compare (`try_strptime` with `%d %B %Y`) reads it as 2025-12-31 and does not read a bare `31 December`.
+
+`ix:exclude` is a frame on the same stack. Its text is not copied to ancestor facts or continuations, and a fact nested inside it keeps its own value. No Companies House filing in these samples does that. `TestFactInsideExclude` locks it.
+
+Behaviour that must stay, for this file:
+
+- 40 `EndDateForPeriodCoveredByReport` facts and 20 `BalanceSheetDate` facts, each `31 December 2025` at period end `2025-12-31`. The nest above is one of those groups (two end dates and one balance-sheet date) and the document repeats it.
+- Neither concept is left as `31 December`.
+- 591 facts. Every row has `company_number` `07068009` and `source_file` `07068009_aa_2025-12-31.xhtml`.
+
+Tests: `TestNestedContinuations`, `TestNestedContinuationsLenient`, `TestRun_EdgeSampleNestedContinuations`.
