@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-14
+
+### Fixed
+
+- A filing that declares `encoding="ASCII"` is parsed. A date written with `&#160;` between the day, month, and year (for example `05&#160;September&#160;2026`) is the registry date. Other Unicode space separators are treated as spaces.
+
 ## [0.4.2] - 2026-10-09
 
 ### Changed
@@ -107,7 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.3.6...v0.4.0

@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"math/big"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
 )
@@ -97,6 +99,10 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 	dec.Strict = false
 	dec.AutoClose = xml.HTMLAutoClose
 	dec.Entity = xml.HTMLEntity
+	// ASCII is a subset of UTF-8. Without this, encoding="ASCII" fails the
+	// first token and the whole member is parsed by the regex fallback, which
+	// used to leave &#160; in date text.
+	dec.CharsetReader = asciiCharsetReader
 
 	// prefix → namespace URI (document-level, updated as we go)
 	ns := map[string]string{}
@@ -738,8 +744,10 @@ func normaliseNonNumeric(val, format string) (string, error) {
 		return "", nil
 	}
 	// Collapse whitespace. Quotes in the filer's text stay; the CSV writer
-	// escapes a field that contains one.
-	val = strings.Join(strings.Fields(val), " ")
+	// escapes a field that contains one. Space separators that unicode.IsSpace
+	// does not treat as space (thin space, narrow no-break space) become an
+	// ASCII space first, so date formats that require one still match.
+	val = strings.Join(strings.Fields(foldSpaces(val)), " ")
 	out, err := transformDate(fl, val)
 	if err != nil {
 		return val, err
@@ -752,7 +760,7 @@ var humanNumericPrefixRE = regexp.MustCompile(`(?i)(.*:)|(.+-\s)`)
 
 func normaliseNumeric(val, scale, sign, format string) string {
 	fl := formatLocal(format)
-	v := strings.TrimSpace(val)
+	v := strings.TrimSpace(foldSpaces(val))
 
 	// Null / dash markers (incl. unicode dashes)
 	if v == "" || v == "-" || v == "\u002d" || v == "\u2013" || v == "\u2014" || fl == "zerodash" {
@@ -1178,15 +1186,32 @@ func stripTags(s string) string {
 	return regexp.MustCompile(`(?s)<[^>]*>`).ReplaceAllString(s, "")
 }
 
+// xmlUnescape decodes XML/HTML character references left in the regex
+// fallback. encoding/xml already did this on the strict path. Numeric
+// references such as &#160; contain digits, so a date separator that is
+// still the reference text does not match.
 func xmlUnescape(s string) string {
-	r := strings.NewReplacer(
-		"&amp;", "&",
-		"&lt;", "<",
-		"&gt;", ">",
-		"&quot;", `"`,
-		"&apos;", "'",
-		"&#39;", "'",
-		"&#34;", `"`,
-	)
-	return r.Replace(s)
+	return html.UnescapeString(s)
+}
+
+// asciiCharsetReader accepts ASCII declarations as the identity encoding.
+// Any other charset is an error so the caller falls back to the regex parser.
+func asciiCharsetReader(charset string, input io.Reader) (io.Reader, error) {
+	switch strings.ToLower(strings.TrimSpace(charset)) {
+	case "ascii", "us-ascii":
+		return input, nil
+	default:
+		return nil, fmt.Errorf("unsupported charset %q", charset)
+	}
+}
+
+// foldSpaces maps Unicode space separators, and line and paragraph
+// separators, to an ASCII space. unicode.IsSpace already covers U+00A0.
+func foldSpaces(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\u2028' || r == '\u2029' || unicode.Is(unicode.Zs, r) {
+			return ' '
+		}
+		return r
+	}, s)
 }
