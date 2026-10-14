@@ -76,6 +76,7 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 | Fact inside `ix:continuation` `samples/01922327_aa_2025-12-31.xhtml` (`ProfessionalConsultancyFees` `107816000`, `decimals` `-3`) | [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip) member `Prod224_2608_01922327_20251231.html` | `TestFactInsideContinuation`, `TestRun_EdgeSampleFactInsideContinuation` |
 | Nested `ix:continuation` `samples/07068009_aa_2025-12-31.xhtml` (date facts `2025-12-31`) | same August 2026 monthly, member `Prod224_2608_07068009_20251231.html` | `TestNestedContinuations`, `TestRun_EdgeSampleNestedContinuations` |
 | Double quotes kept in non-numeric text `samples/00340611_aa_2026-01-31.xhtml` (FRS 102 title stays quoted) | [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip) member `Prod224_2608_00340611_20260131.html` | `TestQuotesKeptInSailplanesComplianceStatement`, `TestRun_EdgeSampleQuotesKept` |
+| `&#160;` in dates `samples/Prod223_4327_12874000_20260831.html` (`encoding='ASCII'`; publication date `2026-09-05`) | [Accounts_Bulk_Data-2026-10-13.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-13.zip) member `Prod223_4327_12874000_20260831.html` | `TestASCIICharsetDecodesNBSPDate`, `TestLenientNBSPDate`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace` |
 
 ## Layout
 

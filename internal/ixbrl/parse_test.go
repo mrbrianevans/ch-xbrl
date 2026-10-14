@@ -931,6 +931,130 @@ func TestParseOnlyUKFRS(t *testing.T) {
 	}
 }
 
+func nbspDateDoc(encoding, extra string) string {
+	return `<?xml version="1.0" encoding="` + encoding + `"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:bus="http://example.com/bus">
+` + extra + `
+<ix:nonNumeric name="bus:BusinessReportPublicationDate" contextRef="c1" format="ixt2:datedaymonthyearen">05&#160;September&#160;2026</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">12874000</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2026-09-05</xbrli:instant></xbrli:period>
+</xbrli:context>
+</html>`
+}
+
+func TestASCIICharsetDecodesNBSPDate(t *testing.T) {
+	// A fact inside a comment is invisible to encoding/xml and visible to the
+	// regex fallback. Its absence shows the ASCII declaration stayed on the XML path.
+	comment := `<!-- <ix:nonNumeric name="bus:Bogus" contextRef="c1">nope</ix:nonNumeric> -->`
+	for _, enc := range []string{"ASCII", "us-ascii"} {
+		facts, err := ParseBytes([]byte(nbspDateDoc(enc, comment)), "ascii.html")
+		if err != nil {
+			t.Fatalf("%s: %v", enc, err)
+		}
+		if len(facts) != 1 {
+			t.Fatalf("%s facts=%d, want 1", enc, len(facts))
+		}
+		f := facts[0]
+		if f.Concept != "BusinessReportPublicationDate" || f.Value != "2026-09-05" || f.CompanyNumber != "12874000" {
+			t.Fatalf("%s fact=%+v", enc, f)
+		}
+	}
+}
+
+func TestLenientNBSPDate(t *testing.T) {
+	// A NUL makes the XML decoder fail so the regex fallback runs.
+	doc := nbspDateDoc("UTF-8", "") + "\x00"
+	facts, err := ParseBytes([]byte(doc), "lenient-nbsp.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(facts) != 1 || facts[0].Value != "2026-09-05" || facts[0].Concept != "BusinessReportPublicationDate" {
+		t.Fatalf("facts=%+v", facts)
+	}
+
+	// An unsupported charset is still a fallback, and the reference is still decoded.
+	comment := `<!-- <ix:nonNumeric name="bus:Bogus" contextRef="c1">nope</ix:nonNumeric> -->`
+	facts, err = ParseBytes([]byte(nbspDateDoc("ISO-8859-1", comment)), "latin1.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var date, bogus int
+	for _, f := range facts {
+		switch f.Concept {
+		case "BusinessReportPublicationDate":
+			date++
+			if f.Value != "2026-09-05" {
+				t.Fatalf("value=%q", f.Value)
+			}
+		case "Bogus":
+			bogus++
+		default:
+			t.Fatalf("unexpected %s", f.Concept)
+		}
+	}
+	if date != 1 || bogus != 1 {
+		t.Fatalf("date=%d bogus=%d", date, bogus)
+	}
+}
+
+func TestThinSpaceDateAndNumericSeparator(t *testing.T) {
+	doc := `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:bus="http://example.com/bus">
+<ix:nonNumeric name="bus:BalanceSheetDate" contextRef="c1" format="ixt:datelonguk">31` + "\u2009" + `December` + "\u2009" + `2025</ix:nonNumeric>
+<ix:nonFraction name="bus:FixedAssets" contextRef="c1" unitRef="u" decimals="0" format="ixt2:numdotdecimal">1` + "\u202f" + `348</ix:nonFraction>
+<ix:nonFraction name="bus:CurrentAssets" contextRef="c1" unitRef="u" decimals="0" format="ixt2:numdotdecimal">2&#160;680</ix:nonFraction>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">12874000</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:instant>2026-08-31</xbrli:instant></xbrli:period>
+</xbrli:context>
+<xbrli:unit id="u"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+</html>`
+	got := factsByConcept(t, doc)
+	if got["BalanceSheetDate"].Value != "2025-12-31" {
+		t.Fatalf("date=%q", got["BalanceSheetDate"].Value)
+	}
+	if got["FixedAssets"].Value != "1348" || got["CurrentAssets"].Value != "2680" {
+		t.Fatalf("FixedAssets=%q CurrentAssets=%q", got["FixedAssets"].Value, got["CurrentAssets"].Value)
+	}
+}
+
+func TestParseASCIIIxbrlReporterSample(t *testing.T) {
+	const name = "Prod223_4327_12874000_20260831.html"
+	facts := loadSample(t, name)
+	want := map[string]string{
+		"BusinessReportPublicationDate": "2026-09-05",
+		"BalanceSheetDate":              "2026-08-31",
+		"DateFormationOrIncorporation":  "2020-09-11",
+		"AddressLine1":                  "Stanhope, The Reddings",
+		"PostalCodeZip":                 "GL51 6RL",
+	}
+	seen := map[string]int{}
+	for _, f := range facts {
+		if f.CompanyNumber != "12874000" {
+			t.Errorf("%s company_number=%q", f.Concept, f.CompanyNumber)
+		}
+		if f.SourceFile != name {
+			t.Errorf("%s source_file=%q", f.Concept, f.SourceFile)
+		}
+		if wantVal, ok := want[f.Concept]; ok {
+			seen[f.Concept]++
+			if f.Value != wantVal {
+				t.Errorf("%s value=%q, want %q", f.Concept, f.Value, wantVal)
+			}
+		}
+	}
+	for concept := range want {
+		if seen[concept] == 0 {
+			t.Errorf("missing %s", concept)
+		}
+	}
+}
+
 type factView struct{ fact.Fact }
 
 func mustOne(t *testing.T, m map[string][]factView, concept string) fact.Fact {

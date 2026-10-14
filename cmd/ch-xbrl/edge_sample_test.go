@@ -292,3 +292,22 @@ func TestRun_EdgeSampleQuotesKept(t *testing.T) {
 		)`)
 	assertCounts(t, got, []string{"88", "0", "0", "1", "1"})
 }
+
+func TestRun_EdgeSampleASCIINonBreakingSpace(t *testing.T) {
+	const file = "Prod223_4327_12874000_20260831.html"
+	csvPath, stderr := extractSample(t, samplePath(t, file))
+	if !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> '12874000'),
+		count(*) FILTER (WHERE source_file <> '`+file+`'),
+		count(*) FILTER (WHERE concept = 'BusinessReportPublicationDate' AND value = '2026-09-05'),
+		count(*) FILTER (WHERE concept = 'BalanceSheetDate' AND value = '2026-08-31'),
+		count(*) FILTER (WHERE concept = 'DateFormationOrIncorporation' AND value = '2020-09-11'),
+		count(*) FILTER (WHERE concept = 'AddressLine1' AND value = 'Stanhope, The Reddings'),
+		count(*) FILTER (WHERE concept = 'PostalCodeZip' AND value = 'GL51 6RL'),
+		count(*) FILTER (WHERE value LIKE '%&#160;%')`)
+	assertCounts(t, got, []string{"86", "0", "0", "1", "2", "1", "3", "3", "0"})
+}

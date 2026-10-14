@@ -324,3 +324,33 @@ Whitespace is still collapsed. The quotes stay. The CSV writer escapes a field t
 88 facts. Every row has `company_number` `00340611` and `source_file` `00340611_aa_2026-01-31.xhtml`. The legal name is `LONDON SAILPLANES LIMITED`.
 
 Tests: `TestQuotesKeptInSailplanesComplianceStatement`, `TestRun_EdgeSampleQuotesKept`.
+
+## Non-breaking space written as `&#160;`
+
+Found in [Accounts_Bulk_Data-2026-10-13.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-13.zip), member `Prod223_4327_12874000_20260831.html` (Cyberapocalypse Limited, company `12874000`). The sample is that member: `samples/Prod223_4327_12874000_20260831.html`. Produced by ixbrl-reporter 1.3.0. 47,848 bytes, and every byte is ASCII.
+
+The prologue is `<?xml version='1.0' encoding='ASCII'?>`. The publication date is a character reference, not a Unicode space:
+
+```xml
+<ix:nonNumeric name="uk-bus:BusinessReportPublicationDate" contextRef="ctxt-1" format="ixt2:datedaymonthyearen">05&#160;September&#160;2026</ix:nonNumeric>
+```
+
+The same `&#160;` separates the other dates (`01&#160;September&#160;2025`, `31&#160;August&#160;2026`, `11&#160;September&#160;2020`) and words in the address (`Stanhope,&#160;The&#160;Reddings`, `GL51&#160;6RL`). The member has 86 of these references and no raw U+00A0.
+
+`encoding/xml` stops on the first token when no charset reader is set (`encoding "ASCII" declared but Decoder.CharsetReader is nil`). The whole member then takes the regex fallback. That fallback used to decode only a short list of entities, so the fact value stayed `05&#160;September&#160;2026`. The day-month-year pattern treats the gap between day, month, and year as non-digits, and the digits inside `160` do not match. The member was a date-transform error. There was no fact row.
+
+ASCII is a subset of UTF-8, so `ASCII` and `US-ASCII` are read as the bytes themselves. The XML decoder then turns `&#160;` into U+00A0, and whitespace collapse turns that into an ordinary space before the date transform. A file that still takes the regex fallback decodes character references the same way, including `&#160;`. Other Unicode space separators (thin space, narrow no-break space) are folded to an ASCII space before that collapse, including on numbers.
+
+Behaviour that must stay, for this file:
+
+- `BusinessReportPublicationDate` is `2026-09-05`. One fact.
+- `BalanceSheetDate` is `2026-08-31`. Two facts.
+- `DateFormationOrIncorporation` is `2020-09-11`. One fact.
+- `AddressLine1` is `Stanhope, The Reddings`. Three facts.
+- `PostalCodeZip` is `GL51 6RL`. Three facts.
+- No fact value still contains the characters `&#160;`.
+- 86 facts. Every row has `company_number` `12874000` and `source_file` `Prod223_4327_12874000_20260831.html`. `files_err` stays 0.
+
+An unknown charset is still a member that falls back to the regex parser. A date with no year (`31 December` and `datedaymonthyearen`) still fails the member.
+
+Tests: `TestASCIICharsetDecodesNBSPDate`, `TestLenientNBSPDate`, `TestThinSpaceDateAndNumericSeparator`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace`.
