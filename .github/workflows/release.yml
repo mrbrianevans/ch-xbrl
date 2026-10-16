@@ -64,7 +64,7 @@ jobs:
           echo "VERSION=$tag" >> "$GITHUB_ENV"
           echo "Building release $tag for ${{ matrix.goos }}/${{ matrix.goarch }}"
 
-      - name: Build binaries
+      - name: Build ch-xbrl
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
