@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-16
+
 ### Added
 
 - `ch-xbrl-taxonomy -o my-dir/` writes lookup files into a directory. The names are fixed. Today that directory contains `concepts.csv` (namespace + local name) from pinned UK taxonomy suites. Flags are `-o` / `--output DIR`, `-c` / `--cache DIR`, and `-s` / `--sources FILE`. An example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
@@ -122,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.0...v0.4.1
