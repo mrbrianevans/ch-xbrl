@@ -354,3 +354,39 @@ Behaviour that must stay, for this file:
 An unknown charset is still a member that falls back to the regex parser. A date with no year (`31 December` and `datedaymonthyearen`) still fails the member.
 
 Tests: `TestASCIICharsetDecodesNBSPDate`, `TestLenientNBSPDate`, `TestThinSpaceDateAndNumericSeparator`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace`.
+
+## CCH employee headcount scale
+
+Found in [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip). In that daily, 840 documents (1,615 facts) tag `AverageNumberEmployeesDuringPeriod` with `unitRef` pure, `decimals="2"` and `scale="-2"`. A spec-correct parse divides the displayed integer by 100: a displayed 549 becomes 5.49, and a displayed 1 becomes 0.01. The rendered note shows the integer. The same tagging is on CCH Accounts Production from 2025.200 through 2026.300, and on iXBRL Review & Tag 2025.2 and 2026.2. CCH Accounts Production 2025.100 (one document in that daily) tags the headcount with `decimals="INF"` and no scale, and that value is already right.
+
+The producer is Wolters Kluwer CCH. `NameProductionSoftware` is `CCH Software` (the match ignores case). `VersionProductionSoftware` starts with `CCH Accounts Production ` or `iXBRL Review & Tag ` (those prefixes as written). Both facts are required. Markup such as `class="cln fn` is not consulted. A filing from any other producer is left spec-correct.
+
+A fact is rewritten only when all of these hold:
+
+- the concept is `AverageNumberEmployeesDuringPeriod`, or a departmental concept whose local name ends with `AverageNumberEmployees` (for example `ProductionAverageNumberEmployees`)
+- `scale` is `-2`
+- the unit is pure (`xbrli:pure`, or a unit ref whose local name is `pure`)
+- the displayed text, after the numeric format transform and before scale, is a non-negative integer (`549`, `1,234` with a thousands separator). `100.00`, `2.5`, a dash, and a bracketed negative are not
+
+The scale is then treated as 0, so `value` is the displayed integer. `decimals` stays the raw attribute. The CSV columns are unchanged. There is no flag on the row.
+
+`PercentageClassShareHeldInSubsidiary`, `AssumedPercentageEmployeesOptingForEarlyRetirement`, monetary facts such as `StaffCostsEmployeeBenefitsExpense`, and a headcount on a monetary unit stay on the tagged scale. A negative headcount is left as tagged. None were found in the dailies that were checked.
+
+The `done:` line includes `corrections=N`: how many fact values were adjusted and written. A member that fails to parse is not included. The count is 0 when nothing was adjusted. It is the same for a single instance, a directory, zip, tar.zst, stdin, a remote file, and `--continue-on-error`.
+
+How these headcounts are corrected is not part of the CLI contract and may change in a patch.
+
+The fixtures are trimmed from that daily (producer facts, the headcount and percentage facts, and the contexts and units they use):
+
+| Member | What must stay |
+|--------|----------------|
+| `samples/Prod223_4320_13368913_20251231.html` | HITECH CONSTRUCTION AFRICA LIMITED, company `13368913`, CCH Accounts Production 2026.200. Headcounts `549`, `546` (consolidated dimension), `6`, `4`. Four corrections. Staff costs stay `1733211`, `1138866`, `167445`, `36000`. `PercentageClassShareHeldInSubsidiary` displayed `100.00` stays `1`. |
+| `samples/Prod223_4320_00719324_20260405.html` | JASON INVESTMENTS LTD, company `00719324`, CCH Accounts Production 2026.210. Headcounts `1` and `2`. Two corrections. |
+| `samples/Prod223_4320_07640901_20260530.html` | CCH Accounts Production 2025.100. Headcount `28`, `decimals` `INF`, no scale. Not corrected. |
+| `samples/Prod223_4320_01154766_20251231.html` | Caseware, not CCH. Headcounts stay `1` and `2`. `AssumedPercentageEmployeesOptingForEarlyRetirement` stays `0.025` and `0.028`. |
+
+The same rule already applies to full samples `09652677_aa_2026-03-25.xhtml` (displayed 3 and 2) and `OC300293_aa_2026-03-31.xhtml` (displayed 4 and 3). An IRIS filing such as `03024914_aa_2023-03-13.xhtml` stays `134` and `147` with no corrections.
+
+Arelle still applies the tagged scale, so those headcount values differ from Arelle on purpose. The stream-read-xbrl check skips the employee column.
+
+Tests: `TestCCHEmployeeScaleGate`, `TestCCHEmployeeScaleProducers`, `TestCCHEmployeeScaleSamples`, `TestCCHEmployeeScaleSampleLeavesOtherFacts`, `TestCCHEmployeeScaleLenient`, `TestRun_CCHEmployeeScale`, `TestRun_CCHEmployeeScaleInputs`, `TestRun_CCHEmployeeScaleContinueOnError`.
