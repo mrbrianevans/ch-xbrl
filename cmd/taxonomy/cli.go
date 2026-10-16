@@ -30,7 +30,9 @@ func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
 	var output, cache, sources string
 	fs.StringVar(&output, "o", "", "write CSV to `FILE` (default stdout)")
 	fs.StringVar(&output, "output", "", "write CSV to `FILE` (default stdout)")
+	fs.StringVar(&cache, "c", "", "directory for downloaded taxonomy zips")
 	fs.StringVar(&cache, "cache", "", "directory for downloaded taxonomy zips")
+	fs.StringVar(&sources, "s", "", "CSV of id,url,sha256 instead of the pinned list")
 	fs.StringVar(&sources, "sources", "", "CSV of id,url,sha256 instead of the pinned list")
 	if err := fs.Parse(args); err != nil {
 		return config{}, err
@@ -59,16 +61,15 @@ func stdoutIsTerminal() bool {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: ch-xbrl-taxonomy [-o FILE] [-cache DIR] [-sources FILE]
+	fmt.Fprint(w, `usage: ch-xbrl-taxonomy [-o FILE] [-c DIR] [-s FILE]
 
 Write a concept lookup CSV from the pinned UK taxonomy suites.
 The key is namespace + local name. schemaRef is not part of it.
 See docs/taxonomy-lookup.md. This tool is outside the ch-xbrl CLI contract.
 
-  -o, --output FILE       write CSV to FILE (default: stdout)
-  -cache, --cache DIR     directory for downloaded taxonomy zips
-  -sources, --sources FILE
-                      CSV of id,url,sha256 instead of the pinned list
+  -o, --output FILE   write CSV to FILE (default: stdout)
+  -c, --cache DIR     directory for downloaded taxonomy zips
+  -s, --sources FILE  CSV of id,url,sha256 instead of the pinned list
 
 Omit -o to write stdout when it is not a terminal (pipes, files).
 On a TTY, pass -o FILE, or -o - to force stdout.

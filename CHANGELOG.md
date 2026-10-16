@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `ch-xbrl-taxonomy -o concepts.csv` writes a concept lookup (namespace + local name) from pinned UK taxonomy suites. An example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
+- `ch-xbrl-taxonomy -o concepts.csv` writes a concept lookup (namespace + local name) from pinned UK taxonomy suites. Flags are `-o` / `--output`, `-c` / `--cache`, and `-s` / `--sources`. An example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
 
 ### Changed
 

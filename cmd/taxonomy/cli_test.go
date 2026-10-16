@@ -47,6 +47,19 @@ func TestParseConfig(t *testing.T) {
 	if _, err := parseConfig([]string{"-o", "a.csv", "extra"}, false); err == nil {
 		t.Fatal("expected extra-arguments error")
 	}
+
+	cfg, err = parseConfig([]string{"-c", "/tmp/cache", "-s", "sources.csv"}, false)
+	if err != nil || cfg.cache != "/tmp/cache" || cfg.sources != "sources.csv" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+	cfg, err = parseConfig([]string{"--cache", "/tmp/cache", "--sources", "sources.csv"}, false)
+	if err != nil || cfg.cache != "/tmp/cache" || cfg.sources != "sources.csv" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
+	cfg, err = parseConfig([]string{"-cache", "/tmp/cache", "-sources", "sources.csv"}, false)
+	if err != nil || cfg.cache != "/tmp/cache" || cfg.sources != "sources.csv" {
+		t.Fatalf("cfg=%+v err=%v", cfg, err)
+	}
 }
 
 func TestRun_FixtureZip(t *testing.T) {
@@ -79,7 +92,7 @@ func TestRun_FixtureZip(t *testing.T) {
 	}
 	outPath := filepath.Join(dir, "concepts.csv")
 	var stderr bytes.Buffer
-	code := run([]string{"-o", outPath, "-sources", sourcesPath, "-cache", filepath.Join(dir, "cache")}, io.Discard, &stderr, true)
+	code := run([]string{"-o", outPath, "-s", sourcesPath, "-c", filepath.Join(dir, "cache")}, io.Discard, &stderr, true)
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
@@ -97,6 +110,19 @@ func TestRun_FixtureZip(t *testing.T) {
 	}
 	if rows[0][0] != "namespace" || rows[0][1] != "local_name" {
 		t.Fatalf("header = %#v", rows[0])
+	}
+}
+
+func TestRun_Help(t *testing.T) {
+	var stderr bytes.Buffer
+	code := run([]string{"-h"}, io.Discard, &stderr, true)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	for _, want := range []string{"-o, --output FILE", "-c, --cache DIR", "-s, --sources FILE"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("usage missing %q:\n%s", want, stderr.String())
+		}
 	}
 }
 

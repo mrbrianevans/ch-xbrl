@@ -56,7 +56,7 @@ func Pinned() []Source {
 }
 
 // ParseSources reads a CSV with header id,url,sha256. It replaces the
-// pinned list when -sources is set.
+// pinned list when -s / --sources is set.
 func ParseSources(r io.Reader) ([]Source, error) {
 	cr := csv.NewReader(r)
 	cr.FieldsPerRecord = 3

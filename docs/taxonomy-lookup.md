@@ -58,7 +58,7 @@ These were outside the 100% coverage figures:
 
 This query is an example. It is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). `ch-xbrl` does not run it. The fact columns stay as that contract says. The taxonomy columns can change without a ch-xbrl major version.
 
-`ch-xbrl-taxonomy -o concepts.csv` writes one row per namespace + local name. Join it to a fact export on `namespace` and `concept` (`local_name` in the lookup):
+`ch-xbrl-taxonomy -o concepts.csv` writes one row per namespace + local name. Flags are `-o` / `--output FILE`, `-c` / `--cache DIR`, and `-s` / `--sources FILE`. Join it to a fact export on `namespace` and `concept` (`local_name` in the lookup):
 
 ```sql
 SELECT

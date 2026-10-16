@@ -3,7 +3,7 @@
 // the frozen CLI contract.
 //
 //	ch-xbrl-taxonomy -o concepts.csv
-//	ch-xbrl-taxonomy -o concepts.csv -cache ~/.cache/ch-xbrl-taxonomy
+//	ch-xbrl-taxonomy -o concepts.csv -c ~/.cache/ch-xbrl-taxonomy
 package main
 
 import (
