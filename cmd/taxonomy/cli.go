@@ -5,31 +5,29 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
+	"path/filepath"
 	"strings"
-
-	"golang.org/x/term"
 )
 
 var (
-	errTTYStdout = errors.New("refusing to write CSV to the terminal; use -o FILE or -o -")
+	errMissingOutput = errors.New("missing -o DIR")
+	errStdoutOutput  = errors.New("output is a directory; pass -o DIR")
 )
 
 type config struct {
 	output  string
-	stdout  bool
 	cache   string
 	sources string
 }
 
-func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
+func parseConfig(args []string) (config, error) {
 	fs := flag.NewFlagSet("ch-xbrl-taxonomy", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	fs.Usage = func() {}
 
 	var output, cache, sources string
-	fs.StringVar(&output, "o", "", "write CSV to `FILE` (default stdout)")
-	fs.StringVar(&output, "output", "", "write CSV to `FILE` (default stdout)")
+	fs.StringVar(&output, "o", "", "directory to create or update")
+	fs.StringVar(&output, "output", "", "directory to create or update")
 	fs.StringVar(&cache, "c", "", "directory for downloaded taxonomy zips")
 	fs.StringVar(&cache, "cache", "", "directory for downloaded taxonomy zips")
 	fs.StringVar(&sources, "s", "", "CSV of id,url,sha256 instead of the pinned list")
@@ -40,43 +38,40 @@ func parseConfig(args []string, stdoutIsTTY bool) (config, error) {
 	if extra := fs.Args(); len(extra) > 0 {
 		return config{}, fmt.Errorf("unexpected extra arguments: %s", strings.Join(extra, " "))
 	}
-
-	cfg := config{cache: cache, sources: sources}
-	switch output {
-	case "":
-		if stdoutIsTTY {
-			return config{}, errTTYStdout
-		}
-		cfg.stdout = true
-	case "-":
-		cfg.stdout = true
-	default:
-		cfg.output = output
+	if strings.TrimSpace(output) == "" {
+		return config{}, errMissingOutput
 	}
-	return cfg, nil
-}
-
-func stdoutIsTerminal() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	if output == "-" {
+		return config{}, errStdoutOutput
+	}
+	return config{output: filepath.Clean(output), cache: cache, sources: sources}, nil
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprint(w, `usage: ch-xbrl-taxonomy [-o FILE] [-c DIR] [-s FILE]
+	fmt.Fprint(w, `usage: ch-xbrl-taxonomy -o DIR [-c DIR] [-s FILE]
 
-Write a concept lookup CSV from the pinned UK taxonomy suites.
+Write concept lookup files into DIR from the pinned UK taxonomy suites.
 The key is namespace + local name. schemaRef is not part of it.
 See docs/taxonomy-lookup.md. This tool is outside the ch-xbrl CLI contract.
 
-  -o, --output FILE   write CSV to FILE (default: stdout)
+  -o, --output DIR    directory to create or update (required)
   -c, --cache DIR     directory for downloaded taxonomy zips
   -s, --sources FILE  CSV of id,url,sha256 instead of the pinned list
 
-Omit -o to write stdout when it is not a terminal (pipes, files).
-On a TTY, pass -o FILE, or -o - to force stdout.
+DIR is created if it is missing, including parent directories.
+An existing directory is updated whether or not it already has files.
+A symlink at DIR is followed when it points at a directory.
+Files this tool owns are replaced. Every other file in DIR is left
+as it is. If the path exists and is not a directory, the run fails.
 
-Exit codes: 0 success; 1 download, parse, or concept conflict; 2 usage.
+Files written (names are fixed):
+
+  concepts.csv    one row per namespace + local name
+
+Exit codes: 0 success; 1 download, parse, concept conflict, or output
+path; 2 usage.
 
 Example:
-  ch-xbrl-taxonomy -o concepts.csv
+  ch-xbrl-taxonomy -o my-dir/
 `)
 }

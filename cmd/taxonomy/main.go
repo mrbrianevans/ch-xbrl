@@ -1,9 +1,12 @@
-// Command ch-xbrl-taxonomy writes a concept lookup CSV from pinned UK
-// taxonomy packages. It is not the ch-xbrl extractor and it is outside
-// the frozen CLI contract.
+// Command ch-xbrl-taxonomy writes concept lookup files into a directory
+// from pinned UK taxonomy packages. It is not the ch-xbrl extractor and
+// it is outside the frozen CLI contract.
 //
-//	ch-xbrl-taxonomy -o concepts.csv
-//	ch-xbrl-taxonomy -o concepts.csv -c ~/.cache/ch-xbrl-taxonomy
+//	ch-xbrl-taxonomy -o my-dir/
+//	ch-xbrl-taxonomy -o my-dir/ -c ~/.cache/ch-xbrl-taxonomy
+//
+// The file names inside the directory are fixed. Today that is
+// my-dir/concepts.csv.
 package main
 
 import (
@@ -27,22 +30,25 @@ const (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, stdoutIsTerminal()))
+	os.Exit(run(os.Args[1:], os.Stderr))
 }
 
-func run(args []string, stdout, stderr io.Writer, stdoutIsTTY bool) int {
+func run(args []string, stderr io.Writer) int {
 	log.SetOutput(stderr)
-	cfg, err := parseConfig(args, stdoutIsTTY)
+	cfg, err := parseConfig(args)
 	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			printUsage(stderr)
 			return exitOK
 		}
 		fmt.Fprintf(stderr, "ch-xbrl-taxonomy: %v\n", err)
-		if !errors.Is(err, errTTYStdout) {
-			printUsage(stderr)
-		}
+		printUsage(stderr)
 		return exitUsage
+	}
+
+	if err := ensureOutputDir(cfg.output); err != nil {
+		log.Printf("%v", err)
+		return exitFail
 	}
 
 	sources := taxonomy.Pinned()
@@ -79,32 +85,13 @@ func run(args []string, stdout, stderr io.Writer, stdoutIsTTY bool) int {
 		return exitFail
 	}
 
-	var out io.Writer = stdout
-	var closer io.Closer
-	if !cfg.stdout {
-		f, err := os.Create(cfg.output)
-		if err != nil {
-			log.Printf("create output: %v", err)
-			return exitFail
-		}
-		out = f
-		closer = f
-	}
-	if err := taxonomy.WriteCSV(out, concepts); err != nil {
-		if closer != nil {
-			closer.Close()
-		}
+	dest := filepath.Join(cfg.output, conceptsCSV)
+	if err := writeAtomic(cfg.output, conceptsCSV, func(w io.Writer) error {
+		return taxonomy.WriteCSV(w, concepts)
+	}); err != nil {
 		log.Printf("write: %v", err)
 		return exitFail
 	}
-	if closer != nil {
-		if err := closer.Close(); err != nil {
-			log.Printf("close: %v", err)
-			return exitFail
-		}
-		log.Printf("wrote %s (%d concepts)", cfg.output, len(concepts))
-	} else {
-		log.Printf("wrote %d concepts", len(concepts))
-	}
+	log.Printf("wrote %s (%d concepts)", dest, len(concepts))
 	return exitOK
 }

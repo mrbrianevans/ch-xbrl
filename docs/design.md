@@ -31,11 +31,11 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
             ▼
   DuckDB sql/transform.sql → accounts_wide.parquet
 
-  ch-xbrl-taxonomy → concepts.csv (release asset; joined separately)
+  ch-xbrl-taxonomy -o DIR → DIR/concepts.csv (release asset; joined separately)
 ```
 
 1. **ch-xbrl** — Stream a local or remote `.zip` / `.tar.zst` (remote zip: HTTP range batches), a single instance, a directory, or stdin. A `.zip` is a bulk archive or one accounts package. A package (XBRL report package, or a single `PREFIX-CRN` folder) is one filing, including when it is a bulk member: UKSEF keeps facts with `target="UKFRS"`, audit-exempt keeps `subsidiary-accounts`, and CIC keeps `accounts/`. `source_file` is the package name. A package with no report, and a member over 100 MiB, are per-file errors and do not abort the archive. A `.zip` member is classified by its bytes. iXBRL or XML stored under a `.zip` name is parsed as an instance. A `.zip` name that is neither a zip nor iXBRL/XML, or zip magic that is not a valid zip, is a member error so `--continue-on-error` can skip it. A zip inside a package is not opened. Parse instance XML (inline `ix:` facts and non-inline items that carry `contextRef`); emit every fact with period, unit, dimensions (JSON), the concept prefix's namespace URI as `namespace`, source filename. `schemaRef` hrefs are not copied ([taxonomy-lookup.md](./taxonomy-lookup.md)). An undeclared prefix fails the member.
-2. **ch-xbrl-taxonomy** (infrequent) — Concept lookup CSV for a downstream join on `namespace` + local name. Not called at extract time. Outside the frozen CLI.
+2. **ch-xbrl-taxonomy** (infrequent) — Concept lookup files in a directory, for a downstream join on `namespace` + local name. The names are fixed; today the directory contains `concepts.csv`. Not called at extract time. Outside the frozen CLI.
 3. **Concept map** — Hand-curated `canonical,concept,priority,cast_type`. Lower `priority` wins.
 4. **DuckDB** — Non-dimensional filter, join map, priority-pick, pivot, explicit casts, Parquet.
 
@@ -57,7 +57,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 
 ```text
 cmd/ch-xbrl/       stream zip / tar.zst / instance / directory / stdin → facts CSV
-cmd/taxonomy/      ch-xbrl-taxonomy → concepts.csv (not committed)
+cmd/taxonomy/      ch-xbrl-taxonomy -o DIR → DIR/concepts.csv (not committed)
 cmd/mksample/      pack samples/ → sample.tar.zst
 internal/          ixbrl, archive, fact, csvout
 mapping/           concept_map.csv
@@ -80,7 +80,7 @@ Needs **Go** (`go.mod`) and optionally **DuckDB**. Clone the repo (this path has
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 duckdb -c ".read sql/transform.sql"
-go run ./cmd/taxonomy -o data/concepts.csv
+go run ./cmd/taxonomy -o data
 ```
 
 `make all` is the extract and the pivot. `make taxonomy` writes `data/concepts.csv`. The pivot does not read that file. `go run` version is `0.0.0-dev` plus VCS revision. `-V` on a release binary is the tagged semver.

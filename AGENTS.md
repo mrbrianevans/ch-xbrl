@@ -26,7 +26,7 @@ Typical loop:
 High-volume **Companies House iXBRL** extraction into an analytics-ready form:
 
 1. **ch-xbrl** — stream remote/local `.zip` or `tar.zst`, a single instance, a directory of instances, or stdin → long-format fact CSV.
-2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → `concepts.csv` (release asset, not committed).
+2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → a directory of fixed names. Today that is `concepts.csv` (release asset, not committed).
 3. **Hand-curated map** — `mapping/concept_map.csv` in git.
 4. **DuckDB SQL** — normalise, priority-pick, pivot, cast → wide Parquet.
 
@@ -83,7 +83,7 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 
 ```text
 cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdin → facts.csv
-cmd/taxonomy/     ch-xbrl-taxonomy — pinned suites → concepts.csv (not committed)
+cmd/taxonomy/     ch-xbrl-taxonomy -o DIR — pinned suites → DIR/concepts.csv (not committed)
 cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst (gitignored)
 internal/ixbrl/   iXBRL parser
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
@@ -140,7 +140,7 @@ README.md         user getting started (releases)
 - Accidental binary dumps or full CH bulk archives.
 - `samples/sample.tar.zst` (generated; `go run ./cmd/mksample`).
 
-`data/concepts.csv` is the lookup written by `ch-xbrl-taxonomy` (gitignored). The same file is a release asset. It is not committed, and `sql/transform.sql` does not load it. The example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
+`ch-xbrl-taxonomy -o data` writes `data/concepts.csv` (gitignored). The same file is a release asset. It is not committed, and `sql/transform.sql` does not load it. The example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
 
 ### Dependencies
 
@@ -152,7 +152,7 @@ README.md         user getting started (releases)
 ```bash
 go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
-go run ./cmd/taxonomy -o data/concepts.csv
+go run ./cmd/taxonomy -o data
 go run ./cmd/ch-xbrl -V
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml

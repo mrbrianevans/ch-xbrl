@@ -147,7 +147,7 @@ A date format that cannot be transformed is a failed member in the same way. Tha
 
 These may change without a `ch-xbrl` major:
 
-- `ch-xbrl-taxonomy` (flags, pinned suites, and the concept CSV)
+- `ch-xbrl-taxonomy` (flags, pinned suites, and the files in its output directory)
 - The example DuckDB join from a fact CSV to that concept CSV ([taxonomy-lookup.md](./taxonomy-lookup.md))
 - `ch-xbrl-mksample`
 - `sql/transform.sql`, `sql/transform_dynamic.sql`

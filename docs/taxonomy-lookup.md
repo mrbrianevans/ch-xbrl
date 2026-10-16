@@ -54,11 +54,21 @@ These were outside the 100% coverage figures:
 - 173 plain-XBRL `.xml` filings in that June 2013 sample use Companies House schemas from 2004–2009 (`http://www.companieshouse.gov.uk/ef/xbrl/...`). Those schemas were not in the 143-file scan, and those filings were not checked.
 - The accounts samples contained no `ifrs-full`, US GAAP, or Irish facts. The Irish suites were in the declaration scan, so a conflict inside those suites would have shown up. A filing that uses an Irish, IFRS, or US GAAP namespace that was not among the 24 suites is a coverage miss, and would show up when the coverage check is re-run. UKSEF packages in `samples/` only contribute facts with `target="UKFRS"`, and those concepts use FRC namespaces that are in the pin. `ifrs-full` facts are not in that extract.
 
+## Output directory
+
+`ch-xbrl-taxonomy -o my-dir/` writes a directory of fixed names. `-o` / `--output` is that directory. `-c` / `--cache DIR` is the download cache. `-s` / `--sources FILE` replaces the pinned list. The tool creates `my-dir` when it is missing, including parent directories. An existing directory is updated, empty or not. A symlink is followed when it points at a directory. Files the tool owns are replaced. Every other file is left in place. A path that already exists and is not a directory is an error.
+
+The names inside the directory are not flags. Further files may be added later, with fixed names the same way.
+
+| File | Contents |
+|------|----------|
+| `concepts.csv` | One row per namespace + local name. Columns: `namespace`, `local_name`, `abstract`, `type_namespace`, `type_name`, `substitution_group_namespace`, `substitution_group_name`, `period_type`, `balance`, `nillable`. |
+
 ## Joining to a fact CSV
 
 This query is an example. It is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). `ch-xbrl` does not run it. The fact columns stay as that contract says. The taxonomy columns can change without a ch-xbrl major version.
 
-`ch-xbrl-taxonomy -o concepts.csv` writes one row per namespace + local name. Flags are `-o` / `--output FILE`, `-c` / `--cache DIR`, and `-s` / `--sources FILE`. Join it to a fact export on `namespace` and `concept` (`local_name` in the lookup):
+`my-dir/concepts.csv` is one row per namespace + local name. Join it to a fact export on `namespace` and `concept` (`local_name` in the lookup):
 
 ```sql
 SELECT

@@ -124,13 +124,13 @@ jobs:
           key: taxonomy-${{ hashFiles('internal/taxonomy/sources.go') }}
 
       - name: Build concepts.csv
-        run: go run ./cmd/taxonomy -o concepts.csv
+        run: go run ./cmd/taxonomy -o taxonomy-out
 
       - name: Upload concepts.csv
         uses: actions/upload-artifact@v7.0.2
         with:
           name: concepts-csv
-          path: concepts.csv
+          path: taxonomy-out/concepts.csv
           if-no-files-found: error
           retention-days: 7
 
