@@ -489,12 +489,11 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 
 		val := pf.Value
 		if pf.IsNumeric {
-			scale := pf.Scale
-			if gate && cchCorrectEmployeeScale(qnameLocal(pf.Name), pf.Scale, unit, pf.Value, pf.Format, pf.Sign) {
-				scale = "0"
+			scale, sign, fixed := adjustEmployeeValue(qnameLocal(pf.Name), pf.Scale, unit, pf.Value, pf.Format, pf.Sign, gate)
+			if fixed {
 				corrections++
 			}
-			val = normaliseNumeric(val, scale, pf.Sign, pf.Format)
+			val = normaliseNumeric(val, scale, sign, pf.Format)
 		} else {
 			var err error
 			val, err = normaliseNonNumeric(val, pf.Format)
@@ -1162,12 +1161,11 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 		decimals := ""
 		if numeric {
 			decimals = am["decimals"]
-			scaleUsed := scale
-			if gate && cchCorrectEmployeeScale(qnameLocal(name), scale, unit, val, format, sign) {
-				scaleUsed = "0"
+			scaleUsed, signUsed, fixed := adjustEmployeeValue(qnameLocal(name), scale, unit, val, format, sign, gate)
+			if fixed {
 				corrections++
 			}
-			val = normaliseNumeric(val, scaleUsed, sign, format)
+			val = normaliseNumeric(val, scaleUsed, signUsed, format)
 		} else {
 			var nerr error
 			val, nerr = normaliseNonNumeric(val, format)

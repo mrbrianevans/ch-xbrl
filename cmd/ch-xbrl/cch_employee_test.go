@@ -59,6 +59,26 @@ func valuesFor(rows []map[string]string, file, concept string) []string {
 	return out
 }
 
+func TestRun_EmployeeSignDropped(t *testing.T) {
+	const name = "Prod224_2266_02955230_20230930.html"
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", cchSample(t, name)}, nil)
+	if code != exitOK {
+		t.Fatalf("exit %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "corrections=2 ") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	rows := readFactCSV(t, stdout)
+	if got := valuesFor(rows, name, "AverageNumberEmployeesDuringPeriod"); strings.Join(got, ",") != "7,7" {
+		t.Fatalf("headcounts=%v", got)
+	}
+	for _, row := range rows {
+		if row["concept"] == "AverageNumberEmployeesDuringPeriod" && row["company_number"] != "02955230" {
+			t.Fatalf("company=%q", row["company_number"])
+		}
+	}
+}
+
 func TestRun_CCHEmployeeScale(t *testing.T) {
 	const (
 		hitech = "Prod223_4320_13368913_20251231.html"

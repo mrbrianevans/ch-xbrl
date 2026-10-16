@@ -1,6 +1,7 @@
 package ixbrl
 
 import (
+	"math/big"
 	"strings"
 )
 
@@ -45,6 +46,69 @@ func cchCorrectEmployeeScale(concept, scale, unit, displayed, format, sign strin
 		return false
 	}
 	return displayedNonNegativeInteger(displayed, format)
+}
+
+// dropNegativeEmployeeSign reports whether sign="-" should be ignored.
+// The tagged text is a positive headcount. A negative number of people is
+// not a count, so the sign is dropped and the displayed magnitude is kept.
+// A bracketed or already-negative display is left alone.
+func dropNegativeEmployeeSign(concept, displayed, format, sign string) bool {
+	if strings.TrimSpace(sign) != "-" {
+		return false
+	}
+	if !isEmployeeHeadcount(concept) {
+		return false
+	}
+	return displayedPositive(displayed, format)
+}
+
+// displayedPositive reports whether the tagged text is a number greater
+// than zero after the iXT thousands-separator transform, and before scale,
+// sign, and dash-to-zero. "7.00" and "1,234" qualify. "0", "-", and "(4)" do not.
+func displayedPositive(val, format string) bool {
+	fl := formatLocal(format)
+	v := strings.TrimSpace(foldSpaces(val))
+	if v == "" || v == "-" || v == "\u2013" || v == "\u2014" || fl == "zerodash" {
+		return false
+	}
+	if strings.HasPrefix(v, "(") || strings.HasPrefix(v, "-") || strings.HasPrefix(v, "\u2212") {
+		return false
+	}
+	switch fl {
+	case "numdotcomma":
+		v = strings.ReplaceAll(v, ".", "")
+		v = strings.ReplaceAll(v, ",", ".")
+	case "numspacecomma":
+		v = strings.ReplaceAll(v, " ", "")
+		v = strings.ReplaceAll(v, ",", ".")
+	case "numspacedot":
+		v = strings.ReplaceAll(v, " ", "")
+	default:
+		v = strings.ReplaceAll(v, ",", "")
+		v = strings.ReplaceAll(v, " ", "")
+		v = strings.ReplaceAll(v, "\u00a0", "")
+	}
+	r := new(big.Rat)
+	if _, ok := r.SetString(v); !ok {
+		return false
+	}
+	return r.Sign() > 0
+}
+
+// adjustEmployeeValue applies the known headcount fixes. A positive display
+// with sign="-" loses the sign. A gated CCH scale="-2" integer is stored at
+// scale 0. corrected is set when either changes the value that would be written.
+func adjustEmployeeValue(concept, scale, unit, displayed, format, sign string, cchGate bool) (string, string, bool) {
+	corrected := false
+	if dropNegativeEmployeeSign(concept, displayed, format, sign) {
+		sign = ""
+		corrected = true
+	}
+	if cchGate && cchCorrectEmployeeScale(concept, scale, unit, displayed, format, sign) {
+		scale = "0"
+		corrected = true
+	}
+	return scale, sign, corrected
 }
 
 func isEmployeeHeadcount(concept string) bool {
