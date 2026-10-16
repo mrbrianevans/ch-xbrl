@@ -16,7 +16,8 @@ facts: sample
 transform:
 	duckdb -c ".read sql/transform.sql"
 
-all: taxonomy facts transform
+# taxonomy writes data/concepts.csv. transform does not read it.
+all: facts transform
 
 test:
 	go test ./...

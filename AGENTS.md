@@ -26,7 +26,7 @@ Typical loop:
 High-volume **Companies House iXBRL** extraction into an analytics-ready form:
 
 1. **ch-xbrl** — stream remote/local `.zip` or `tar.zst`, a single instance, a directory of instances, or stdin → long-format fact CSV.
-2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → reference CSVs.
+2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → `concepts.csv` (release asset, not committed).
 3. **Hand-curated map** — `mapping/concept_map.csv` in git.
 4. **DuckDB SQL** — normalise, priority-pick, pivot, cast → wide Parquet.
 
@@ -83,15 +83,14 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 
 ```text
 cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdin → facts.csv
-cmd/taxonomy/     ch-xbrl-taxonomy — packages → reference/concepts.csv
+cmd/taxonomy/     ch-xbrl-taxonomy — pinned suites → concepts.csv (not committed)
 cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst (gitignored)
 internal/ixbrl/   iXBRL parser
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
 internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
-reference/        concepts.csv (column header; full lookup is a release asset)
-sql/              DuckDB transforms
+sql/              DuckDB transforms (concept map pivot; not the taxonomy join)
 samples/          example iXBRL (OGL; see samples/NOTICE); pack sample.tar.zst with mksample
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 verify/stream-read-xbrl/  published stream-read-xbrl package vs DuckDB-pivoted facts
@@ -141,7 +140,7 @@ README.md         user getting started (releases)
 - Accidental binary dumps or full CH bulk archives.
 - `samples/sample.tar.zst` (generated; `go run ./cmd/mksample`).
 
-`data/concepts.csv` is the lookup written by `ch-xbrl-taxonomy` (gitignored). The example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract. `reference/concepts.csv` in git is only the column header so `sql/transform.sql` can load the table offline; refresh it on purpose if a seed is needed.
+`data/concepts.csv` is the lookup written by `ch-xbrl-taxonomy` (gitignored). The same file is a release asset. It is not committed, and `sql/transform.sql` does not load it. The example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
 
 ### Dependencies
 

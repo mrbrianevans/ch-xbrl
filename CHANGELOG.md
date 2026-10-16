@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - GitHub release assets for `ch-xbrl` are the executable for each platform, not a zip or tar archive. `concepts.csv` is attached beside them.
+- `reference/concepts.csv` is no longer in the repo. The lookup is the release `concepts.csv`, or `data/concepts.csv` from `ch-xbrl-taxonomy`. `sql/transform.sql` does not load it.
 
 ## [0.4.3] - 2026-10-14
 
