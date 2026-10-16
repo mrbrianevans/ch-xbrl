@@ -374,6 +374,8 @@ The scale is then treated as 0, so `value` is the displayed integer. `decimals` 
 
 The `done:` line includes `corrections=N`: how many fact values were adjusted and written. A member that fails to parse is not included. The count is 0 when nothing was adjusted. It is the same for a single instance, a directory, zip, tar.zst, stdin, a remote file, and `--continue-on-error`.
 
+How these headcounts are corrected is not part of the CLI contract and may change in a patch.
+
 The fixtures are trimmed from that daily (producer facts, the headcount and percentage facts, and the contexts and units they use):
 
 | Member | What must stay |
@@ -393,7 +395,7 @@ Tests: `TestCCHEmployeeScaleGate`, `TestCCHEmployeeScaleProducers`, `TestCCHEmpl
 
 A negative number of employees is not a count. When the concept is `AverageNumberEmployeesDuringPeriod`, or a departmental concept whose local name ends with `AverageNumberEmployees`, and the displayed text is a positive number, `sign="-"` is ignored. The stored value is the displayed magnitude (scale still applies). A bracketed display such as `(4)` stays negative. A displayed zero stays zero. `StaffCostsEmployeeBenefitsExpense` and any other concept keep the sign.
 
-The `done:` line's `corrections` count includes these facts, together with the CCH scale fix above. One fact that needs both is counted once.
+The `done:` line's `corrections` count includes these facts, together with the CCH scale fix above. One fact that needs both is counted once. This rule is not part of the CLI contract and may change in a patch.
 
 The systematic cases are one product, and it does not put a brand in the software facts:
 

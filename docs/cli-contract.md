@@ -39,8 +39,6 @@ Flags are parsed with the Go `flag` package: they must appear **before** the pos
 
 Logs (progress, errors, `done:`) go to **stderr**. CSV goes to the output file or **stdout**.
 
-The `done:` line reports `members`, `files_ok`, `files_err`, and `corrections`. `corrections` is how many fact values were adjusted for a known employee-headcount tagging error and written to the CSV ([edge-cases.md](./edge-cases.md)): the CCH `scale="-2"` case, and a positive headcount tagged `sign="-"`. A fact that needs both is counted once. It is 0 when nothing was adjusted. A member that fails to parse is not included. The same count is reported for every input kind and with `--continue-on-error`.
-
 ### Inputs
 
 Exactly one positional. Existing archive invocations (path or URL of `.zip` / `.tar.zst` / `.tar`) are unchanged. Additional kinds are additive (minor).
@@ -74,7 +72,7 @@ company_number,period_start,period_end,concept,value,unit,dimensions,namespace,s
 | `company_number` | Populated with the company's registered number, as a string. The value may contain letters. It is not an integer. |
 | `period_start` / `period_end` | ISO dates from the fact's context. Instant: `period_start` = `period_end`. This is not the period-end fact: cast `BalanceSheetDate`. |
 | `concept` | **Local name** (not a namespace-qualified QName) |
-| `value` | Effective string (scale / sign / iXT applied). A date format writes the registry form: `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. Two known headcount errors are adjusted first. A positive displayed headcount tagged `sign="-"` is stored as that positive number. A pure-unit employee headcount from CCH Accounts Production or iXBRL Review & Tag, tagged `scale="-2"` with a non-negative integer on the page, is stored as that integer. Every other numeric fact still uses the tagged sign and scale. The CSV has no column recording the adjustment; the `done:` line's `corrections` count is the signal. See [edge-cases.md](./edge-cases.md). |
+| `value` | Effective string (scale / sign / iXT applied). A date format writes the registry form: `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. |
 | `unit` | Unit measure(s), empty if none |
 | `dimensions` | JSON object of local-name → member; empty if none |
 | `namespace` | Namespace URI for the concept's prefix, taken from the document's `xmlns` declarations. The prefix itself is never written, and a `schemaRef` href is not written. An inline `ix:` name with no prefix is empty; the default `xmlns` is not used. A classic item with no prefix uses the in-scope default `xmlns`, or is empty when none is in scope. |
@@ -160,3 +158,4 @@ These may change without a `ch-xbrl` major:
 - Arelle verify scripts
 - Progress log text and timing
 - Default `-workers` formula remaining `NumCPU` (changing the default is not a major; changing the flag’s meaning is)
+- Which employee headcounts are adjusted, and what `corrections` on the `done:` line counts. Current behaviour is in [edge-cases.md](./edge-cases.md) and may change in a patch.
