@@ -108,31 +108,38 @@ func TestCCHEmployeeScaleGate(t *testing.T) {
 func TestCCHEmployeeScaleProducers(t *testing.T) {
 	head := `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="2" scale="-2">549</ix:nonFraction>`
 	cases := []struct {
-		name, version, body string
-		wantValue           string
-		wantN               int
+		name, version string
+		wantValue     string
+		wantN         int
 	}{
-		{"CCH Software", "CCH Accounts Production 2025.200", "", "549", 1},
-		{"cch software", "CCH Accounts Production 2025.100", "", "549", 1},
-		{"CCH Software", "iXBRL Review & Tag 2026.2", "", "549", 1},
-		{"CCH Software", "CCH Accounts Production 2026.300", `class="cln fn"`, "549", 1},
-		{"IRIS Accounts Production", "v26.2.0.496", `class="cln fn"`, "5.49", 0},
-		{"CCH Software", "CCH Company Secretarial by Wolters Kluwer", `class="cln fn"`, "5.49", 0},
-		{"CCH Company Secretarial by Wolters Kluwer", "2025.2", `class="cln fn"`, "5.49", 0},
-		{"CCH Software", "", `class="cln fn"`, "5.49", 0},
-		{"", "CCH Accounts Production 2026.200", `class="cln fn"`, "5.49", 0},
-		{"", "", `class="cln fn"`, "549", 1},
-		{"", "", "", "5.49", 0},
+		{"CCH Software", "CCH Accounts Production 2025.200", "549", 1},
+		{"cch software", "CCH Accounts Production 2025.100", "549", 1},
+		{"CCH Software", "iXBRL Review & Tag 2026.2", "549", 1},
+		{"IRIS Accounts Production", "v26.2.0.496", "5.49", 0},
+		{"CCH Software", "CCH Company Secretarial by Wolters Kluwer", "5.49", 0},
+		{"CCH Company Secretarial by Wolters Kluwer", "2025.2", "5.49", 0},
+		{"CCH Software", "", "5.49", 0},
+		{"", "CCH Accounts Production 2026.200", "5.49", 0},
+		{"", "", "5.49", 0},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name+"/"+tc.version, func(t *testing.T) {
-			doc := parseDoc(t, cchDoc(tc.name, tc.version, tc.body, head), "cch.html")
+			doc := parseDoc(t, cchDoc(tc.name, tc.version, "", head), "cch.html")
 			got := valuesOf(doc.Facts, "AverageNumberEmployeesDuringPeriod")
 			if len(got) != 1 || got[0] != tc.wantValue || doc.Corrections != tc.wantN {
 				t.Fatalf("value=%v corrections=%d want %s / %d", got, doc.Corrections, tc.wantValue, tc.wantN)
 			}
 		})
+	}
+}
+
+func TestCCHEmployeeScaleIgnoresClassMarkup(t *testing.T) {
+	head := `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="2" scale="-2">549</ix:nonFraction>`
+	doc := parseDoc(t, cchDoc("", "", `class="cln fn"`, head), "cch.html")
+	got := valuesOf(doc.Facts, "AverageNumberEmployeesDuringPeriod")
+	if doc.Corrections != 0 || len(got) != 1 || got[0] != "5.49" {
+		t.Fatalf("class markup corrected the headcount: corrections=%d values=%v", doc.Corrections, got)
 	}
 }
 

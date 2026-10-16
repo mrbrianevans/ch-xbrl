@@ -1,7 +1,6 @@
 package ixbrl
 
 import (
-	"bytes"
 	"strings"
 )
 
@@ -14,21 +13,14 @@ const (
 	cchSoftwareName   = "CCH Software"
 	cchAccountsPrefix = "CCH Accounts Production "
 	cchReviewPrefix   = "iXBRL Review & Tag "
-	// cchClassMarker is the CCH markup used only when the producer facts
-	// themselves are absent.
-	cchClassMarker = `class="cln fn`
 )
 
 // cchEmployeeProducer reports whether this filing is the CCH producer that
-// mis-tags employee headcounts. Name and version come from the filing's own
-// NameProductionSoftware and VersionProductionSoftware facts. The class
-// marker is used only when both of those facts are missing.
-func cchEmployeeProducer(name, version string, raw []byte) bool {
+// mis-tags employee headcounts. The only signal is the filing's own
+// NameProductionSoftware and VersionProductionSoftware facts.
+func cchEmployeeProducer(name, version string) bool {
 	name = strings.TrimSpace(name)
 	version = strings.TrimSpace(version)
-	if name == "" && version == "" {
-		return bytes.Contains(raw, []byte(cchClassMarker))
-	}
 	if !strings.EqualFold(name, cchSoftwareName) {
 		return false
 	}

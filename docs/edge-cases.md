@@ -359,7 +359,7 @@ Tests: `TestASCIICharsetDecodesNBSPDate`, `TestLenientNBSPDate`, `TestThinSpaceD
 
 Found in [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip). In that daily, 840 documents (1,615 facts) tag `AverageNumberEmployeesDuringPeriod` with `unitRef` pure, `decimals="2"` and `scale="-2"`. A spec-correct parse divides the displayed integer by 100: a displayed 549 becomes 5.49, and a displayed 1 becomes 0.01. The rendered note shows the integer. The same tagging is on CCH Accounts Production from 2025.200 through 2026.300, and on iXBRL Review & Tag 2025.2 and 2026.2. CCH Accounts Production 2025.100 (one document in that daily) tags the headcount with `decimals="INF"` and no scale, and that value is already right.
 
-The producer is Wolters Kluwer CCH. `NameProductionSoftware` is `CCH Software` (the match ignores case). `VersionProductionSoftware` starts with `CCH Accounts Production ` or `iXBRL Review & Tag ` (those prefixes as written). `class="cln fn` is the same product. It is used only when both of those facts are missing. A filing from any other producer is left spec-correct, including when that class string is also present. One of the two facts, without the other, is not enough, and the class string is not used then.
+The producer is Wolters Kluwer CCH. `NameProductionSoftware` is `CCH Software` (the match ignores case). `VersionProductionSoftware` starts with `CCH Accounts Production ` or `iXBRL Review & Tag ` (those prefixes as written). Both facts are required. Markup such as `class="cln fn` is not consulted. A filing from any other producer is left spec-correct.
 
 A fact is rewritten only when all of these hold:
 

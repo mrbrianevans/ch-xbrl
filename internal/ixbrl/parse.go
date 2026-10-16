@@ -447,7 +447,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 		noteProducerFact(qnameLocal(facts[i].Name), facts[i].Value, facts[i].Format, &prodName, &prodVersion)
 	}
 	// Known CCH headcount scale. Other producers are left spec-correct.
-	gate := cchEmployeeProducer(prodName, prodVersion, data)
+	gate := cchEmployeeProducer(prodName, prodVersion)
 	corrections := 0
 
 	out := make([]fact.Fact, 0, len(facts))
@@ -1091,7 +1091,7 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 	}
 
 	prodName, prodVersion := markupProducer(s, continuations)
-	gate := cchEmployeeProducer(prodName, prodVersion, data)
+	gate := cchEmployeeProducer(prodName, prodVersion)
 	corrections := 0
 
 	collect := func(attrs, body string, numeric bool) {
