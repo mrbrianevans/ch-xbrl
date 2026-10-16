@@ -81,6 +81,8 @@ company_number,period_start,period_end,concept,value,unit,dimensions,namespace,s
 
 Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstream concern.
 
+A concept is `namespace` plus `concept`. The row has no `schemaRef` column. That pair is what a taxonomy lookup joins on. The evidence, and the check to repeat when a taxonomy suite is added, are in [taxonomy-lookup.md](./taxonomy-lookup.md). That page is not part of this contract.
+
 ### Unstable (not a SemVer break)
 
 - Row order (worker pool).
@@ -145,7 +147,8 @@ A date format that cannot be transformed is a failed member in the same way. Tha
 
 These may change without a `ch-xbrl` major:
 
-- `ch-xbrl-taxonomy`
+- `ch-xbrl-taxonomy` (flags, pinned suites, and the files in its output directory)
+- The example DuckDB join from a fact CSV to that concept CSV ([taxonomy-lookup.md](./taxonomy-lookup.md))
 - `ch-xbrl-mksample`
 - `sql/transform.sql`, `sql/transform_dynamic.sql`
 - `mapping/concept_map.csv`

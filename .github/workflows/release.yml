@@ -4,7 +4,8 @@
 # Tag format: vMAJOR.MINOR.PATCH (optional pre-release / build metadata, e.g. v1.2.0-rc.1).
 #
 # Platforms: linux/darwin/windows × amd64/arm64 (no wasm).
-# Assets: one archive per platform (ch-xbrl, ch-xbrl-taxonomy, ch-xbrl-mksample) + SHA256SUMS.
+# Assets: the ch-xbrl executable for each platform (not wrapped in a zip or tar),
+# concepts.csv, LICENSE, and SHA256SUMS.
 name: Release
 
 on:
@@ -43,10 +44,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -63,7 +64,7 @@ jobs:
           echo "VERSION=$tag" >> "$GITHUB_ENV"
           echo "Building release $tag for ${{ matrix.goos }}/${{ matrix.goarch }}"
 
-      - name: Build binaries
+      - name: Build ch-xbrl
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -75,59 +76,76 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             ext=".exe"
           fi
-          # name | package path
-          builds=(
-            "ch-xbrl:./cmd/ch-xbrl"
-            "ch-xbrl-taxonomy:./cmd/taxonomy"
-            "ch-xbrl-mksample:./cmd/mksample"
-          )
           sha="${GITHUB_SHA:0:7}"
-          for entry in "${builds[@]}"; do
-            name="${entry%%:*}"
-            pkg="${entry#*:}"
-            echo "Building $name for ${GOOS}/${GOARCH}..."
-            ldflags="-s -w"
-            if [ "$name" = "ch-xbrl" ]; then
-              ldflags="${ldflags} -X main.version=${VERSION} -X main.commit=${sha}"
-            fi
-            go build -trimpath -ldflags="${ldflags}" \
-              -o "dist/${name}${ext}" "$pkg"
-          done
+          echo "Building ch-xbrl for ${GOOS}/${GOARCH}..."
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${sha}" \
+            -o "dist/ch-xbrl${ext}" ./cmd/ch-xbrl
           ls -la dist/
-          cp LICENSE dist/LICENSE
 
-      - name: Package archive
+      - name: Name executables
         run: |
           set -euo pipefail
-          asset="ch-xbrl_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ext=".exe"
+          fi
+          stem="${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p packages
-          (
-            cd dist
-            if [ "${{ matrix.goos }}" = "windows" ]; then
-              zip -9 "../packages/${asset}.zip" ./*
-            else
-              tar -czf "../packages/${asset}.tar.gz" ./*
-            fi
-          )
+          cp "dist/ch-xbrl${ext}" "packages/ch-xbrl_${stem}${ext}"
           ls -la packages/
 
       - name: Upload platform artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ch-xbrl-${{ matrix.goos }}-${{ matrix.goarch }}
           path: packages/*
           if-no-files-found: error
           retention-days: 7
 
+  concepts:
+    name: Concept lookup CSV
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cache taxonomy zips
+        uses: actions/cache@v6.1.0
+        with:
+          path: ~/.cache/ch-xbrl-taxonomy
+          key: taxonomy-${{ hashFiles('internal/taxonomy/sources.go') }}
+
+      - name: Build concepts.csv
+        run: go run ./cmd/taxonomy -o taxonomy-out
+
+      - name: Upload concepts.csv
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: concepts-csv
+          path: taxonomy-out/concepts.csv
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     name: Attach assets to release
-    needs: build
+    needs: [build, concepts]
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           path: artifacts
           merge-multiple: true
@@ -137,9 +155,9 @@ jobs:
           set -euo pipefail
           cd artifacts
           shopt -s nullglob
-          files=(ch-xbrl_*.tar.gz ch-xbrl_*.zip)
+          files=(ch-xbrl_v* concepts.csv)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::No release archives found"
+            echo "::error::No release executables found"
             exit 1
           fi
           ls -la "${files[@]}"
@@ -148,11 +166,12 @@ jobs:
           cat SHA256SUMS
 
       - name: Upload assets to GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
-            artifacts/ch-xbrl_*.tar.gz
-            artifacts/ch-xbrl_*.zip
+            artifacts/ch-xbrl_v*
+            artifacts/concepts.csv
             artifacts/SHA256SUMS
+            LICENSE
           fail_on_unmatched_files: true

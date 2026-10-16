@@ -27,7 +27,9 @@ FROM read_csv(
   null_padding = true
 );
 
--- 2. Load concept map + optional taxonomy concepts
+-- 2. Load the hand-curated concept map.
+-- Taxonomy attributes are a separate lookup. See docs/taxonomy-lookup.md.
+-- This pivot does not join them.
 CREATE OR REPLACE TABLE concept_map AS
 SELECT
   canonical,
@@ -38,15 +40,6 @@ FROM read_csv(
   'mapping/concept_map.csv',
   header = true,
   auto_detect = true
-);
-
-CREATE OR REPLACE TABLE concepts AS
-SELECT *
-FROM read_csv(
-  'reference/concepts.csv',
-  header = true,
-  auto_detect = true,
-  ignore_errors = true
 );
 
 -- 3. Pre-filter to non-dimensional facts (empty / missing / empty-object dimensions)

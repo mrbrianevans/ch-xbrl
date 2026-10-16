@@ -8,7 +8,7 @@ sample:
 	go run ./cmd/mksample -out samples/sample.tar.zst
 
 taxonomy:
-	go run ./cmd/taxonomy -seed-only -out reference
+	go run ./cmd/taxonomy -o data
 
 facts: sample
 	go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst
@@ -16,7 +16,8 @@ facts: sample
 transform:
 	duckdb -c ".read sql/transform.sql"
 
-all: taxonomy facts transform
+# taxonomy writes data/concepts.csv. transform does not read it.
+all: facts transform
 
 test:
 	go test ./...

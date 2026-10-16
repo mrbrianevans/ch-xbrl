@@ -26,7 +26,7 @@ Typical loop:
 High-volume **Companies House iXBRL** extraction into an analytics-ready form:
 
 1. **ch-xbrl** — stream remote/local `.zip` or `tar.zst`, a single instance, a directory of instances, or stdin → long-format fact CSV.
-2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → reference CSVs.
+2. **ch-xbrl-taxonomy** — infrequent FRC/UK taxonomy parse → a directory of fixed names. Today that is `concepts.csv` (release asset, not committed).
 3. **Hand-curated map** — `mapping/concept_map.csv` in git.
 4. **DuckDB SQL** — normalise, priority-pick, pivot, cast → wide Parquet.
 
@@ -44,6 +44,7 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
 | Concept priority lives in **`concept_map.csv`**, not hard-coded Go | Curated in git; change without rebuild |
 | `company_number` is a **string** and may contain letters (`SC`, `NI`, `OC`, …) | Do not store, parse, or cast it as an integer or as digits-only |
+| Concept lookup key is **namespace + local name** | Dated UK namespaces keep one set of declaration attributes per concept. `schemaRef` stays off the fact row. Evidence and the re-check: [`docs/taxonomy-lookup.md`](docs/taxonomy-lookup.md) |
 
 Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Use `verify/stream-read-xbrl/` (the published package + DuckDB pivot) as a soft oracle only.
 
@@ -82,15 +83,14 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 
 ```text
 cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdin → facts.csv
-cmd/taxonomy/     ch-xbrl-taxonomy — packages → reference/concepts.csv
+cmd/taxonomy/     ch-xbrl-taxonomy -o DIR — pinned suites → DIR/concepts.csv (not committed)
 cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst (gitignored)
 internal/ixbrl/   iXBRL parser
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
 internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
-reference/        concepts.csv (generated seed / downloads)
-sql/              DuckDB transforms
+sql/              DuckDB transforms (concept map pivot; not the taxonomy join)
 samples/          example iXBRL (OGL; see samples/NOTICE); pack sample.tar.zst with mksample
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
 verify/stream-read-xbrl/  published stream-read-xbrl package vs DuckDB-pivoted facts
@@ -99,6 +99,7 @@ LICENSE           MIT (first-party code; samples are not MIT)
 docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
 docs/design.md    pipeline, layout, build-from-source
 docs/edge-cases.md  real archive inputs that must stay documented and tested
+docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
 AGENTS.md         this file
 README.md         user getting started (releases)
 ```
@@ -139,7 +140,7 @@ README.md         user getting started (releases)
 - Accidental binary dumps or full CH bulk archives.
 - `samples/sample.tar.zst` (generated; `go run ./cmd/mksample`).
 
-Seed `reference/concepts.csv` **may** be committed when intentionally refreshed.
+`ch-xbrl-taxonomy -o data` writes `data/concepts.csv` (gitignored). The same file is a release asset. It is not committed, and `sql/transform.sql` does not load it. The example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
 
 ### Dependencies
 
@@ -151,7 +152,7 @@ Seed `reference/concepts.csv` **may** be committed when intentionally refreshed.
 ```bash
 go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
-go run ./cmd/taxonomy -seed-only -out reference
+go run ./cmd/taxonomy -o data
 go run ./cmd/ch-xbrl -V
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml

@@ -158,7 +158,7 @@ https://xbrl.frc.org.uk/char/2025-01-01/char-2025-01-01.xsd
 
 The same pair is in `Prod223_4320_05443274_20260331.html`, `Prod223_4320_06322344_20251231.html`, and `Prod223_4320_06513956_20251231.html`. `Prod223_4320_10433813_20260430.html` lists the 2026-01-01 FRS-102 and charity schemas.
 
-`namespace` is the URI the concept prefix resolves to. schemaRef hrefs are not copied onto the row. In this file, 82 facts have `namespace` `http://xbrl.frc.org.uk/char/2025-01-01` (prefix `frs-char`), including `CharityRegistrationNumberEnglandWales` (`1103254`) and `CharityFunds`. The prefix is a document-local abbreviation of that namespace URI. It is not the schemaRef URL.
+`namespace` is the URI the concept prefix resolves to. schemaRef hrefs are not copied onto the row. In this file, 82 facts have `namespace` `http://xbrl.frc.org.uk/char/2025-01-01` (prefix `frs-char`), including `CharityRegistrationNumberEnglandWales` (`1103254`) and `CharityFunds`. The prefix is a document-local abbreviation of that namespace URI. It is not the schemaRef URL. Two schemaRefs on one filing still produce one row per fact. The concept key is `namespace` plus the local name ([taxonomy-lookup.md](./taxonomy-lookup.md)).
 
 The sample is `samples/Prod223_4320_04986021_20260331.html`. The invoke test checks company `04986021`, the charity registration number, the legal name, a `CharityFunds` figure, and that those facts carry the charity namespace.
 

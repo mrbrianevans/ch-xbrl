@@ -4,22 +4,21 @@ Extracts Companies House iXBRL and non-inline XBRL accounts to a **long-format f
 
 ## Getting started
 
-[GitHub Releases](https://github.com/mrbrianevans/ch-xbrl/releases/latest) ship binaries + `LICENSE` (no `samples/`, no DuckDB). Pick the asset for your OS/CPU, unpack, run `ch-xbrl -h`.
+[GitHub Releases](https://github.com/mrbrianevans/ch-xbrl/releases/latest) ship the `ch-xbrl` executable for each platform, plus `LICENSE` and `SHA256SUMS` (no archive, no `samples/`, no DuckDB). `concepts.csv` on the same release is the taxonomy lookup. It is not part of the ch-xbrl CLI contract; see [`docs/taxonomy-lookup.md`](./docs/taxonomy-lookup.md).
 
 | Platform | Asset |
 |----------|--------|
-| Linux x86_64 / ARM64 | `ch-xbrl_<ver>_linux_amd64.tar.gz` / `_linux_arm64.tar.gz` |
-| macOS Intel / Apple Silicon | `…_darwin_amd64.tar.gz` / `_darwin_arm64.tar.gz` |
-| Windows x86_64 / ARM64 | `…_windows_amd64.zip` / `_windows_arm64.zip` |
+| Linux x86_64 / ARM64 | `ch-xbrl_<ver>_linux_amd64` / `_linux_arm64` |
+| macOS Intel / Apple Silicon | `…_darwin_amd64` / `_darwin_arm64` |
+| Windows x86_64 / ARM64 | `…_windows_amd64.exe` / `_windows_arm64.exe` |
 
 ```bash
 # Linux / macOS
-tar -xzf ch-xbrl_vX.Y.Z_linux_amd64.tar.gz    # or darwin_* / linux_arm64
-ch-xbrl -h
+chmod +x ch-xbrl_vX.Y.Z_linux_amd64    # or darwin_* / linux_arm64
+./ch-xbrl_vX.Y.Z_linux_amd64 -h
 
-# Windows (PowerShell)
-Expand-Archive .\ch-xbrl_vX.Y.Z_windows_amd64.zip -DestinationPath .
-ch-xbrl -h
+# Windows
+.\ch-xbrl_vX.Y.Z_windows_amd64.exe -h
 ```
 
 Daily packs: [`Accounts_Bulk_Data-YYYY-MM-DD.zip`](https://download.companieshouse.gov.uk/en_accountsdata.html).
@@ -57,6 +56,8 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | `namespace` | Namespace URI for the concept's prefix |
 | `source_file` | Archive member or basename |
 | `decimals` | Raw iXBRL `decimals` (`INF` kept); empty if absent |
+
+Join taxonomy attributes on `namespace` and `concept`. The CSV has no `schemaRef` column. Evidence: [`docs/taxonomy-lookup.md`](./docs/taxonomy-lookup.md).
 
 ## Licence
 
