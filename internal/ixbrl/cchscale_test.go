@@ -144,15 +144,45 @@ func TestCCHEmployeeScaleIgnoresClassMarkup(t *testing.T) {
 }
 
 func TestCCHEmployeeScaleNegativeUntouched(t *testing.T) {
+	// A positive display with sign="-" is the headcount, so the sign is
+	// dropped and the CCH scale fix then applies. A bracketed display stays negative.
 	facts := `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="2" scale="-2" sign="-">3</ix:nonFraction>
 <ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="2" scale="-2">(4)</ix:nonFraction>`
 	doc := parseDoc(t, cchDoc("CCH Software", "CCH Accounts Production 2026.200", "", facts), "cch.html")
-	if doc.Corrections != 0 {
-		t.Fatalf("corrections=%d want 0", doc.Corrections)
+	if doc.Corrections != 1 {
+		t.Fatalf("corrections=%d want 1", doc.Corrections)
 	}
 	got := valuesOf(doc.Facts, "AverageNumberEmployeesDuringPeriod")
-	if !slices.Equal(got, []string{"-0.03", "-0.04"}) {
+	if !slices.Equal(got, []string{"3", "-0.04"}) {
 		t.Fatalf("values=%v", got)
+	}
+}
+
+func TestEmployeeSignDroppedWhenDisplayPositive(t *testing.T) {
+	facts := `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="0" scale="0" sign="-">7</ix:nonFraction>
+<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="2" scale="0" sign="-">7.00</ix:nonFraction>
+<ix:nonFraction name="core:ProductionAverageNumberEmployees" contextRef="c1" unitRef="Pure" decimals="0" scale="0" sign="-">4</ix:nonFraction>
+<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="0" scale="0" format="ixt:numcommadot" sign="-">1,234</ix:nonFraction>
+<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="0" scale="0" sign="-">0</ix:nonFraction>
+<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="0" scale="0" sign="-">(4)</ix:nonFraction>
+<ix:nonFraction name="core:StaffCostsEmployeeBenefitsExpense" contextRef="c1" unitRef="GBP" decimals="0" scale="0" sign="-">86,516</ix:nonFraction>`
+	doc := parseDoc(t, cchDoc("IRIS Accounts Production", "v1", "", facts), "sign.html")
+	if doc.Corrections != 4 {
+		t.Fatalf("corrections=%d want 4", doc.Corrections)
+	}
+	if got := valuesOf(doc.Facts, "AverageNumberEmployeesDuringPeriod"); !slices.Equal(got, []string{"7", "7", "1234", "0", "-4"}) {
+		t.Fatalf("headcounts=%v", got)
+	}
+	if got := valuesOf(doc.Facts, "ProductionAverageNumberEmployees"); !slices.Equal(got, []string{"4"}) {
+		t.Fatalf("departmental=%v", got)
+	}
+	if got := valuesOf(doc.Facts, "StaffCostsEmployeeBenefitsExpense"); !slices.Equal(got, []string{"-86516"}) {
+		t.Fatalf("staff costs=%v", got)
+	}
+	lenient := strings.TrimSuffix(cchDoc("IRIS Accounts Production", "v1", "", `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="0" scale="0" sign="-">9</ix:nonFraction>`), "</html>") + "\x00</html>"
+	got := parseDoc(t, lenient, "sign-lenient.html")
+	if got.Corrections != 1 || !slices.Equal(valuesOf(got.Facts, "AverageNumberEmployeesDuringPeriod"), []string{"9"}) {
+		t.Fatalf("lenient corrections=%d values=%v", got.Corrections, valuesOf(got.Facts, "AverageNumberEmployeesDuringPeriod"))
 	}
 }
 
@@ -179,6 +209,7 @@ func TestCCHEmployeeScaleSamples(t *testing.T) {
 		{"09652677_aa_2026-03-25.xhtml", 2, "AverageNumberEmployeesDuringPeriod", []string{"3", "2"}},
 		{"OC300293_aa_2026-03-31.xhtml", 2, "AverageNumberEmployeesDuringPeriod", []string{"4", "3"}},
 		{"03024914_aa_2023-03-13.xhtml", 0, "AverageNumberEmployeesDuringPeriod", []string{"134", "147"}},
+		{"Prod224_2266_02955230_20230930.html", 2, "AverageNumberEmployeesDuringPeriod", []string{"7", "7"}},
 	}
 	for _, tc := range cases {
 		tc := tc

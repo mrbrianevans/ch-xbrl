@@ -27,6 +27,10 @@ Four CCH headcount fixtures (`Prod223_4320_13368913_20251231.html`,
 Accounts_Bulk_Data-2026-10-02.zip. Each keeps the producer facts, the
 employee and percentage facts, and the contexts and units those facts use.
 
+`Prod224_2266_02955230_20230930.html` is trimmed from
+Accounts_Monthly_Data-June2024.zip. It keeps the producer facts, the
+employee facts, and the contexts and unit those facts use.
+
 The Open Government Licence does not cover personal data. Do not treat
 these filings as a source of personal data except as permitted by
 data-protection law.

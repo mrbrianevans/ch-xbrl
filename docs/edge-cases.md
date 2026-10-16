@@ -370,7 +370,7 @@ A fact is rewritten only when all of these hold:
 
 The scale is then treated as 0, so `value` is the displayed integer. `decimals` stays the raw attribute. The CSV columns are unchanged. There is no flag on the row.
 
-`PercentageClassShareHeldInSubsidiary`, `AssumedPercentageEmployeesOptingForEarlyRetirement`, monetary facts such as `StaffCostsEmployeeBenefitsExpense`, and a headcount on a monetary unit stay on the tagged scale. A negative headcount is left as tagged. None were found in the dailies that were checked.
+`PercentageClassShareHeldInSubsidiary`, `AssumedPercentageEmployeesOptingForEarlyRetirement`, monetary facts such as `StaffCostsEmployeeBenefitsExpense`, and a headcount on a monetary unit stay on the tagged scale. A bracketed headcount display, such as `(4)`, stays negative. A positive display with `sign="-"` is stored as the positive number; see the next section.
 
 The `done:` line includes `corrections=N`: how many fact values were adjusted and written. A member that fails to parse is not included. The count is 0 when nothing was adjusted. It is the same for a single instance, a directory, zip, tar.zst, stdin, a remote file, and `--continue-on-error`.
 
@@ -390,3 +390,47 @@ The same rule already applies to full samples `09652677_aa_2026-03-25.xhtml` (di
 Arelle still applies the tagged scale, so those headcount values differ from Arelle on purpose. The stream-read-xbrl check skips the employee column.
 
 Tests: `TestCCHEmployeeScaleGate`, `TestCCHEmployeeScaleProducers`, `TestCCHEmployeeScaleSamples`, `TestCCHEmployeeScaleSampleLeavesOtherFacts`, `TestCCHEmployeeScaleLenient`, `TestRun_CCHEmployeeScale`, `TestRun_CCHEmployeeScaleInputs`, `TestRun_CCHEmployeeScaleContinueOnError`.
+
+## Positive employee headcount tagged sign="-"
+
+A negative number of employees is not a count. When the concept is `AverageNumberEmployeesDuringPeriod`, or a departmental concept whose local name ends with `AverageNumberEmployees`, and the displayed text is a positive number, `sign="-"` is ignored. The stored value is the displayed magnitude (scale still applies). A bracketed display such as `(4)` stays negative. A displayed zero stays zero. `StaffCostsEmployeeBenefitsExpense` and any other concept keep the sign.
+
+The `done:` line's `corrections` count includes these facts, together with the CCH scale fix above. One fact that needs both is counted once. This rule is not part of the CLI contract and may change in a patch.
+
+The systematic cases are one product, and it does not put a brand in the software facts:
+
+- `VersionProductionSoftware` is the word `Software`
+- `NameProductionSoftware` is a template id: a version token, then `micro_entity_frs_105`, `limited_company_frs_102_section_1a`, or `llp_micro_entity_frs_105`
+- The version token is `2.4.2` through `5.x`, and from 2022 also `v2022.7.1` style (`v2024.26.1 limited_company_frs_102_section_1a_v1_1_1 companies_house` is the June 2024 shape)
+
+The HTML title of those filings ends in `_companies_house_set_of_accounts.html`. The note shows a positive integer. Filing `Prod224_2266_02955230_20230930.html` (J and J Commercials Limited, June 2024 monthly) says the average was 7 (2022: 7.00). Both facts have `sign="-"`, `scale="0"`, and unit pure. A spec-correct parse stores `-7`.
+
+Months scanned for `sign="-"` on `AverageNumberEmployeesDuringPeriod`. Counts are facts whose displayed text is a positive number:
+
+| Archive | Template product, `sign="-"` and a positive display | Same product, positive and unsigned | Other producers, `sign="-"` |
+|---------|------------------------------------------------------|--------------------------------------|------------------------------|
+| June 2017 | 77 (versions 2.4.2 to 2.5.3) | not measured | 0 |
+| January 2018 | 131 (versions 2.5.6 to 2.6.1) | not measured | 3 Sage Accounts Production Advanced |
+| January 2019 | 719 (versions 3.0.2 and 3.1.1). 15 more are displayed `0.00` | not measured | 2 Sage Accounts Production Advanced |
+| June 2020 | 1,217 (from 4.4.0). 9 more are displayed `0.00` | not measured | 3 VT Final Accounts |
+| January 2022 | 2,128 (5.x names) | not measured | 5 VT, 1 Sage Accounts Production Advanced |
+| June 2024 | 3,421 (`v2023.32.1` to `v2024.29.1`) | 0 | 0 |
+| June 2025 | 4,359 (`v2024.50.1` to `v2025.41.1`) | 0 | 4 (Caseware, VT) |
+| December 2025 | 289 | 7,350 | 3 (VT, one CCH Review & Tag, one with no software facts) |
+| June 2026 | 10 | 5,359 | 0 |
+| September 2026 | 0 | 6,028 | 0 |
+
+The earliest month scanned is June 2017. The bug is already there, on software versions from 2.4.2, and every signed headcount in that month is this product. No earlier month was scanned, so that is not a proven start date. On the `v2022` style of name, every positive headcount had `sign="-"` in January 2023, January 2024, June 2024, and June 2025. The earlier `2.x` to `5.x` names are the same templates with `VersionProductionSoftware` `Software`; those months were not split into signed and unsigned. Software version `v2025.64.1` is the first with an unsigned positive headcount (December 2025 monthly). Later copies of the same version string still sign a minority: `v2025.83.1` in that monthly has 76 signed and 3,741 unsigned. June 2026 still has 10 signed facts, on versions that also file unsigned headcounts (`v2026.26.1` is 1 signed and 1,457 unsigned). September 2026 has none. A version prefix is not a reliable gate. The fact's own sign is.
+
+No month in that scan had a headcount whose tagged text was itself negative. The only non-positive `sign="-"` displays were zeros (`0.00`), and negating zero does not change the stored number. Those stay as tagged.
+
+A few signed facts are not this product. They are still a positive display on the headcount concept, so the sign is dropped there too:
+
+- VT Final Accounts, a handful per month. The concept is on a bracketed balance-sheet line, not an employees note. In `Prod224_2506_07258915_20250331.html` (June 2025) the creditors row is tagged `AverageNumberEmployeesDuringPeriod` `8,945` with `sign="-"` and unit pure. The sign matches the brackets. The row is not a headcount either way.
+- Sage Accounts Production Advanced, rare. The comparative is rendered `(2021: (2))` with `sign="-"` on the `2`. The integer is the headcount.
+- Caseware, rare. Hidden facts `sign="-"` `5`, while the note shows Administrative staff 5 and 5.
+- Filings with no software facts, unit GBP, and a minus or bracket outside the tag.
+
+`samples/Prod224_2266_02955230_20230930.html` is trimmed from [Accounts_Monthly_Data-June2024.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-June2024.zip). Company `02955230`. Headcounts `7` and `7`. Two corrections.
+
+Tests: `TestEmployeeSignDroppedWhenDisplayPositive`, `TestCCHEmployeeScaleSamples`, `TestRun_EmployeeSignDropped`.

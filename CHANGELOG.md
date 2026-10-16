@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-10-16
+
+### Fixed
+
+- A positive employee headcount tagged `sign="-"` was stored as a negative. The sign is now ignored, so the displayed number is kept. A bracketed display and monetary facts still use the sign. Those facts are included in `corrections`. Which headcounts are adjusted is not part of the CLI contract and may change in a patch.
+
 ## [0.4.5] - 2026-10-16
 
 ### Fixed
@@ -130,7 +136,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.6...HEAD
+[0.4.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.2...v0.4.3
