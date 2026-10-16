@@ -4,8 +4,8 @@
 # Tag format: vMAJOR.MINOR.PATCH (optional pre-release / build metadata, e.g. v1.2.0-rc.1).
 #
 # Platforms: linux/darwin/windows × amd64/arm64 (no wasm).
-# Assets: one executable per tool per platform (not wrapped in a zip or tar),
-# concepts.csv from the pinned taxonomy list, LICENSE, and SHA256SUMS.
+# Assets: the ch-xbrl executable for each platform (not wrapped in a zip or tar),
+# concepts.csv, LICENSE, and SHA256SUMS.
 name: Release
 
 on:
@@ -76,24 +76,10 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             ext=".exe"
           fi
-          # name | package path
-          builds=(
-            "ch-xbrl:./cmd/ch-xbrl"
-            "ch-xbrl-taxonomy:./cmd/taxonomy"
-            "ch-xbrl-mksample:./cmd/mksample"
-          )
           sha="${GITHUB_SHA:0:7}"
-          for entry in "${builds[@]}"; do
-            name="${entry%%:*}"
-            pkg="${entry#*:}"
-            echo "Building $name for ${GOOS}/${GOARCH}..."
-            ldflags="-s -w"
-            if [ "$name" = "ch-xbrl" ]; then
-              ldflags="${ldflags} -X main.version=${VERSION} -X main.commit=${sha}"
-            fi
-            go build -trimpath -ldflags="${ldflags}" \
-              -o "dist/${name}${ext}" "$pkg"
-          done
+          echo "Building ch-xbrl for ${GOOS}/${GOARCH}..."
+          go build -trimpath -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${sha}" \
+            -o "dist/ch-xbrl${ext}" ./cmd/ch-xbrl
           ls -la dist/
 
       - name: Name executables
@@ -106,8 +92,6 @@ jobs:
           stem="${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p packages
           cp "dist/ch-xbrl${ext}" "packages/ch-xbrl_${stem}${ext}"
-          cp "dist/ch-xbrl-taxonomy${ext}" "packages/ch-xbrl-taxonomy_${stem}${ext}"
-          cp "dist/ch-xbrl-mksample${ext}" "packages/ch-xbrl-mksample_${stem}${ext}"
           ls -la packages/
 
       - name: Upload platform artifact
@@ -171,7 +155,7 @@ jobs:
           set -euo pipefail
           cd artifacts
           shopt -s nullglob
-          files=(ch-xbrl_* ch-xbrl-taxonomy_* ch-xbrl-mksample_* concepts.csv)
+          files=(ch-xbrl_v* concepts.csv)
           if [ ${#files[@]} -eq 0 ]; then
             echo "::error::No release executables found"
             exit 1
@@ -186,9 +170,7 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
-            artifacts/ch-xbrl_*
-            artifacts/ch-xbrl-taxonomy_*
-            artifacts/ch-xbrl-mksample_*
+            artifacts/ch-xbrl_v*
             artifacts/concepts.csv
             artifacts/SHA256SUMS
             LICENSE

@@ -21,8 +21,6 @@ chmod +x ch-xbrl_vX.Y.Z_linux_amd64    # or darwin_* / linux_arm64
 .\ch-xbrl_vX.Y.Z_windows_amd64.exe -h
 ```
 
-`ch-xbrl-taxonomy` and `ch-xbrl-mksample` are attached the same way (`ch-xbrl-taxonomy_<ver>_linux_amd64`, and `.exe` on Windows).
-
 Daily packs: [`Accounts_Bulk_Data-YYYY-MM-DD.zip`](https://download.companieshouse.gov.uk/en_accountsdata.html).
 
 **Flags must come before the positional.**
