@@ -8,7 +8,7 @@ sample:
 	go run ./cmd/mksample -out samples/sample.tar.zst
 
 taxonomy:
-	go run ./cmd/taxonomy -seed-only -out reference
+	go run ./cmd/taxonomy -o data/concepts.csv
 
 facts: sample
 	go run ./cmd/ch-xbrl -o data/facts.csv samples/sample.tar.zst

@@ -90,7 +90,7 @@ internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
 internal/csvout/  concurrent CSV writer
 mapping/          concept_map.csv (curated)
-reference/        concepts.csv (generated seed / downloads)
+reference/        concepts.csv (column header; full lookup is a release asset)
 sql/              DuckDB transforms
 samples/          example iXBRL (OGL; see samples/NOTICE); pack sample.tar.zst with mksample
 verify/arelle/    Arelle (uv + arelle-release) fact oracle for ch-xbrl checks
@@ -141,7 +141,7 @@ README.md         user getting started (releases)
 - Accidental binary dumps or full CH bulk archives.
 - `samples/sample.tar.zst` (generated; `go run ./cmd/mksample`).
 
-Seed `reference/concepts.csv` **may** be committed when intentionally refreshed.
+`data/concepts.csv` is the lookup written by `ch-xbrl-taxonomy` (gitignored). The example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract. `reference/concepts.csv` in git is only the column header so `sql/transform.sql` can load the table offline; refresh it on purpose if a seed is needed.
 
 ### Dependencies
 
@@ -153,7 +153,7 @@ Seed `reference/concepts.csv` **may** be committed when intentionally refreshed.
 ```bash
 go test ./...
 go run ./cmd/mksample -out samples/sample.tar.zst
-go run ./cmd/taxonomy -seed-only -out reference
+go run ./cmd/taxonomy -o data/concepts.csv
 go run ./cmd/ch-xbrl -V
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 go run ./cmd/ch-xbrl -o data/facts.csv samples/03024914_aa_2023-03-13.xhtml

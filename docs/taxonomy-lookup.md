@@ -17,7 +17,9 @@ The attributes in this claim are the ones on the schema element declaration: `ab
 
 ## Evidence (16 October 2026)
 
-This is a one-off scan. The repository does not re-run it yet. The taxonomy tool has to grow a test that does, and that test has to stay green when a suite is added.
+`ch-xbrl-taxonomy` re-checks the rows it publishes. The pinned zips are in `internal/taxonomy/sources.go` (URLs taken that day; FRC `/documents/<id>/` links are not a stable index, so each zip has a sha256). The tool keeps global elements whose substitution group is `xbrli:item` or `xbrli:tuple`, and exits 1 if the same namespace and local name is declared with different attributes. A run that day wrote 83,881 concepts and exited 0.
+
+The counts below are the wider scan of every element declaration, including hypercubes, dimensions, and other non-items. That scan is not repeated on every run. Adding a suite means adding a pinned zip and running the tool; a conflict fails the run.
 
 Every element declaration was parsed in 143 `.xsd` files from 24 UK suites:
 
@@ -45,9 +47,35 @@ A random sample of 4,000 files from the June 2013 accounts: 3,827 iXBRL files us
 
 ## Caveats
 
-Re-run the conflict check before trusting a new suite. Parse every element declaration in the enlarged set and require zero attribute conflicts on namespace + local name. Report namespace coverage against a Companies House daily file, and against an older archive when the new suite is historical. A conflict means stop. Do not publish a lookup that silently keeps one of the rows. Adding `schemaRef` to the fact CSV is a contract change and is the wrong next step until that result has been reviewed.
+Re-run the check before trusting a new suite. Add the zip to `internal/taxonomy/sources.go` and run `ch-xbrl-taxonomy`. It exits 1 if an item or tuple is declared twice with different attributes. Also report namespace coverage against a Companies House daily file, and against an older archive when the new suite is historical. A conflict means stop. Do not publish a lookup that silently keeps one of the rows. Adding `schemaRef` to the fact CSV is a contract change and is the wrong next step until that result has been reviewed.
 
 These were outside the 100% coverage figures:
 
 - 173 plain-XBRL `.xml` filings in that June 2013 sample use Companies House schemas from 2004–2009 (`http://www.companieshouse.gov.uk/ef/xbrl/...`). Those schemas were not in the 143-file scan, and those filings were not checked.
-- The accounts samples contained no `ifrs-full`, US GAAP, or Irish facts. The Irish suites were in the declaration scan, so a conflict inside those suites would have shown up. A filing that uses an Irish, IFRS, or US GAAP namespace that was not among the 24 suites is a coverage miss, and would show up when the coverage check is re-run.
+- The accounts samples contained no `ifrs-full`, US GAAP, or Irish facts. The Irish suites were in the declaration scan, so a conflict inside those suites would have shown up. A filing that uses an Irish, IFRS, or US GAAP namespace that was not among the 24 suites is a coverage miss, and would show up when the coverage check is re-run. UKSEF packages in `samples/` only contribute facts with `target="UKFRS"`, and those concepts use FRC namespaces that are in the pin. `ifrs-full` facts are not in that extract.
+
+## Joining to a fact CSV
+
+This query is an example. It is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). `ch-xbrl` does not run it. The fact columns stay as that contract says. The taxonomy columns can change without a ch-xbrl major version.
+
+`ch-xbrl-taxonomy -o concepts.csv` writes one row per namespace + local name. Join it to a fact export on `namespace` and `concept` (`local_name` in the lookup):
+
+```sql
+SELECT
+  f.company_number,
+  f.period_end,
+  f.concept,
+  f.namespace,
+  c.period_type,
+  c.balance,
+  c.type_namespace,
+  c.type_name,
+  c.abstract,
+  f.value
+FROM read_csv('data/facts.csv', header = true, all_varchar = true) f
+LEFT JOIN read_csv('data/concepts.csv', header = true, all_varchar = true) c
+  ON f.namespace = c.namespace
+ AND f.concept = c.local_name;
+```
+
+A fact with no lookup row is a namespace the pinned suites do not declare. The gaps are listed above. A successful `ch-xbrl-taxonomy` run has already refused to write a CSV that contains two different attribute rows for one key.

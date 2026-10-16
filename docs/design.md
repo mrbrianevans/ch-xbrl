@@ -59,7 +59,7 @@ cmd/taxonomy/      ch-xbrl-taxonomy → reference CSVs
 cmd/mksample/      pack samples/ → sample.tar.zst
 internal/          ixbrl, archive, fact, csvout
 mapping/           concept_map.csv
-reference/         concepts.csv
+reference/         concepts.csv (column header; full lookup is data/concepts.csv or a release asset)
 sql/               DuckDB transforms
 samples/           example iXBRL and edge-case filings (OGL; samples/NOTICE)
 verify/arelle/     Arelle fact oracle
@@ -77,7 +77,7 @@ Needs **Go** (`go.mod`) and optionally **DuckDB**. Clone the repo (this path has
 
 ```bash
 go run ./cmd/mksample -out samples/sample.tar.zst
-go run ./cmd/taxonomy -seed-only -out reference
+go run ./cmd/taxonomy -o data/concepts.csv
 go run ./cmd/ch-xbrl -o data/facts.csv -workers 4 samples/sample.tar.zst
 duckdb -c ".read sql/transform.sql"
 ```

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ch-xbrl-taxonomy -o concepts.csv` writes a concept lookup (namespace + local name) from pinned UK taxonomy suites. An example DuckDB join is in `docs/taxonomy-lookup.md` and is not part of the ch-xbrl CLI contract.
+
+### Changed
+
+- GitHub release assets for `ch-xbrl` are the executable for each platform, not a zip or tar archive. `concepts.csv` is attached beside them.
+
 ## [0.4.3] - 2026-10-14
 
 ### Fixed

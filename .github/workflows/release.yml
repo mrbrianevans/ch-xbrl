@@ -4,7 +4,8 @@
 # Tag format: vMAJOR.MINOR.PATCH (optional pre-release / build metadata, e.g. v1.2.0-rc.1).
 #
 # Platforms: linux/darwin/windows × amd64/arm64 (no wasm).
-# Assets: one archive per platform (ch-xbrl, ch-xbrl-taxonomy, ch-xbrl-mksample) + SHA256SUMS.
+# Assets: one executable per tool per platform (not wrapped in a zip or tar),
+# concepts.csv from the pinned taxonomy list, LICENSE, and SHA256SUMS.
 name: Release
 
 on:
@@ -94,21 +95,19 @@ jobs:
               -o "dist/${name}${ext}" "$pkg"
           done
           ls -la dist/
-          cp LICENSE dist/LICENSE
 
-      - name: Package archive
+      - name: Name executables
         run: |
           set -euo pipefail
-          asset="ch-xbrl_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          ext=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            ext=".exe"
+          fi
+          stem="${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
           mkdir -p packages
-          (
-            cd dist
-            if [ "${{ matrix.goos }}" = "windows" ]; then
-              zip -9 "../packages/${asset}.zip" ./*
-            else
-              tar -czf "../packages/${asset}.tar.gz" ./*
-            fi
-          )
+          cp "dist/ch-xbrl${ext}" "packages/ch-xbrl_${stem}${ext}"
+          cp "dist/ch-xbrl-taxonomy${ext}" "packages/ch-xbrl-taxonomy_${stem}${ext}"
+          cp "dist/ch-xbrl-mksample${ext}" "packages/ch-xbrl-mksample_${stem}${ext}"
           ls -la packages/
 
       - name: Upload platform artifact
@@ -119,13 +118,48 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  concepts:
+    name: Concept lookup CSV
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cache taxonomy zips
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ch-xbrl-taxonomy
+          key: taxonomy-${{ hashFiles('internal/taxonomy/sources.go') }}
+
+      - name: Build concepts.csv
+        run: go run ./cmd/taxonomy -o concepts.csv
+
+      - name: Upload concepts.csv
+        uses: actions/upload-artifact@v4
+        with:
+          name: concepts-csv
+          path: concepts.csv
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     name: Attach assets to release
-    needs: build
+    needs: [build, concepts]
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -137,9 +171,9 @@ jobs:
           set -euo pipefail
           cd artifacts
           shopt -s nullglob
-          files=(ch-xbrl_*.tar.gz ch-xbrl_*.zip)
+          files=(ch-xbrl_* ch-xbrl-taxonomy_* ch-xbrl-mksample_* concepts.csv)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "::error::No release archives found"
+            echo "::error::No release executables found"
             exit 1
           fi
           ls -la "${files[@]}"
@@ -152,7 +186,10 @@ jobs:
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: |
-            artifacts/ch-xbrl_*.tar.gz
-            artifacts/ch-xbrl_*.zip
+            artifacts/ch-xbrl_*
+            artifacts/ch-xbrl-taxonomy_*
+            artifacts/ch-xbrl-mksample_*
+            artifacts/concepts.csv
             artifacts/SHA256SUMS
+            LICENSE
           fail_on_unmatched_files: true

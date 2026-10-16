@@ -27,7 +27,9 @@ FROM read_csv(
   null_padding = true
 );
 
--- 2. Load concept map + optional taxonomy concepts
+-- 2. Load concept map + optional taxonomy concepts.
+-- The pivot below does not join concepts. An example join is in
+-- docs/taxonomy-lookup.md and is not part of the ch-xbrl CLI contract.
 CREATE OR REPLACE TABLE concept_map AS
 SELECT
   canonical,
