@@ -374,6 +374,8 @@ The scale is then treated as 0, so `value` is the displayed integer. `decimals` 
 
 The `done:` line includes `corrections=N`: how many fact values were adjusted and written. A member that fails to parse is not included. The count is 0 when nothing was adjusted. It is the same for a single instance, a directory, zip, tar.zst, stdin, a remote file, and `--continue-on-error`.
 
+How these headcounts are corrected is not part of the CLI contract and may change in a patch.
+
 The fixtures are trimmed from that daily (producer facts, the headcount and percentage facts, and the contexts and units they use):
 
 | Member | What must stay |
