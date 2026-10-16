@@ -50,7 +50,7 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | `company_number` | Companies House number (string; may include letters, e.g. `SC123456`). Not an integer |
 | `period_start` / `period_end` | ISO dates from the fact's context (instants: both equal). The period-end fact to cast is `BalanceSheetDate` |
 | `concept` | Local name |
-| `value` | String (scale / sign / iXT applied). A date format is `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. A date that cannot be transformed, including an unimplemented date format, fails that member (`--continue-on-error` skips it) |
+| `value` | String (scale / sign / iXT applied). A date format is `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. A date that cannot be transformed, including an unimplemented date format, fails that member (`--continue-on-error` skips it). A CCH headcount tagged `scale="-2"` is the displayed integer; see below |
 | `unit` | Measure, if any |
 | `dimensions` | JSON map; empty if none |
 | `namespace` | Namespace URI for the concept's prefix |
@@ -58,6 +58,12 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | `decimals` | Raw iXBRL `decimals` (`INF` kept); empty if absent |
 
 Join taxonomy attributes on `namespace` and `concept`. The CSV has no `schemaRef` column. Evidence: [`docs/taxonomy-lookup.md`](./docs/taxonomy-lookup.md).
+
+### Known tagging correction
+
+CCH Accounts Production (Wolters Kluwer) and iXBRL Review & Tag tag average employee headcounts with `scale="-2"` (Accounts Production from 2025.200; 2025.100 has no scale and is left as tagged). The number on the page is the headcount; a spec-correct parse would divide it by 100. ch-xbrl stores the displayed integer when the filing's own facts say `NameProductionSoftware` is `CCH Software` and `VersionProductionSoftware` starts with `CCH Accounts Production ` or `iXBRL Review & Tag `, the concept is a headcount (`AverageNumberEmployeesDuringPeriod` or a departmental `*AverageNumberEmployees`), the unit is pure, and the displayed text is a non-negative integer.
+
+Percentages, monetary amounts, and filings from any other producer stay spec-correct. The CSV columns are unchanged. The end-of-run `done:` line on stderr includes `corrections=N`, how many fact values were adjusted. The count is 0 when none were. It is reported for every input kind and with `--continue-on-error`. Detail: [`docs/edge-cases.md`](./docs/edge-cases.md).
 
 ## Licence
 

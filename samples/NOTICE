@@ -21,6 +21,12 @@ Some files are single filing-history document downloads rather than
 members of an Accounts Data Product zip. The filing URL is recorded
 in docs/edge-cases.md. They are the same public register filings.
 
+Four CCH headcount fixtures (`Prod223_4320_13368913_20251231.html`,
+`Prod223_4320_00719324_20260405.html`, `Prod223_4320_07640901_20260530.html`,
+`Prod223_4320_01154766_20251231.html`) are trimmed from
+Accounts_Bulk_Data-2026-10-02.zip. Each keeps the producer facts, the
+employee and percentage facts, and the contexts and units those facts use.
+
 The Open Government Licence does not cover personal data. Do not treat
 these filings as a source of personal data except as permitted by
 data-protection law.

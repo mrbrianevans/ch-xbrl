@@ -37,7 +37,6 @@ import (
 
 	"github.com/mrbrianevans/ch-xbrl/internal/archive"
 	"github.com/mrbrianevans/ch-xbrl/internal/csvout"
-	"github.com/mrbrianevans/ch-xbrl/internal/fact"
 	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl"
 )
 
@@ -89,11 +88,12 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 
 	members := make(chan archive.Member, memberQueueDepth)
 	var (
-		filesOK   atomic.Int64
-		filesErr  atomic.Int64
-		factCount atomic.Int64
-		errMu     sync.Mutex
-		firstErrs []string
+		filesOK     atomic.Int64
+		filesErr    atomic.Int64
+		factCount   atomic.Int64
+		corrections atomic.Int64
+		errMu       sync.Mutex
+		firstErrs   []string
 	)
 
 	var wg sync.WaitGroup
@@ -114,24 +114,25 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 					noteErr(m.Name, m.Err)
 					continue
 				}
-				var facts []fact.Fact
+				var doc ixbrl.Document
 				var err error
 				if m.OnlyUKFRS {
-					facts, err = ixbrl.ParseBytesOnlyTarget(m.Content, m.Name, "UKFRS")
+					doc, err = ixbrl.ParseDocumentOnlyTarget(m.Content, m.Name, "UKFRS")
 				} else {
-					facts, err = ixbrl.ParseBytes(m.Content, m.Name)
+					doc, err = ixbrl.ParseDocument(m.Content, m.Name)
 				}
 				if err != nil {
 					noteErr(m.Name, err)
 					continue
 				}
-				if err := csvW.WriteAll(facts); err != nil {
+				if err := csvW.WriteAll(doc.Facts); err != nil {
 					filesErr.Add(1)
 					log.Printf("csv write %s: %v", m.Name, err)
 					continue
 				}
 				filesOK.Add(1)
-				factCount.Add(int64(len(facts)))
+				factCount.Add(int64(len(doc.Facts)))
+				corrections.Add(int64(doc.Corrections))
 			}
 		}()
 	}
@@ -160,8 +161,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 	flushErr := csvW.Flush()
 
 	elapsed := time.Since(start).Round(time.Millisecond)
-	log.Printf("done: members=%d files_ok=%d files_err=%d facts=%d elapsed=%s out=%s",
-		n, filesOK.Load(), filesErr.Load(), factCount.Load(), elapsed, outName)
+	log.Printf("done: members=%d files_ok=%d files_err=%d corrections=%d facts=%d elapsed=%s out=%s",
+		n, filesOK.Load(), filesErr.Load(), corrections.Load(), factCount.Load(), elapsed, outName)
 
 	if len(firstErrs) > 0 {
 		log.Printf("sample errors (%d total err files):", filesErr.Load())

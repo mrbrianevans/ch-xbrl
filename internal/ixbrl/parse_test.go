@@ -922,7 +922,7 @@ func TestParseOnlyUKFRS(t *testing.T) {
 
 	// Lenient path: an unclosed tag forces the regex fallback.
 	broken := doc + "<ix:nonNumeric"
-	kept, err = parseLenient([]byte(broken), "uksef.xhtml", "UKFRS")
+	kept, _, err = parseLenient([]byte(broken), "uksef.xhtml", "UKFRS")
 	if err != nil {
 		t.Fatal(err)
 	}

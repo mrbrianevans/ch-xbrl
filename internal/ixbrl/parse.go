@@ -81,17 +81,46 @@ func Parse(r io.Reader, sourceFile string) ([]fact.Fact, error) {
 
 // ParseBytes is like Parse but from a byte slice.
 func ParseBytes(data []byte, sourceFile string) ([]fact.Fact, error) {
-	return parseBytes(data, sourceFile, "")
+	facts, _, err := parseBytes(data, sourceFile, "")
+	return facts, err
 }
 
 // ParseBytesOnlyTarget is ParseBytes restricted to facts whose target
 // attribute equals target. Facts with no target attribute are left out.
 // Report packages pass "UKFRS" so the company's own statements are kept.
 func ParseBytesOnlyTarget(data []byte, sourceFile, target string) ([]fact.Fact, error) {
-	return parseBytes(data, sourceFile, target)
+	facts, _, err := parseBytes(data, sourceFile, target)
+	return facts, err
 }
 
-func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error) {
+// Document is one parsed instance. Corrections is how many fact values were
+// adjusted for a known producer tagging error. Those rows are ordinary facts:
+// the CSV schema does not mark them. ch-xbrl adds the count to its done line.
+type Document struct {
+	Facts       []fact.Fact
+	Corrections int
+}
+
+// ParseDocument parses an iXBRL or XBRL instance.
+func ParseDocument(data []byte, sourceFile string) (Document, error) {
+	return parseDocument(data, sourceFile, "")
+}
+
+// ParseDocumentOnlyTarget is ParseDocument restricted to facts whose target
+// attribute equals target. Facts with no target attribute are left out.
+func ParseDocumentOnlyTarget(data []byte, sourceFile, target string) (Document, error) {
+	return parseDocument(data, sourceFile, target)
+}
+
+func parseDocument(data []byte, sourceFile, onlyTarget string) (Document, error) {
+	facts, n, err := parseBytes(data, sourceFile, onlyTarget)
+	if err != nil {
+		return Document{}, err
+	}
+	return Document{Facts: facts, Corrections: n}, nil
+}
+
+func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
 	// Strip BOM / leading junk before the first '<' (seen in older CH dumps).
 	data = stripXMLPreamble(data)
 
@@ -223,7 +252,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 				qname := attrAny(t, "name")
 				nsURI, badPrefix := inlineNamespace(qname, ns)
 				if badPrefix != "" {
-					return nil, errUndeclaredPrefix(sourceFile, qnameLocal(qname), badPrefix)
+					return nil, 0, errUndeclaredPrefix(sourceFile, qnameLocal(qname), badPrefix)
 				}
 				pf := pendingFact{
 					Name:        qname,
@@ -254,7 +283,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 				// is left as the prefix string.
 				nsURI, badPrefix := classicNamespace(space, ns)
 				if badPrefix != "" {
-					return nil, errUndeclaredPrefix(sourceFile, local, badPrefix)
+					return nil, 0, errUndeclaredPrefix(sourceFile, local, badPrefix)
 				}
 				unitRef := attrAny(t, "unitRef")
 				decimals := attrAny(t, "decimals")
@@ -413,6 +442,14 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 	// Fallback company id from filename (e.g. 03024914_aa_2023-03-13.xhtml)
 	fileCompany := companyFromFilename(sourceFile)
 
+	var prodName, prodVersion string
+	for i := range facts {
+		noteProducerFact(qnameLocal(facts[i].Name), facts[i].Value, facts[i].Format, &prodName, &prodVersion)
+	}
+	// Known CCH headcount scale. Other producers are left spec-correct.
+	gate := cchEmployeeProducer(prodName, prodVersion, data)
+	corrections := 0
+
 	out := make([]fact.Fact, 0, len(facts))
 	for _, pf := range facts {
 		if pf.Name == "" {
@@ -452,12 +489,17 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 
 		val := pf.Value
 		if pf.IsNumeric {
-			val = normaliseNumeric(val, pf.Scale, pf.Sign, pf.Format)
+			scale := pf.Scale
+			if gate && cchCorrectEmployeeScale(qnameLocal(pf.Name), pf.Scale, unit, pf.Value, pf.Format, pf.Sign) {
+				scale = "0"
+				corrections++
+			}
+			val = normaliseNumeric(val, scale, pf.Sign, pf.Format)
 		} else {
 			var err error
 			val, err = normaliseNonNumeric(val, pf.Format)
 			if err != nil {
-				return nil, errDateTransform(sourceFile, qnameLocal(pf.Name), pf.Format, val, err)
+				return nil, 0, errDateTransform(sourceFile, qnameLocal(pf.Name), pf.Format, val, err)
 			}
 		}
 
@@ -480,10 +522,10 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error)
 	}
 
 	if len(out) == 0 {
-		return nil, errNoFacts(sourceFile)
+		return nil, 0, errNoFacts(sourceFile)
 	}
 	backfillCompanyNumber(out)
-	return out, nil
+	return out, corrections, nil
 }
 
 func isIX(space string) bool {
@@ -986,7 +1028,7 @@ func documentNamespaces(s string) map[string]string {
 	return ns
 }
 
-func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, error) {
+func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
 	data = stripXMLPreamble(data)
 	s := string(data)
 	docNS := documentNamespaces(s)
@@ -1045,8 +1087,12 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 	// would stop at the first close and drop the outer ids.
 	continuations, contErr := indexContinuations(s)
 	if contErr != nil {
-		return nil, fmt.Errorf("%s: %w", sourceFile, contErr)
+		return nil, 0, fmt.Errorf("%s: %w", sourceFile, contErr)
 	}
+
+	prodName, prodVersion := markupProducer(s, continuations)
+	gate := cchEmployeeProducer(prodName, prodVersion, data)
+	corrections := 0
 
 	collect := func(attrs, body string, numeric bool) {
 		if nsErr != nil || dateErr != nil {
@@ -1116,7 +1162,12 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 		decimals := ""
 		if numeric {
 			decimals = am["decimals"]
-			val = normaliseNumeric(val, scale, sign, format)
+			scaleUsed := scale
+			if gate && cchCorrectEmployeeScale(qnameLocal(name), scale, unit, val, format, sign) {
+				scaleUsed = "0"
+				corrections++
+			}
+			val = normaliseNumeric(val, scaleUsed, sign, format)
 		} else {
 			var nerr error
 			val, nerr = normaliseNonNumeric(val, format)
@@ -1153,17 +1204,17 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, erro
 	}
 
 	if nsErr != nil {
-		return nil, nsErr
+		return nil, 0, nsErr
 	}
 	if dateErr != nil {
-		return nil, dateErr
+		return nil, 0, dateErr
 	}
 	if len(out) == 0 {
-		return nil, errNoFacts(sourceFile)
+		return nil, 0, errNoFacts(sourceFile)
 	}
 
 	backfillCompanyNumber(out)
-	return out, nil
+	return out, corrections, nil
 }
 
 func parseAttrs(s string) map[string]string {

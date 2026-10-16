@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- CCH Accounts Production 2025.200 and later, and iXBRL Review & Tag, tag average employee headcounts with `scale="-2"`, so a displayed 549 was stored as 5.49. Those pure-unit integer headcounts are now the displayed number. Other producers, percentages, and monetary facts are unchanged. The CSV columns are unchanged. The `done:` line includes `corrections=N`.
+
 ## [0.4.4] - 2026-10-16
 
 ### Added

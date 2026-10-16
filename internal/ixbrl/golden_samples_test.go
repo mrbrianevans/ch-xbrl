@@ -182,16 +182,16 @@ func TestGolden_03024914_Monahans(t *testing.T) {
 // Hand-read from samples/09652677_aa_2026-03-25.xhtml (AZETS AUDIT SERVICES LIMITED).
 // Contexts (from file): C = 2024-07-01..2025-06-30, F = 2023-07-01..2024-06-30,
 // B = instant 2025-06-30, E = instant 2024-06-30, D = instant 2023-06-30.
-// Employees use scale="-2" with display digits 3 and 2 → XBRL values 0.03 and 0.02.
+// CCH Accounts Production 2025.300 tags the headcounts 3 and 2 with scale="-2".
+// The displayed integers are the values. See docs/edge-cases.md.
 func TestGolden_09652677_Azets(t *testing.T) {
 	facts := loadSample(t, "09652677_aa_2026-03-25.xhtml")
 	assertGoldens(t, facts, "09652677", []goldenFact{
 		{concept: "UKCompaniesHouseRegisteredNumber", periodStart: "2024-07-01", periodEnd: "2025-06-30", value: "09652677"},
 		{concept: "EntityCurrentLegalOrRegisteredName", periodStart: "2024-07-01", periodEnd: "2025-06-30", value: "AZETS AUDIT SERVICES LIMITED"},
 		{concept: "EntityDormantTruefalse", periodStart: "2024-07-01", periodEnd: "2025-06-30", value: "false"},
-		// scale -2 applied
-		{concept: "AverageNumberEmployeesDuringPeriod", periodStart: "2024-07-01", periodEnd: "2025-06-30", value: "0.03", unitSubstr: "pure"},
-		{concept: "AverageNumberEmployeesDuringPeriod", periodStart: "2023-07-01", periodEnd: "2024-06-30", value: "0.02", unitSubstr: "pure"},
+		{concept: "AverageNumberEmployeesDuringPeriod", periodStart: "2024-07-01", periodEnd: "2025-06-30", value: "3", unitSubstr: "pure"},
+		{concept: "AverageNumberEmployeesDuringPeriod", periodStart: "2023-07-01", periodEnd: "2024-06-30", value: "2", unitSubstr: "pure"},
 		// P&L
 		{concept: "ProfitLossOnOrdinaryActivitiesBeforeTax", periodStart: "2024-07-01", periodEnd: "2025-06-30", value: "25620", unitSubstr: "GBP"},
 		{concept: "ProfitLossOnOrdinaryActivitiesBeforeTax", periodStart: "2023-07-01", periodEnd: "2024-06-30", value: "34070", unitSubstr: "GBP"},
