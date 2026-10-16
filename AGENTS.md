@@ -44,6 +44,7 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
 | Concept priority lives in **`concept_map.csv`**, not hard-coded Go | Curated in git; change without rebuild |
 | `company_number` is a **string** and may contain letters (`SC`, `NI`, `OC`, …) | Do not store, parse, or cast it as an integer or as digits-only |
+| Concept lookup key is **namespace + local name** | Dated UK namespaces keep one set of declaration attributes per concept. `schemaRef` stays off the fact row. Evidence and the re-check: [`docs/taxonomy-lookup.md`](docs/taxonomy-lookup.md) |
 
 Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Use `verify/stream-read-xbrl/` (the published package + DuckDB pivot) as a soft oracle only.
 
@@ -99,6 +100,7 @@ LICENSE           MIT (first-party code; samples are not MIT)
 docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
 docs/design.md    pipeline, layout, build-from-source
 docs/edge-cases.md  real archive inputs that must stay documented and tested
+docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
 AGENTS.md         this file
 README.md         user getting started (releases)
 ```

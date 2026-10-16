@@ -58,6 +58,8 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 | `source_file` | Archive member or basename |
 | `decimals` | Raw iXBRL `decimals` (`INF` kept); empty if absent |
 
+Join taxonomy attributes on `namespace` and `concept`. The CSV has no `schemaRef` column. Evidence: [`docs/taxonomy-lookup.md`](./docs/taxonomy-lookup.md).
+
 ## Licence
 
 [MIT](./LICENSE). Filings you extract (Companies House / `samples/`) are **not** MIT — typically OGL; see [`samples/NOTICE`](./samples/NOTICE).
