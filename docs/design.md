@@ -44,6 +44,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 ### Constraints
 
 - Extract: instance XML → CSV; no taxonomy fetch, linkbases, or validation.
+- Instance XML is tokenised by `internal/ixbrl/xmlscan`, not `encoding/xml`. It gives the tokens `encoding/xml`'s non-strict decoder gave (HTML entities, no void-element auto-close, UTF-8 or ASCII) and rejects the same documents. Its parity tests compare the two on every sample, by fuzzing, and on local archives (`CH_XBRL_PARITY_ZIPS`). Keep that parity when changing the tokeniser. Contract, tests and performance: [tokeniser.md](./tokeniser.md).
 - A concept is `namespace` plus the local name in `concept`. The fact row does not carry `schemaRef`. See [taxonomy-lookup.md](./taxonomy-lookup.md).
 - Go ↔ DuckDB is **CSV**; final artefact is **Parquet**.
 - Taxonomy processing is decoupled from the instance parser.
@@ -51,7 +52,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 - Instants: `period_start = period_end`. Those columns are the fact's context period. `BalanceSheetDate` in `value` is the period-end fact.
 - A date format writes `value` as the registry form (`YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD`). No date format leaves the text. A date that cannot be transformed fails that member and contributes no facts.
 - CCH Accounts Production and iXBRL Review & Tag tag some employee headcounts with `scale="-2"`. Those pure-unit integer displays are stored as the displayed number. A positive headcount tagged `sign="-"` is stored as that positive number. The `done:` line includes `corrections`. Other facts keep the tagged sign and scale. See [edge-cases.md](./edge-cases.md).
-- The `done:` line includes `files_lenient`: members that entered the regex fallback, including one that then failed.
+- A document the tokeniser rejects fails the member with an `XML syntax error … in <file>`. There is no regex fallback parser.
 - The fact CSV has no company-number column. `source_file` is the basename (including a tar member stored as `./name`) or the outer package name. See [cli-contract.md](./cli-contract.md).
 - A member with no facts is a parse error. Known archive edge cases, including where they were found: [edge-cases.md](./edge-cases.md).
 
@@ -61,7 +62,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 cmd/ch-xbrl/       stream zip / tar.zst / instance / directory / stdin → facts CSV
 cmd/taxonomy/      ch-xbrl-taxonomy -o DIR → DIR/concepts.csv (not committed)
 cmd/mksample/      pack samples/ → sample.tar.zst
-internal/          ixbrl, archive, fact, csvout
+internal/          ixbrl (with ixbrl/xmlscan, the XML tokeniser), archive, fact, csvout
 mapping/           concept_map.csv
 sql/               DuckDB transforms (concept map pivot; not the taxonomy join)
 samples/           example iXBRL and edge-case filings (OGL; samples/NOTICE)
@@ -73,6 +74,7 @@ docs/design.md     this file
 docs/edge-cases.md real archive inputs that must stay documented and tested
 docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
 docs/benchmarking.md  parser benchmarks and CPU profiles (samples/ only)
+docs/tokeniser.md  XML tokeniser: contract, parity tests, performance
 ```
 
 ## Build from source

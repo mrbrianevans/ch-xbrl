@@ -64,6 +64,7 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 |-----------|----------|-------|
 | Corrupt member `Prod224_0088_08972528_20200331.xml` (binary, not XML; parse error) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_ContinueOnErrorSkipsBadMember` |
 | Placeholder member `Prod224_0088_11426842_20200630.xml` (`ATTACHMENTPLACEHOLDER127319911`; parse error, not a successful empty file) | [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-March2021.zip) | `TestParseKnownArchiveAnomalies`, `TestRun_AttachmentPlaceholderIsAnError` |
+| Malformed XML `Prod224_8998_03552913_20080430.xml`, `Prod224_8998_03009032_20080131.xml` (blank lines inside tags), `Prod224_9956_06715582_20100331.xml` (start of document missing): `XML syntax error`, no regex fallback | [Accounts_Monthly_Data-JanuaryToDecember2008.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-JanuaryToDecember2008.zip), [Accounts_Monthly_Data-July2010.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-July2010.zip) | `TestParseKnownArchiveAnomalies`, `TestMalformedXMLFailsMember`, `TestRun_MalformedXMLIsMemberError` |
 | Legal name in `xbrli:identifier` (`BEST MONEY HOLDING LIMITED` stays off the fact row; `CompaniesHouseRegisteredNumber` remains `06651382`) | [Accounts_Monthly_Data-April2010.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip) | `TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName` |
 | Short CRNs in the identifier and `UKCompaniesHouseRegisteredNumber` (filename keeps the 8-character number; no `company_number` column) | [Accounts_Bulk_Data-2026-10-23.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-23.zip) | `TestRun_ShortCompanyNumbers`, `TestRun_SourceFileSameAcrossInputs`, `TestConsumerCompanyNumberRegex` |
 | CIC wrapper `samples/Prod223_4320_05016384_20251231_CIC.zip` (one filing: `accounts/` only, `source_file` is the zip name; nested the same) | [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip) | `TestRun_EdgeSampleCICZipDirect`, `TestRun_EdgeSampleCICZipNested`, `TestStreamLocalNestedZip`, `TestStreamNestedZipKeepsAccountsSkipsCIC34`, `TestStreamNestedZipSkipsDeeperZip`, `TestStreamRemoteNestedZip`, `TestRun_NestedZipFactsMatchDirect`, `TestRun_NestedZipSkipsCIC34`, `TestRun_NestedZipSkipsDeeperZip` |
@@ -79,7 +80,7 @@ These are already recorded. Keep the write-up, the sample, and the tests if you 
 | Fact inside `ix:continuation` `samples/01922327_aa_2025-12-31.xhtml` (`ProfessionalConsultancyFees` `107816000`, `decimals` `-3`) | [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip) member `Prod224_2608_01922327_20251231.html` | `TestFactInsideContinuation`, `TestRun_EdgeSampleFactInsideContinuation` |
 | Nested `ix:continuation` `samples/07068009_aa_2025-12-31.xhtml` (date facts `2025-12-31`) | same August 2026 monthly, member `Prod224_2608_07068009_20251231.html` | `TestNestedContinuations`, `TestRun_EdgeSampleNestedContinuations` |
 | Double quotes kept in non-numeric text `samples/00340611_aa_2026-01-31.xhtml` (FRS 102 title stays quoted) | [Accounts_Monthly_Data-August2026.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-August2026.zip) member `Prod224_2608_00340611_20260131.html` | `TestQuotesKeptInSailplanesComplianceStatement`, `TestRun_EdgeSampleQuotesKept` |
-| `&#160;` in dates `samples/Prod223_4327_12874000_20260831.html` (`encoding='ASCII'`; publication date `2026-09-05`) | [Accounts_Bulk_Data-2026-10-13.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-13.zip) member `Prod223_4327_12874000_20260831.html` | `TestASCIICharsetDecodesNBSPDate`, `TestLenientNBSPDate`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace` |
+| `&#160;` in dates `samples/Prod223_4327_12874000_20260831.html` (`encoding='ASCII'`; publication date `2026-09-05`) | [Accounts_Bulk_Data-2026-10-13.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-13.zip) member `Prod223_4327_12874000_20260831.html` | `TestASCIICharsetDecodesNBSPDate`, `TestUnsupportedCharsetFailsMember`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace` |
 | CCH employee headcount `scale="-2"` (displayed integer kept; `corrections=` on the `done:` line; trimmed `samples/Prod223_4320_13368913_20251231.html`, `00719324`, `07640901`, `01154766`) | [Accounts_Bulk_Data-2026-10-02.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-02.zip) | `TestCCHEmployeeScaleSamples`, `TestRun_CCHEmployeeScale`, `TestRun_CCHEmployeeScaleInputs`, `TestRun_CCHEmployeeScaleContinueOnError` |
 | Positive employee headcount `sign="-"` (displayed magnitude kept; same `corrections=` count; trimmed `samples/Prod224_2266_02955230_20230930.html`) | [Accounts_Monthly_Data-June2024.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-June2024.zip) | `TestEmployeeSignDroppedWhenDisplayPositive`, `TestCCHEmployeeScaleSamples`, `TestRun_EmployeeSignDropped` |
 | `<col> </col>` `samples/Prod224_0042_02952712_20161231.html` (void element with a space; nested ix text kept; typed member `1`) | [Accounts_Monthly_Data-May2017.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-May2017.zip) | `TestColWithSpaceStaysOnXMLPath`, `TestParseMay2017ColSpaceSample`, `TestRun_EdgeSampleColWithSpace` |
@@ -91,6 +92,7 @@ cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdi
 cmd/taxonomy/     ch-xbrl-taxonomy -o DIR — pinned suites → DIR/concepts.csv (not committed)
 cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst (gitignored)
 internal/ixbrl/   iXBRL parser
+internal/ixbrl/xmlscan/  zero-copy XML tokeniser; same tokens and rejections as encoding/xml (parity tests)
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
 internal/csvout/  concurrent CSV writer
@@ -106,6 +108,7 @@ docs/design.md    pipeline, layout, build-from-source
 docs/edge-cases.md  real archive inputs that must stay documented and tested
 docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
 docs/benchmarking.md  parser benchmarks and CPU profiles (samples/ only)
+docs/tokeniser.md  xmlscan contract (encoding/xml parity), tests, performance, dead ends
 AGENTS.md         this file
 README.md         user getting started (releases)
 ```
@@ -159,6 +162,10 @@ README.md         user getting started (releases)
 go test ./...
 # parser benchmark (not part of go test ./...): docs/benchmarking.md
 # go test -bench . -benchmem -cpuprofile cpu.out ./internal/ixbrl/
+# tokeniser parity with encoding/xml: go test runs the samples and hand cases; also fuzz,
+# and compare every member of local zips after changing internal/ixbrl/xmlscan:
+# go test -run '^$' -fuzz FuzzParity -fuzztime 10m ./internal/ixbrl/xmlscan/
+# CH_XBRL_PARITY_ZIPS=/data/Accounts_Monthly_Data-May2017.zip go test ./internal/ixbrl/xmlscan/ -run TestParityArchives -v -timeout 60m
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -o data
 go run ./cmd/ch-xbrl -V

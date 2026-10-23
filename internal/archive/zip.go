@@ -10,14 +10,27 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
+// localZipWorkers is how many goroutines read and inflate members of a local
+// bulk zip. One goroutine inflates about 280 MB/s of iXBRL on a laptop core,
+// which is slower than the parse workers it feeds. Workers block on the
+// member channel when parsing is the slower side. Half of GOMAXPROCS keeps
+// up with parsing; one per CPU added scheduler contention without speeding
+// up the run. Tests may lower it; they must restore the previous value.
+var localZipWorkers = max(1, runtime.GOMAXPROCS(0)/2)
+
 // streamZip opens a local or remote ZIP and yields iXBRL/XBRL members.
 //
-// Local: sequential archive/zip over a file ReaderAt.
+// Local: archive/zip over a file ReaderAt, members inflated in parallel.
 // Remote: central directory once, then parallel large HTTP Range batches
 // (CloudFront/S3) — not one request per ReadAt/member.
+//
+// Members are emitted in whatever order the workers finish them.
 func streamZip(ctx context.Context, source string, out chan<- Member) (int, error) {
 	if isRemote(source) {
 		return streamZipRemote(ctx, source, out)
@@ -43,53 +56,87 @@ func streamZipLocal(ctx context.Context, source string, out chan<- Member) (int,
 		return emitPackage(ctx, instanceName(source), zr, sel, false, out)
 	}
 
-	n := 0
+	parent := ctx
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	workers := max(localZipWorkers, 1)
+	jobs := make(chan *zip.File, workers)
+	var (
+		wg       sync.WaitGroup
+		errOnce  sync.Once
+		firstErr error
+		emitted  atomic.Int64
+	)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for f := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				added, err := readLocalMember(ctx, f, out)
+				if err != nil {
+					errOnce.Do(func() {
+						firstErr = err
+						cancel()
+					})
+					return
+				}
+				emitted.Add(int64(added))
+			}
+		}()
+	}
+
 	for _, f := range zr.File {
-		if err := ctx.Err(); err != nil {
-			return n, err
+		if ctx.Err() != nil {
+			break
 		}
 		if f.FileInfo().IsDir() {
 			continue
 		}
 		name := filepath.ToSlash(f.Name)
-		nested := wantNestedZip(name)
-		if !nested && !wantMember(name) {
+		if !wantNestedZip(name) && !wantMember(name) {
 			continue
 		}
-		if f.UncompressedSize64 > uint64(maxMemberSize) {
-			added, err := emitTooBig(ctx, name, out)
-			if err != nil {
-				return n, err
-			}
-			n += added
-			continue
+		select {
+		case <-ctx.Done():
+		case jobs <- f:
 		}
-		content, err := readZipFile(f)
-		if errors.Is(err, errMemberTooBig) {
-			added, emitErr := emitTooBig(ctx, name, out)
-			if emitErr != nil {
-				return n, emitErr
-			}
-			n += added
-			continue
-		}
-		if err != nil {
-			return n, err
-		}
-		if nested {
-			added, err := openZipNamedMember(ctx, name, content, out)
-			if err != nil {
-				return n, err
-			}
-			n += added
-			continue
-		}
-		if err := emit(ctx, out, name, content); err != nil {
-			return n, err
-		}
-		n++
 	}
-	return n, nil
+	close(jobs)
+	wg.Wait()
+
+	n := int(emitted.Load())
+	if firstErr != nil {
+		return n, firstErr
+	}
+	return n, parent.Err()
+}
+
+// readLocalMember reads, inflates and emits one bulk member. A member over
+// the size limit, and a .zip-named member that is not a zip or an instance,
+// are member errors. A read error is returned and stops the stream.
+func readLocalMember(ctx context.Context, f *zip.File, out chan<- Member) (int, error) {
+	name := filepath.ToSlash(f.Name)
+	if f.UncompressedSize64 > uint64(maxMemberSize) {
+		return emitTooBig(ctx, name, out)
+	}
+	content, err := readZipFile(f)
+	if errors.Is(err, errMemberTooBig) {
+		return emitTooBig(ctx, name, out)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if wantNestedZip(name) {
+		return openZipNamedMember(ctx, name, content, out)
+	}
+	if err := emit(ctx, out, name, content); err != nil {
+		return 0, err
+	}
+	return 1, nil
 }
 
 // errMemberTooBig is a per-file size failure. Callers emit it as Member.Err.

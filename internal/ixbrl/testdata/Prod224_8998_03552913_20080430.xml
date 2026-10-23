@@ -1,0 +1,241 @@
+<?xml version="1.0" ?>
+<?xml-stylesheet type="text/xsl" href="http://www.companieshouse.gov.uk/
+
+ef/xbrl/uk/fr/gaap/ae/2008-04-06/stylesheet/CH-AE-stylesheet.xsl" ?>
+
+
+
+
+<xbrl xmlns='http://www.xbrl.org/2003/instance' xmlns:xsi='http://www.w3
+
+.org/2001/XMLSchema-instance' xmlns:ae='http://www.companieshouse.gov.uk/e
+
+f/xbrl/uk/fr/gaap/ae/2008-04-06' xmlns:gc='http://www.xbrl.org/uk/fr/gcd/2
+
+004-12-01' xmlns:html='http://www.w3.org/1999/xhtml'                     0              xmlns:iso4217='http://www.xbrl.org/2003/iso4217' xmlns:link='http://www.xbrl.org/2003/linkbase' xmlns:pt='http://www.xbrl.org/uk/fr
+
+/gaap/pt/2004-12-01' xmlns:xbrli='http://www.xbrl.org/2003/instance' xmlns
+
+:xlink='http://www.w3.org/1999/xlink'>
+  <link:schemaRef xlink:href='http://www.companieshouse.gov.uk/ef/xbrl/uk/
+
+fr/gaap/ae/2008-04-06/uk-gaap-ae-2008-04-06.xsd' xlink:type='simple'  /> <
+
+ae:CompanyNotDormant contextRef='y2003'>true</ae:CompanyNotDormant> <gc:En
+
+tityNames>
+    <gc:EntityCurrentLegalName contextRef='y2003'>CR Yachts Limited</gc:En
+
+tityCurrentLegalName>
+ </gc:EntityNames>          <ae:CompaniesHouseRegisteredNumber contextRef='y2003'>3552913</ae:CompaniesHouseRegisteredNumber>
+  <ae:CompaniesHouseDocumentAuthentication contextRef='y2003'>      </ae:C
+
+ompaniesHouseDocumentAuthentication>                                       0             <gc:BalanceSheetDate contextRef='e2003'>2008-04-30</gc:Balanc
+
+eSheetDate>
+<pt:NetAssetsLiabilitiesIncludingPensionAssetLiability precision='4' conte
+
+xtRef='e2002' unitRef='GBP'>-336</pt:NetAssetsLiabilitiesIncludingPensio
+
+nAssetLiability>
+<pt:NetAssetsLiabilitiesIncludingPensionAssetLiability precision='5' conte
+
+xtRef='e2003' unitRef='GBP'>-1062</pt:NetAssetsLiabilitiesIncludingPensi
+
+onAssetLiability>
+<pt:CurrentAssets precision='3' contextRef='e2002' unitRef='GBP'>611</
+
+pt:CurrentAssets>
+<pt:CurrentAssets precision='1' contextRef='e2003' unitRef='GBP'>0</pt
+
+:CurrentAssets>
+<pt:CashBankInHand precision='3' contextRef='e2002' unitRef='GBP'>611<
+
+/pt:CashBankInHand>
+<pt:CashBankInHand precision='1' contextRef='e2003' unitRef='GBP'>0</p
+
+t:CashBankInHand>
+<pt:AccrualsDeferredIncomeWithinOneYear precision='3' contextRef='e2002'
+
+ unitRef='GBP'>750</pt:AccrualsDeferredIncomeWithinOneYear>
+<pt:AccrualsDeferredIncomeWithinOneYear precision='3' contextRef='e2003'
+
+ unitRef='GBP'>499</pt:AccrualsDeferredIncomeWithinOneYear>
+<pt:OtherCreditorsDueWithinOneYear precision='3' contextRef='e2002' unit
+
+Ref='GBP'>197</pt:OtherCreditorsDueWithinOneYear>
+<pt:OtherCreditorsDueWithinOneYear precision='3' contextRef='e2003' unit
+
+Ref='GBP'>563</pt:OtherCreditorsDueWithinOneYear>
+<pt:CreditorsDueWithinOneYearTotalCurrentLiabilities precision='3' context
+
+Ref='e2002' unitRef='GBP'>947</pt:CreditorsDueWithinOneYearTotalCurrentL
+
+iabilities>
+<pt:CreditorsDueWithinOneYearTotalCurrentLiabilities precision='4' context
+
+Ref='e2003' unitRef='GBP'>1062</pt:CreditorsDueWithinOneYearTotalCurrent
+
+Liabilities>
+<pt:NetCurrentAssetsLiabilities precision='4' contextRef='e2002' unitRef
+
+='GBP'>-336</pt:NetCurrentAssetsLiabilities>
+<pt:NetCurrentAssetsLiabilities precision='5' contextRef='e2003' unitRef
+
+='GBP'>-1062</pt:NetCurrentAssetsLiabilities>
+<pt:TotalAssetsLessCurrentLiabilities precision='4' contextRef='e2002' u
+
+nitRef='GBP'>-336</pt:TotalAssetsLessCurrentLiabilities>
+<pt:TotalAssetsLessCurrentLiabilities precision='5' contextRef='e2003' u
+
+nitRef='GBP'>-1062</pt:TotalAssetsLessCurrentLiabilities>
+<pt:CalledUpShareCapital precision='2' contextRef='e2002' unitRef='GBP
+
+'>10</pt:CalledUpShareCapital>
+<pt:CalledUpShareCapital precision='2' contextRef='e2003' unitRef='GBP
+
+'>10</pt:CalledUpShareCapital>
+<pt:ProfitLossAccountReserve precision='4' contextRef='e2002' unitRef='GBP'>-346</pt:ProfitLossAccountReserve>
+<pt:ProfitLossAccountReserve precision='5' contextRef='e2003' unitRef='GBP'>-1072</pt:ProfitLossAccountReserve>
+<pt:ShareholderFunds precision='4' contextRef='e2002' unitRef='GBP'>-3
+
+36</pt:ShareholderFunds>
+<pt:ShareholderFunds precision='5' contextRef='e2003' unitRef='GBP'>-1
+
+062</pt:ShareholderFunds>
+<pt:EquityAuthorisedDetails>
+    <pt:TypeOrdinaryShare contextRef='y2003'>Ordinary </pt:TypeOrdinarySha
+
+re>
+    <pt:NumberOrdinarySharesAuthorised precision='INF' contextRef='e2003
+
+' unitRef='shares'>100</pt:NumberOrdinarySharesAuthorised>
+    <pt:ParValueOrdinaryShare precision='INF' contextRef='y2003' unitRef
+
+='GBP'>1</pt:ParValueOrdinaryShare>
+    <pt:ValueOrdinarySharesAuthorised precision='INF' contextRef='e2003'
+
+ unitRef='GBP'>100</pt:ValueOrdinarySharesAuthorised>
+    <pt:ValueOrdinarySharesAuthorised precision='INF' contextRef='e2002'
+
+ unitRef='GBP'>100</pt:ValueOrdinarySharesAuthorised>
+  </pt:EquityAuthorisedDetails>
+<pt:DetailsOrdinarySharesAllotted>
+    <pt:TypeOrdinaryShare contextRef='y2003'>Ordinary </pt:TypeOrdinarySha
+
+re>
+    <pt:ParValueOrdinaryShare precision='INF' contextRef='y2003' unitRef
+
+='GBP'>1</pt:ParValueOrdinaryShare>
+    <pt:ValueOrdinarySharesAllotted precision='INF' contextRef='e2003' u
+
+nitRef='GBP'>10</pt:ValueOrdinarySharesAllotted>
+    <pt:ValueOrdinarySharesAllotted precision='INF' contextRef='e2002' u
+
+nitRef='GBP'>10</pt:ValueOrdinarySharesAllotted>
+    <pt:NumberOrdinarySharesAllotted precision='INF' contextRef='e2003'0unitRef='shares'>10</pt:NumberOrdinarySharesAllotted>
+  </pt:DetailsOrdinarySharesAllotted>
+<ae:CompanyEntitledToExemptionUnderSection249A1CompaniesAct1985 contextRef='y2003'>true</ae:CompanyEntitledToExemptionUnderSection249A1CompaniesAct1
+
+985>
+  <ae:MembersHaveNotRequiredCompanyToObtainAnAudit contextRef='y2003'>true
+
+</ae:MembersHaveNotRequiredCompanyToObtainAnAudit>
+  <ae:DirectorsAcknowledgeTheirResponsibilitiesUnderCompaniesAct contextRef='y2003'>true</ae:DirectorsAcknowledgeTheirResponsibilitiesUnderCompaniesA
+
+ct>
+  <ae:AccountsAreInAccordanceWithSpecialProvisionsCompaniesActRelatingToSmal
+
+lCompanies contextRef='y2003'>true</ae:AccountsAreInAccordanceWithSpecialP
+
+rovisionsCompaniesActRelatingToSmallCompanies>
+  <pt:DateApproval contextRef='e2003'>2008-08-08</pt:DateApproval>
+  <pt:ApprovalDetails>
+    <pt:NameApprovingDirector contextRef='y2003'>D L Nottage</pt:NameAppro
+
+vingDirector>
+  </pt:ApprovalDetails>
+<ae:AccountingPolicy>
+<ae:ContentAccountingPolicy contextRef='y2003'>The accounts have been prep
+
+ared under the historical cost convention and in accordance with the Financi
+
+al Reporting Standards for Small Entities (effective January 2007)</ae:Conte
+
+ntAccountingPolicy>
+  </ae:AccountingPolicy>
+<ae:AccountingPolicy>
+    <ae:TitleAccountingPolicy contextRef='y2003'>Turnover</ae:TitleAccount
+
+ingPolicy>
+    <ae:ContentAccountingPolicy contextRef='y2003'>Turnover represents the
+
+ invoiced value of goods and services supplied by the company, net of VAT an
+
+d trade discounts.</ae:ContentAccountingPolicy>
+  </ae:AccountingPolicy>
+<ae:AccountingPolicy>
+    <ae:TitleAccountingPolicy contextRef='y2003'>Foreign Currencies</ae:Ti
+
+tleAccountingPolicy>
+    <ae:ContentAccountingPolicy contextRef='y2003'>Transactions in foreign
+
+ currencies are recorded at the rate ruling at the date of the transaction.0Monetary assets and liabilities denominated in foreign currencies are transl
+
+ated at the rate of exchange ruling at the balance sheet date. All differenc
+
+es are taken to the profit and loss account.</ae:ContentAccountingPolicy>
+  </ae:AccountingPolicy>
+<unit id='shares'>
+    <measure>xbrli:shares</measure>
+  </unit>
+  <unit id='GBP'>
+    <measure>iso4217:GBP</measure>
+  </unit>
+  <unit id='pure'>
+    <measure>xbrli:pure</measure>
+  </unit>
+<context id='y2003'>
+    <entity>
+      <identifier scheme='Abb/results'>CR Yachts Limited</identifier>
+    </entity>
+    <period>
+      <startDate>2007-05-01</startDate>
+      <endDate>2008-04-30</endDate>
+    </period>
+  </context>
+<context id='y2002'>
+    <entity>
+      <identifier scheme='Abb/results'>CR Yachts Limited</identifier>
+    </entity>
+    <period>
+      <startDate>2006-05-01</startDate>
+      <endDate>2007-04-30</endDate>
+    </period>
+  </context>
+<context id='s2002'>
+    <entity>
+      <identifier scheme='Abb/results'>CR Yachts Limited</identifier>
+    </entity>
+    <period>
+      <instant>2006-05-01</instant>
+    </period>
+  </context>
+<context id='e2002'>
+    <entity>
+      <identifier scheme='Abb/results'>CR Yachts Limited</identifier>
+    </entity>
+    <period>
+      <instant>2007-04-30</instant>
+    </period>
+  </context>
+<context id='e2003'>
+    <entity>
+      <identifier scheme='Abb/results'>CR Yachts Limited</identifier>
+    </entity>
+    <period>
+      <instant>2008-04-30</instant>
+    </period>
+  </context>
+</xbrl>
+

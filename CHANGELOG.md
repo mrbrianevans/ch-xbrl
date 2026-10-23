@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-23
+
+### Changed
+
+- Faster parsing. Instance XML is read by a new tokeniser (`internal/ixbrl/xmlscan`) instead of `encoding/xml`. It gives the same tokens and rejects the same documents, so output is unchanged: on one monthly archive per two years from 2008 to 2025 (1.5 million members) the fact CSV is identical to 0.5.0. One document parses about 6.5× faster on one core and allocates about 16× fewer objects. Details: `docs/tokeniser.md`.
+- Members of a local zip are inflated by several goroutines instead of one. With parsing cheaper, a single inflater had become the limit. A local monthly archive now takes about a third of the time (May 2017: 52-68 s down to 19-21 s on a laptop with `-workers 10`).
+
+### Removed
+
+- The regex fallback parser. A member the tokeniser rejects (truncated, damaged inside its tags, or declaring an encoding other than UTF-8 or ASCII) now fails with `XML syntax error … in <member>`, counts in `files_err`, and writes no rows. Before, the fallback re-read inline `ix:` facts from such a member. On the archives above, all 26 rejected members are classic XBRL that the fallback could not read, so they already failed with `no facts extracted`.
+- `files_lenient` on the `done:` line. It was outside the CLI contract.
+
 ## [0.5.0] - 2026-10-23
 
 ### Removed
@@ -152,7 +164,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.7...v0.5.0
 [0.4.7]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.5...v0.4.6

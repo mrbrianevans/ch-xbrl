@@ -5,18 +5,18 @@ package ixbrl
 import (
 	"bytes"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
-	"html"
 	"io"
 	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
+	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl/xmlscan"
 )
 
 // Well-known namespaces.
@@ -29,6 +29,7 @@ const (
 	nsXLink  = "http://www.w3.org/1999/xlink"
 	nsXMLNS  = "http://www.w3.org/2000/xmlns/"
 	nsXML    = "http://www.w3.org/XML/1998/namespace"
+	nsXHTML  = "http://www.w3.org/1999/xhtml"
 )
 
 type contextInfo struct {
@@ -119,23 +120,26 @@ func parseDocument(data []byte, sourceFile, onlyTarget string) (Document, error)
 	return Document{Facts: facts, Corrections: n}, nil
 }
 
+// scanners keeps tokenisers, and their buffers, between members. Nothing a
+// fact holds points into a scanner: names and values are copied out.
+var scanners = sync.Pool{New: func() any { return xmlscan.New(nil) }}
+
 func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
 	// Strip BOM / leading junk before the first '<' (seen in older CH dumps).
 	data = stripXMLPreamble(data)
 
-	dec := xml.NewDecoder(bytes.NewReader(data))
-	dec.Strict = false
-	dec.Entity = xml.HTMLEntity
-	// ASCII is a subset of UTF-8. Without this, encoding="ASCII" fails the
-	// first token and the whole member is parsed by the regex fallback, which
-	// used to leave &#160; in date text.
-	dec.CharsetReader = asciiCharsetReader
-	// AutoClose stays unset. xml.HTMLAutoClose is the void-element list
-	// (col, br, meta, …). The decoder EqualFolds the open element against
-	// that list on every token and, when the next token is not that
-	// element's end tag, invents one. `<col> </col>` is closed before the
-	// space; the real </col> then closes something else, and Token errors,
-	// so the member used to take the regex fallback. See docs/edge-cases.md.
+	// xmlscan gives the tokens encoding/xml's Decoder gave with Strict
+	// false, HTML entities, and an ASCII-only charset reader, and rejects
+	// the same documents. ASCII is a subset of UTF-8, so encoding="ASCII"
+	// is read as is and &#160; in a date is decoded (docs/edge-cases.md).
+	// There is no HTML void-element auto-close: `<col> </col>` is an
+	// ordinary element (docs/edge-cases.md).
+	sc := scanners.Get().(*xmlscan.Scanner)
+	sc.Reset(data)
+	defer func() {
+		sc.Reset(nil)
+		scanners.Put(sc)
+	}()
 
 	// prefix → namespace URI (document-level, updated as we go)
 	ns := map[string]string{}
@@ -148,7 +152,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	var inPeriod bool
 	var textBuf strings.Builder
 	var captureText bool
-	var lastStart xml.StartElement
+	var lastDim string     // dimension attr of the most recent start element
 	var explicitDim string // dimension attr while reading explicitMember text
 
 	// ix:continuation fragments (id → text + next continuedAt).
@@ -192,138 +196,135 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	var openStack []*openFrame
 
 	for {
-		tok, err := dec.Token()
+		kind, err := sc.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			// Recover: many CH files are not well-formed XML; try a lenient pass.
-			return parseLenient(data, sourceFile, onlyTarget)
+			// A document encoding/xml would reject fails the member. There
+			// is no second parser to fall back to.
+			return nil, 0, errSyntax(sourceFile, err)
 		}
 
-		switch t := tok.(type) {
-		case xml.StartElement:
-			mergeNS(ns, t)
-			local := t.Name.Local
-			space := t.Name.Space
-			lastStart = t
+		switch kind {
+		case xmlscan.StartElement:
+			mergeNS(ns, sc)
+			// local aliases the input; string(local) == "…" does not allocate.
+			local := sc.Local()
+			space := sc.Space()
+			ix := isIX(space)
+			lastDim = sc.Attr("dimension")
 
 			// ix:exclude hides its text from ancestor facts and continuations.
 			// A fact nested inside it is still its own frame.
-			if isIX(space) && local == "exclude" {
-				openStack = append(openStack, &openFrame{kind: openExclude, space: space, local: local})
+			if ix && string(local) == "exclude" {
+				openStack = append(openStack, &openFrame{kind: openExclude, space: space, local: string(local)})
 				continue
 			}
 
 			switch {
-			case isNS(space, nsXBRLI) && local == "context":
+			case isNS(space, nsXBRLI) && string(local) == "context":
 				curCtx = &contextInfo{
-					ID:         attrAny(t, "id"),
+					ID:         sc.Attr("id"),
 					Dimensions: map[string]string{},
 				}
 
-			case isNS(space, nsXBRLI) && local == "period":
+			case isNS(space, nsXBRLI) && string(local) == "period":
 				inPeriod = true
 
-			case isNS(space, nsXBRLDI) && local == "explicitMember" && curCtx != nil:
-				explicitDim = attrAny(t, "dimension")
+			case isNS(space, nsXBRLDI) && string(local) == "explicitMember" && curCtx != nil:
+				explicitDim = lastDim
 				captureText = true
 				textBuf.Reset()
-				lastStart = t
 
-			case isNS(space, nsXBRLDI) && local == "typedMember" && curCtx != nil:
+			case isNS(space, nsXBRLDI) && string(local) == "typedMember" && curCtx != nil:
 				// typed members: dimension attr + child element text
-				explicitDim = attrAny(t, "dimension")
-				captureText = true
-				textBuf.Reset()
-				lastStart = t
-
-			case isNS(space, nsXBRLI) && (local == "startDate" ||
-				local == "endDate" || local == "instant" || local == "measure"):
+				explicitDim = lastDim
 				captureText = true
 				textBuf.Reset()
 
-			case isNS(space, nsXBRLI) && local == "unit":
-				curUnit = &unitInfo{ID: attrAny(t, "id")}
+			case isNS(space, nsXBRLI) && (string(local) == "startDate" ||
+				string(local) == "endDate" || string(local) == "instant" || string(local) == "measure"):
+				captureText = true
+				textBuf.Reset()
 
-			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
-				qname := attrAny(t, "name")
+			case isNS(space, nsXBRLI) && string(local) == "unit":
+				curUnit = &unitInfo{ID: sc.Attr("id")}
+
+			case ix && (string(local) == "nonFraction" || string(local) == "nonNumeric"):
+				qname := sc.Attr("name")
 				nsURI, badPrefix := inlineNamespace(qname, ns)
 				if badPrefix != "" {
 					return nil, 0, errUndeclaredPrefix(sourceFile, qnameLocal(qname), badPrefix)
 				}
 				pf := pendingFact{
 					Name:        qname,
-					ContextRef:  attrAny(t, "contextRef"),
-					UnitRef:     attrAny(t, "unitRef"),
+					ContextRef:  sc.Attr("contextRef"),
+					UnitRef:     sc.Attr("unitRef"),
 					Namespace:   nsURI,
-					Scale:       attrAny(t, "scale"),
-					Sign:        attrAny(t, "sign"),
-					Format:      attrAny(t, "format"),
-					Decimals:    attrAny(t, "decimals"),
-					IsNumeric:   local == "nonFraction",
-					ContinuedAt: attrAny(t, "continuedAt"),
-					Target:      attrAny(t, "target"),
+					Scale:       sc.Attr("scale"),
+					Sign:        sc.Attr("sign"),
+					Format:      sc.Attr("format"),
+					Decimals:    sc.Attr("decimals"),
+					IsNumeric:   string(local) == "nonFraction",
+					ContinuedAt: sc.Attr("continuedAt"),
+					Target:      sc.Attr("target"),
 				}
-				// nilled / empty elements still count as facts
-				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
-					pf.Value = ""
-				}
+				// A nilled or empty element is still a fact. Its value is
+				// whatever text it holds when it closes.
 				// Nested ix:nonNumeric / ix:nonFraction (Workiva wraps one
 				// fact inside another). Each layer is a separate fact.
-				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
+				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: string(local)})
 
-			case isClassicItem(space, t):
+			case isClassicItem(space, sc):
 				// Non-inline XBRL: an item is an element with contextRef
 				// (tuple wrappers have no contextRef and are not facts).
-				// encoding/xml has already resolved the prefix. A blank
+				// The scanner has already resolved the prefix. A blank
 				// prefix is the in-scope default xmlns. An unbound prefix
 				// is left as the prefix string.
 				nsURI, badPrefix := classicNamespace(space, ns)
 				if badPrefix != "" {
-					return nil, 0, errUndeclaredPrefix(sourceFile, local, badPrefix)
+					return nil, 0, errUndeclaredPrefix(sourceFile, string(local), badPrefix)
 				}
-				unitRef := attrAny(t, "unitRef")
-				decimals := attrAny(t, "decimals")
+				unitRef := sc.Attr("unitRef")
+				decimals := sc.Attr("decimals")
 				pf := pendingFact{
-					Name:       local,
-					ContextRef: attrAny(t, "contextRef"),
+					Name:       string(local),
+					ContextRef: sc.Attr("contextRef"),
 					UnitRef:    unitRef,
 					Namespace:  nsURI,
-					Scale:      attrAny(t, "scale"),
-					Sign:       attrAny(t, "sign"),
-					Format:     attrAny(t, "format"),
+					Scale:      sc.Attr("scale"),
+					Sign:       sc.Attr("sign"),
+					Format:     sc.Attr("format"),
 					Decimals:   decimals,
-					IsNumeric:  unitRef != "" || decimals != "" || attrAny(t, "precision") != "",
+					IsNumeric:  unitRef != "" || decimals != "" || sc.Attr("precision") != "",
 				}
-				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
-					pf.Value = ""
-				}
-				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
+				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: string(local)})
 
-			case isIX(space) && local == "continuation":
+			case ix && string(local) == "continuation":
 				// Continuation of a prior fact (continuedAt chain).
 				// Nested continuations each keep their own frame.
 				openStack = append(openStack, &openFrame{
 					kind:     openContinuation,
-					contID:   attrAny(t, "id"),
-					contNext: attrAny(t, "continuedAt"),
+					contID:   sc.Attr("id"),
+					contNext: sc.Attr("continuedAt"),
 					space:    space,
-					local:    local,
+					local:    string(local),
 				})
 			}
 
-		case xml.CharData:
+		case xmlscan.CharData:
+			// Text outside any capture is never decoded.
 			if n := len(openStack); n > 0 {
-				openStack[n-1].buf.Write(t)
+				openStack[n-1].buf.Write(sc.Text())
 			} else if captureText {
-				textBuf.Write(t)
+				textBuf.Write(sc.Text())
 			}
 
-		case xml.EndElement:
-			local := t.Name.Local
-			space := t.Name.Space
-			if n := len(openStack); n > 0 && openStack[n-1].local == local && openStack[n-1].space == space {
+		case xmlscan.EndElement:
+			local := sc.Local()
+			space := sc.Space()
+			if n := len(openStack); n > 0 && openStack[n-1].local == string(local) && openStack[n-1].space == space {
 				fr := openStack[n-1]
 				openStack = openStack[:n-1]
 				raw := fr.buf.String()
@@ -354,7 +355,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			text := strings.TrimSpace(textBuf.String())
 
 			switch {
-			case isNS(space, nsXBRLI) && local == "context":
+			case isNS(space, nsXBRLI) && string(local) == "context":
 				if curCtx != nil && curCtx.ID != "" {
 					contexts[curCtx.ID] = curCtx
 				}
@@ -362,32 +363,32 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				inPeriod = false
 				explicitDim = ""
 
-			case isNS(space, nsXBRLI) && local == "period":
+			case isNS(space, nsXBRLI) && string(local) == "period":
 				inPeriod = false
 
-			case isNS(space, nsXBRLI) && local == "startDate" && curCtx != nil && inPeriod:
+			case isNS(space, nsXBRLI) && string(local) == "startDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodStart = text
-			case isNS(space, nsXBRLI) && local == "endDate" && curCtx != nil && inPeriod:
+			case isNS(space, nsXBRLI) && string(local) == "endDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodEnd = text
-			case isNS(space, nsXBRLI) && local == "instant" && curCtx != nil && inPeriod:
+			case isNS(space, nsXBRLI) && string(local) == "instant" && curCtx != nil && inPeriod:
 				// Instant: mirror date into both bounds (matches common wide-row grouping).
 				curCtx.PeriodEnd = text
 				curCtx.PeriodStart = text
 
-			case isNS(space, nsXBRLDI) && local == "explicitMember" && curCtx != nil:
+			case isNS(space, nsXBRLDI) && string(local) == "explicitMember" && curCtx != nil:
 				dim := explicitDim
 				if dim == "" {
-					dim = attrAny(lastStart, "dimension")
+					dim = lastDim
 				}
 				if dim != "" {
 					curCtx.Dimensions[qnameLocal(dim)] = qnameLocal(text)
 				}
 				explicitDim = ""
 
-			case isNS(space, nsXBRLDI) && local == "typedMember" && curCtx != nil:
+			case isNS(space, nsXBRLDI) && string(local) == "typedMember" && curCtx != nil:
 				dim := explicitDim
 				if dim == "" {
-					dim = attrAny(lastStart, "dimension")
+					dim = lastDim
 				}
 				if dim != "" {
 					val := text
@@ -398,14 +399,14 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				}
 				explicitDim = ""
 
-			case isNS(space, nsXBRLI) && local == "measure" && curUnit != nil:
+			case isNS(space, nsXBRLI) && string(local) == "measure" && curUnit != nil:
 				if curUnit.Measure == "" {
 					curUnit.Measure = text
 				} else {
 					curUnit.Measure += "/" + text
 				}
 
-			case isNS(space, nsXBRLI) && local == "unit":
+			case isNS(space, nsXBRLI) && string(local) == "unit":
 				if curUnit != nil && curUnit.ID != "" {
 					units[curUnit.ID] = curUnit
 				}
@@ -416,8 +417,8 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			// end tag is not </typedMember>, so keep the buffer until the
 			// typed member itself ends. An explicit member's text is direct;
 			// its own end tag still clears the buffer.
-			keepMemberText := explicitDim != "" && !(isNS(space, nsXBRLDI) && (local == "typedMember" || local == "explicitMember"))
-			if captureText && !keepMemberText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
+			keepMemberText := explicitDim != "" && !(isNS(space, nsXBRLDI) && (string(local) == "typedMember" || string(local) == "explicitMember"))
+			if captureText && !keepMemberText && (!isIX(space) || (string(local) != "nonFraction" && string(local) != "nonNumeric")) {
 				if len(openStack) == 0 {
 					captureText = false
 					textBuf.Reset()
@@ -513,7 +514,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	return out, corrections, nil
 }
 
+// isIX reports an inline XBRL namespace. Most elements of a filing are
+// XHTML, so that answer is checked first.
 func isIX(space string) bool {
+	if space == nsXHTML {
+		return false
+	}
 	return space == nsIXBRL || space == nsIXBRL1 || space == "" ||
 		strings.Contains(space, "inlineXBRL")
 }
@@ -522,17 +528,19 @@ func isNS(space, want string) bool {
 	return space == want
 }
 
-// mergeNS records xmlns declarations on se.
-// encoding/xml presents xmlns:prefix as Space="xmlns" Local=prefix, and a
+// mergeNS records xmlns declarations on the current start element.
+// The scanner presents xmlns:prefix as Space="xmlns" Local=prefix, and a
 // default xmlns as Space="" Local="xmlns". A prefixed declaration must not
 // replace the default.
-func mergeNS(ns map[string]string, se xml.StartElement) {
-	for _, a := range se.Attr {
+func mergeNS(ns map[string]string, sc *xmlscan.Scanner) {
+	for i := 0; i < sc.NumAttr(); i++ {
+		local := sc.AttrLocal(i)
+		space := sc.AttrSpace(i)
 		switch {
-		case (a.Name.Space == "xmlns" || a.Name.Space == nsXMLNS) && a.Name.Local != "":
-			ns[a.Name.Local] = a.Value
-		case a.Name.Local == "xmlns" && a.Name.Space == "":
-			ns[""] = a.Value
+		case (space == "xmlns" || space == nsXMLNS) && len(local) != 0:
+			ns[string(local)] = sc.AttrValue(i)
+		case string(local) == "xmlns" && space == "":
+			ns[""] = sc.AttrValue(i)
 		}
 	}
 }
@@ -590,30 +598,12 @@ func errDateTransform(sourceFile, concept, format, text string, err error) error
 	return fmt.Errorf("date transform %s format %q value %q in %s: %v", concept, format, text, sourceFile, err)
 }
 
-func attr(se xml.StartElement, space, local string) string {
-	for _, a := range se.Attr {
-		if a.Name.Local == local && (space == "" || a.Name.Space == space) {
-			return a.Value
-		}
-	}
-	return ""
+func errSyntax(sourceFile string, err error) error {
+	return fmt.Errorf("%w in %s", err, sourceFile)
 }
 
-func attrAny(se xml.StartElement, local string) string {
-	for _, a := range se.Attr {
-		if a.Name.Local == local {
-			return a.Value
-		}
-	}
-	return ""
-}
-
-func hasAttr(se xml.StartElement, space, local string) bool {
-	return attr(se, space, local) != ""
-}
-
-func hasAttrAny(se xml.StartElement, local string) bool {
-	return attrAny(se, local) != ""
+func errNoFacts(sourceFile string) error {
+	return fmt.Errorf("no facts extracted from %s", sourceFile)
 }
 
 // qnameLocal returns the local part of a QName (prefix:local or {uri}local).
@@ -634,16 +624,15 @@ func qnameLocal(q string) string {
 // isClassicItem reports a non-inline XBRL item: an element that carries
 // contextRef and is not part of the instance, link, or inline-XBRL machinery.
 // Tuple containers omit contextRef, so they are not facts.
-func isClassicItem(space string, t xml.StartElement) bool {
-	if attrAny(t, "contextRef") == "" || t.Name.Local == "" {
+func isClassicItem(space string, sc *xmlscan.Scanner) bool {
+	if sc.Attr("contextRef") == "" {
 		return false
 	}
 	if space == nsIXBRL || space == nsIXBRL1 || strings.Contains(space, "inlineXBRL") {
 		return false
 	}
 	switch space {
-	case nsXBRLI, nsLink, nsXLink, nsXBRLDI, nsXMLNS,
-		"http://www.w3.org/1999/xhtml",
+	case nsXBRLI, nsLink, nsXLink, nsXBRLDI, nsXMLNS, nsXHTML,
 		"http://www.w3.org/2001/XMLSchema-instance",
 		"http://www.w3.org/2001/XMLSchema",
 		"http://xbrl.org/2005/xbrldt",
@@ -686,7 +675,7 @@ func normaliseNonNumeric(val, format string) (string, error) {
 	// escapes a field that contains one. Space separators that unicode.IsSpace
 	// does not treat as space (thin space, narrow no-break space) become an
 	// ASCII space first, so date formats that require one still match.
-	val = strings.Join(strings.Fields(foldSpaces(val)), " ")
+	val = collapseSpaces(foldSpaces(val))
 	out, err := transformDate(fl, val)
 	if err != nil {
 		return val, err
@@ -711,10 +700,14 @@ func normaliseNumeric(val, scale, sign, format string) string {
 	}
 
 	// Strip human-readable prefixes sometimes embedded in tagged text ("2017 - 2").
-	if cleaned := strings.TrimSpace(humanNumericPrefixRE.ReplaceAllString(v, "")); cleaned != "" && cleaned != v {
-		// Only apply when residual looks numeric
-		if looksNumeric(cleaned) {
-			v = cleaned
+	// The pattern needs a ':' or a '-' followed by white space; most values
+	// have neither, and the regexp is skipped.
+	if mayHaveNumericPrefix(v) {
+		if cleaned := strings.TrimSpace(humanNumericPrefixRE.ReplaceAllString(v, "")); cleaned != "" && cleaned != v {
+			// Only apply when residual looks numeric
+			if looksNumeric(cleaned) {
+				v = cleaned
+			}
 		}
 	}
 
@@ -769,6 +762,10 @@ func normaliseNumeric(val, scale, sign, format string) string {
 		}
 	}
 
+	if s, ok := plainDecimal(v, sc, neg); ok {
+		return s
+	}
+
 	// Use big.Rat for precision
 	r := new(big.Rat)
 	if _, ok := r.SetString(v); !ok {
@@ -796,6 +793,76 @@ func normaliseNumeric(val, scale, sign, format string) string {
 	s := r.FloatString(10)
 	s = trimTrailingZeros(s)
 	return s
+}
+
+// mayHaveNumericPrefix reports whether humanNumericPrefixRE can match s:
+// s holds a ':' or a '-' followed by one of RE2's \s characters.
+func mayHaveNumericPrefix(s string) bool {
+	if strings.IndexByte(s, ':') >= 0 {
+		return true
+	}
+	for i := strings.IndexByte(s, '-'); i >= 0 && i+1 < len(s); {
+		switch s[i+1] {
+		case ' ', '\t', '\n', '\f', '\r':
+			return true
+		}
+		j := strings.IndexByte(s[i+1:], '-')
+		if j < 0 {
+			break
+		}
+		i += 1 + j
+	}
+	return false
+}
+
+// plainDecimal is the big.Rat result for the common case: digits, with an
+// optional '.' and at most ten fraction digits, at scale 0, or an integer at
+// a scale from 1 to 30. FloatString(10) is exact for those, so the result
+// is the digits without leading zeros in the integer part or trailing zeros
+// in the fraction. ok is false for anything else.
+func plainDecimal(v string, sc int, neg bool) (string, bool) {
+	dot := strings.IndexByte(v, '.')
+	intPart, frac := v, ""
+	if dot >= 0 {
+		intPart, frac = v[:dot], v[dot+1:]
+		if frac == "" || len(frac) > 10 || sc != 0 {
+			return "", false
+		}
+	}
+	if intPart == "" || !allDigits(intPart) || !allDigits(frac) || sc < 0 || sc > 30 {
+		return "", false
+	}
+	intPart = strings.TrimLeft(intPart, "0")
+	frac = strings.TrimRight(frac, "0")
+	if intPart == "" && frac == "" {
+		return "0", true
+	}
+	if intPart == "" {
+		intPart = "0"
+	}
+	var b strings.Builder
+	b.Grow(1 + len(intPart) + sc + 1 + len(frac))
+	if neg {
+		b.WriteByte('-')
+	}
+	b.WriteString(intPart)
+	for i := 0; i < sc; i++ {
+		b.WriteByte('0')
+	}
+	if frac != "" {
+		b.WriteByte('.')
+		b.WriteString(frac)
+	}
+	return b.String(), true
+}
+
+func allDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func looksNumeric(s string) bool {
@@ -830,334 +897,65 @@ func trimTrailingZeros(s string) string {
 	return s
 }
 
-// --- Lenient fallback parser using regex when strict XML fails ----------------
-
-var (
-	reXMLNS            = regexp.MustCompile(`(?i)(?:\s|^)xmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*["']([^"']*)["']`)
-	reContext          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?context\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?context>`)
-	reStartDate        = regexp.MustCompile(`(?is)<(?:[\w.]+:)?startDate[^>]*>([^<]*)</(?:[\w.]+:)?startDate>`)
-	reEndDate          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?endDate[^>]*>([^<]*)</(?:[\w.]+:)?endDate>`)
-	reInstant          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?instant[^>]*>([^<]*)</(?:[\w.]+:)?instant>`)
-	reExplicit         = regexp.MustCompile(`(?is)<(?:[\w.]+:)?explicitMember\s+[^>]*dimension=["']([^"']+)["'][^>]*>([^<]*)</(?:[\w.]+:)?explicitMember>`)
-	reTyped            = regexp.MustCompile(`(?is)<(?:[\w.]+:)?typedMember\s+[^>]*dimension=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?typedMember>`)
-	reUnit             = regexp.MustCompile(`(?is)<(?:[\w.]+:)?unit\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?unit>`)
-	reMeasure          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?measure[^>]*>([^<]*)</(?:[\w.]+:)?measure>`)
-	reNonFraction      = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonFraction\b([^>]*)>(.*?)</(?:[\w.]+:)?nonFraction>`)
-	reNonNumeric       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)>(.*?)</(?:[\w.]+:)?nonNumeric>`)
-	reNonFractionEmpty = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonFraction\b([^>]*)/>`)
-	reNonNumericEmpty  = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)/>`)
-	// Open, close, or empty ix:continuation. Group 1 is "/" for a close tag,
-	// group 2 is the attribute text, group 3 is "/" for an empty element.
-	reContTag = regexp.MustCompile(`(?is)<(/)?(?:[\w.]+:)?continuation\b([^>]*?)(/?)>`)
-	reAttr    = regexp.MustCompile(`(?i)([:\w]+)\s*=\s*["']([^"']*)["']`)
-)
-
-func errNoFacts(sourceFile string) error {
-	return fmt.Errorf("no facts extracted from %s", sourceFile)
-}
-
-// indexContinuations records every ix:continuation, including ones nested
-// inside another. Each part's text is the descendant text of that element
-// (tags removed, ix:exclude dropped), so an outer continuation includes the
-// inner one's text. Unbalanced tags are an error: a partial map would
-// reassemble facts with the wrong chain.
-func indexContinuations(s string) (map[string]*continuationPart, error) {
-	locs := reContTag.FindAllStringSubmatchIndex(s, -1)
-	type frame struct {
-		id, next     string
-		contentStart int
-	}
-	var st []frame
-	out := map[string]*continuationPart{}
-	for _, loc := range locs {
-		isClose := loc[2] >= 0 && loc[3] > loc[2]
-		selfClose := loc[6] >= 0 && loc[7] > loc[6]
-		if isClose {
-			if len(st) == 0 {
-				return nil, fmt.Errorf("unbalanced ix:continuation")
-			}
-			fr := st[len(st)-1]
-			st = st[:len(st)-1]
-			if fr.id != "" {
-				out[fr.id] = &continuationPart{
-					Text:        xmlUnescape(stripTags(s[fr.contentStart:loc[0]])),
-					ContinuedAt: fr.next,
-				}
-			}
-			continue
-		}
-		attrs := ""
-		if loc[4] >= 0 && loc[5] >= loc[4] {
-			attrs = s[loc[4]:loc[5]]
-		}
-		am := parseAttrs(attrs)
-		id := am["id"]
-		next := ""
-		for k, v := range am {
-			if strings.EqualFold(k, "continuedAt") {
-				next = v
-			}
-		}
-		if selfClose {
-			if id != "" {
-				out[id] = &continuationPart{ContinuedAt: next}
-			}
-			continue
-		}
-		st = append(st, frame{id: id, next: next, contentStart: loc[1]})
-	}
-	if len(st) != 0 {
-		return nil, fmt.Errorf("unbalanced ix:continuation")
-	}
-	return out, nil
-}
-
-func documentNamespaces(s string) map[string]string {
-	ns := map[string]string{}
-	for _, m := range reXMLNS.FindAllStringSubmatch(s, -1) {
-		if m[1] == "" {
-			ns[""] = m[2]
-			continue
-		}
-		ns[m[1]] = m[2]
-	}
-	return ns
-}
-
-// lenientParses counts entries to parseLenient. The increment is the first
-// line of that function, so the strict XML decoder never reads or writes it.
-// Tests and benchmarks take a delta around one single-threaded parse.
-// The CLI reads the total after its workers finish. That total is how many
-// members entered the regex fallback. A delta taken while workers still
-// overlap does not say which member.
-var lenientParses atomic.Uint64
-
-// LenientParses is how many times this process entered the regex fallback.
-func LenientParses() uint64 {
-	return lenientParses.Load()
-}
-
-func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
-	lenientParses.Add(1)
-	data = stripXMLPreamble(data)
-	s := string(data)
-	docNS := documentNamespaces(s)
-	var nsErr error
-	var dateErr error
-
-	contexts := map[string]*contextInfo{}
-	for _, m := range reContext.FindAllStringSubmatch(s, -1) {
-		id, body := m[1], m[2]
-		ctx := &contextInfo{ID: id, Dimensions: map[string]string{}}
-		if sm := reStartDate.FindStringSubmatch(body); len(sm) > 1 {
-			ctx.PeriodStart = strings.TrimSpace(sm[1])
-		}
-		if em := reEndDate.FindStringSubmatch(body); len(em) > 1 {
-			ctx.PeriodEnd = strings.TrimSpace(em[1])
-		}
-		if im := reInstant.FindStringSubmatch(body); len(im) > 1 {
-			d := strings.TrimSpace(im[1])
-			ctx.PeriodEnd = d
-			ctx.PeriodStart = d
-		}
-		for _, dm := range reExplicit.FindAllStringSubmatch(body, -1) {
-			ctx.Dimensions[qnameLocal(dm[1])] = qnameLocal(strings.TrimSpace(dm[2]))
-		}
-		for _, dm := range reTyped.FindAllStringSubmatch(body, -1) {
-			// strip tags from typed body
-			val := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(dm[2], "")
-			ctx.Dimensions[qnameLocal(dm[1])] = strings.TrimSpace(val)
-		}
-		contexts[id] = ctx
-	}
-
-	units := map[string]*unitInfo{}
-	for _, m := range reUnit.FindAllStringSubmatch(s, -1) {
-		id, body := m[1], m[2]
-		u := &unitInfo{ID: id}
-		var measures []string
-		for _, mm := range reMeasure.FindAllStringSubmatch(body, -1) {
-			measures = append(measures, strings.TrimSpace(mm[1]))
-		}
-		u.Measure = strings.Join(measures, "/")
-		units[id] = u
-	}
-
-	var out []fact.Fact
-
-	// Index ix:continuation fragments for continuedAt chains.
-	// Nested continuations need a matching-tag scan; a non-greedy match
-	// would stop at the first close and drop the outer ids.
-	continuations, contErr := indexContinuations(s)
-	if contErr != nil {
-		return nil, 0, fmt.Errorf("%s: %w", sourceFile, contErr)
-	}
-
-	prodName, prodVersion := markupProducer(s, continuations)
-	gate := cchEmployeeProducer(prodName, prodVersion)
-	corrections := 0
-
-	collect := func(attrs, body string, numeric bool) {
-		if nsErr != nil || dateErr != nil {
-			return
-		}
-		am := parseAttrs(attrs)
-		name := am["name"]
-		if name == "" {
-			return
-		}
-		if onlyTarget != "" && am["target"] != onlyTarget {
-			return
-		}
-		nsURI, badPrefix := inlineNamespace(name, docNS)
-		if badPrefix != "" {
-			nsErr = errUndeclaredPrefix(sourceFile, qnameLocal(name), badPrefix)
-			return
-		}
-		ctxRef := am["contextref"]
-		if ctxRef == "" {
-			ctxRef = am["contextRef"]
-		}
-		// attrs keys are lowercased
-		for k, v := range am {
-			if strings.EqualFold(k, "contextRef") {
-				ctxRef = v
-			}
-		}
-		unitRef := ""
-		continuedAt := ""
-		for k, v := range am {
-			if strings.EqualFold(k, "unitRef") {
-				unitRef = v
-			}
-			if strings.EqualFold(k, "continuedAt") {
-				continuedAt = v
-			}
-		}
-		scale, sign, format := am["scale"], am["sign"], am["format"]
-
-		// strip nested tags from body for text value
-		val := xmlUnescape(stripTags(body))
-		if continuedAt != "" {
-			val = joinContinuation(val, continuedAt, continuations)
-		} else {
-			val = strings.TrimSpace(val)
-		}
-
-		ctx := contexts[ctxRef]
-		ps, pe := "", ""
-		dimsJSON := ""
-		if ctx != nil {
-			ps, pe = ctx.PeriodStart, ctx.PeriodEnd
-			if len(ctx.Dimensions) > 0 {
-				b, _ := json.Marshal(ctx.Dimensions)
-				dimsJSON = string(b)
-			}
-		}
-		unit := unitRef
-		if u, ok := units[unitRef]; ok && u.Measure != "" {
-			unit = u.Measure
-		}
-		decimals := ""
-		if numeric {
-			decimals = am["decimals"]
-			scaleUsed, signUsed, fixed := adjustEmployeeValue(qnameLocal(name), scale, unit, val, format, sign, gate)
-			if fixed {
-				corrections++
-			}
-			val = normaliseNumeric(val, scaleUsed, signUsed, format)
-		} else {
-			var nerr error
-			val, nerr = normaliseNonNumeric(val, format)
-			if nerr != nil {
-				dateErr = errDateTransform(sourceFile, qnameLocal(name), format, val, nerr)
-				return
-			}
-		}
-		out = append(out, fact.Fact{
-			PeriodStart: ps,
-			PeriodEnd:   pe,
-			Concept:     qnameLocal(name),
-			Value:       val,
-			Unit:        unit,
-			Dimensions:  dimsJSON,
-			Namespace:   nsURI,
-			SourceFile:  sourceFile,
-			Decimals:    decimals,
-		})
-	}
-
-	for _, m := range reNonFraction.FindAllStringSubmatch(s, -1) {
-		collect(m[1], m[2], true)
-	}
-	for _, m := range reNonFractionEmpty.FindAllStringSubmatch(s, -1) {
-		collect(m[1], "", true)
-	}
-	for _, m := range reNonNumeric.FindAllStringSubmatch(s, -1) {
-		collect(m[1], m[2], false)
-	}
-	for _, m := range reNonNumericEmpty.FindAllStringSubmatch(s, -1) {
-		collect(m[1], "", false)
-	}
-
-	if nsErr != nil {
-		return nil, 0, nsErr
-	}
-	if dateErr != nil {
-		return nil, 0, dateErr
-	}
-	if len(out) == 0 {
-		return nil, 0, errNoFacts(sourceFile)
-	}
-	return out, corrections, nil
-}
-
-func parseAttrs(s string) map[string]string {
-	m := map[string]string{}
-	for _, a := range reAttr.FindAllStringSubmatch(s, -1) {
-		key := a[1]
-		if i := strings.Index(key, ":"); i >= 0 {
-			key = key[i+1:]
-		}
-		m[strings.ToLower(key)] = a[2]
-		// also keep original-case local
-		m[key] = a[2]
-	}
-	return m
-}
-
-func stripTags(s string) string {
-	// Drop ix:exclude blocks entirely (iXBRL presentation-only content).
-	s = regexp.MustCompile(`(?is)<(?:[\w.]+:)?exclude\b[^>]*>.*?</(?:[\w.]+:)?exclude>`).ReplaceAllString(s, "")
-	return regexp.MustCompile(`(?s)<[^>]*>`).ReplaceAllString(s, "")
-}
-
-// xmlUnescape decodes XML/HTML character references left in the regex
-// fallback. encoding/xml already did this on the strict path. Numeric
-// references such as &#160; contain digits, so a date separator that is
-// still the reference text does not match.
-func xmlUnescape(s string) string {
-	return html.UnescapeString(s)
-}
-
-// asciiCharsetReader accepts ASCII declarations as the identity encoding.
-// Any other charset is an error so the caller falls back to the regex parser.
-func asciiCharsetReader(charset string, input io.Reader) (io.Reader, error) {
-	switch strings.ToLower(strings.TrimSpace(charset)) {
-	case "ascii", "us-ascii":
-		return input, nil
-	default:
-		return nil, fmt.Errorf("unsupported charset %q", charset)
-	}
-}
-
 // foldSpaces maps Unicode space separators, and line and paragraph
 // separators, to an ASCII space. unicode.IsSpace already covers U+00A0.
+// The only ASCII space separator is the space itself, so ASCII text is
+// returned as it is.
 func foldSpaces(s string) string {
+	if isASCII(s) {
+		return s
+	}
 	return strings.Map(func(r rune) rune {
-		if r == '\u2028' || r == '\u2029' || unicode.Is(unicode.Zs, r) {
+		if r >= utf8.RuneSelf && (r == 0x2028 || r == 0x2029 || unicode.Is(unicode.Zs, r)) {
 			return ' '
 		}
 		return r
 	}, s)
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// collapseSpaces is strings.Join(strings.Fields(s), " "). Text that already
+// has no leading, trailing or repeated white space, and no white space but
+// the ASCII space, is returned without splitting it.
+func collapseSpaces(s string) string {
+	prevSpace := true // a leading space is not collapsed
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == ' ':
+			if prevSpace {
+				return strings.Join(strings.Fields(s), " ")
+			}
+			prevSpace = true
+		case c < utf8.RuneSelf:
+			if asciiSpace(c) {
+				return strings.Join(strings.Fields(s), " ")
+			}
+			prevSpace = false
+		default:
+			r, size := utf8.DecodeRuneInString(s[i:])
+			if unicode.IsSpace(r) {
+				return strings.Join(strings.Fields(s), " ")
+			}
+			i += size - 1
+			prevSpace = false
+		}
+	}
+	if prevSpace && s != "" {
+		return strings.Join(strings.Fields(s), " ")
+	}
+	return s
+}
+
+// asciiSpace is unicode.IsSpace for an ASCII byte other than ' '.
+func asciiSpace(c byte) bool {
+	return c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'
 }

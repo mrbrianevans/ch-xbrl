@@ -202,26 +202,3 @@ func noteProducerFact(local, value, format string, name, version *string) {
 		}
 	}
 }
-
-func attrFold(am map[string]string, local string) string {
-	for k, v := range am {
-		if strings.EqualFold(k, local) {
-			return v
-		}
-	}
-	return ""
-}
-
-// markupProducer reads producer facts from inline markup. The lenient parser
-// uses it before numeric values are scaled.
-func markupProducer(s string, conts map[string]*continuationPart) (name, version string) {
-	for _, m := range reNonNumeric.FindAllStringSubmatch(s, -1) {
-		am := parseAttrs(m[1])
-		val := xmlUnescape(stripTags(m[2]))
-		if next := attrFold(am, "continuedAt"); next != "" && conts != nil {
-			val = joinContinuation(val, next, conts)
-		}
-		noteProducerFact(qnameLocal(am["name"]), val, am["format"], &name, &version)
-	}
-	return name, version
-}
