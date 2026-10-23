@@ -1,6 +1,6 @@
 # Edge cases
 
-Maintainer notes. This page is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). The contract freezes `source_file`. It does not include a company-number column. That column was removed for v0.5.0; consumers derive the number from `source_file`.
+Maintainer notes. This page is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). The contract freezes `source_file`. It does not include a company-number column. That column was removed for v0.5.0.
 
 Real Companies House inputs that a straightforward parser gets wrong. Each case below records where it was found and the behaviour the regression tests lock in today. The tests fail if that behaviour is removed. Changing it on purpose means updating this page and the tests in the same change.
 
@@ -70,7 +70,6 @@ Behaviour that must stay:
 
 - The CSV header has no `company_number` column.
 - `source_file` is the Prod member name. The same set of names comes from a single file, a directory, a zip, a tar.zst whose headers are `./`-prefixed, and a stdin tar.
-- The regex in [cli-contract.md](./cli-contract.md) extracts the 8-character number from that `source_file`.
 - Every `UKCompaniesHouseRegisteredNumber` fact keeps the short value in the table. It is not padded.
 
 Tests: `TestRun_ShortCompanyNumbers`, `TestRun_SourceFileSameAcrossInputs`, `TestConsumerCompanyNumberRegex`.
@@ -253,7 +252,7 @@ Behaviour that must stay:
 - A package whose top-level folder is `OVERSEAS-<CRN>` (case-insensitive) emits only the iXBRL files under `english-accounts/` (case-insensitive, exact segment). An original-language folder, or an `accounts/` folder, in the same package is skipped and logged (`skip nested member: …`).
 - An `OVERSEAS` package with no `english-accounts/` report is a member error (`no reports`).
 - `english-accounts/` is not selected in other `PREFIX-CRN` packages.
-- The package emits 177 facts, including `EntityCurrentLegalOrRegisteredName` `Farrington Homes Limited` and `NetAssetsLiabilities` `-434780` GBP at 2025-03-31 (`100` at 2024-03-31). `source_file` is the package name (`Prod223_4334_FC041186_20250331_OVERSEAS.zip`), both as the input and as a bulk member. The inner path is not a `source_file`. The consumer regex in [cli-contract.md](./cli-contract.md) extracts `FC041186` from that name.
+- The package emits 177 facts, including `EntityCurrentLegalOrRegisteredName` `Farrington Homes Limited` and `NetAssetsLiabilities` `-434780` GBP at 2025-03-31 (`100` at 2024-03-31). `source_file` is the package name (`Prod223_4334_FC041186_20250331_OVERSEAS.zip`), both as the input and as a bulk member. The inner path is not a `source_file`.
 
 The member is committed at `samples/Prod223_4334_FC041186_20250331_OVERSEAS.zip`.
 

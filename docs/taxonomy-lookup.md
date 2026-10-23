@@ -70,8 +70,6 @@ This query is an example. It is not part of the ch-xbrl SemVer contract in [cli-
 
 `my-dir/concepts.csv` is one row per namespace + local name. Join it to a fact export on `namespace` and `concept` (`local_name` in the lookup):
 
-The fact CSV has no `company_number` column. Derive one from `source_file` with the regex in [cli-contract.md](./cli-contract.md) when a query needs it.
-
 ```sql
 SELECT
   f.source_file,

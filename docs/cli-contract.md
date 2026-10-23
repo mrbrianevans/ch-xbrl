@@ -92,14 +92,6 @@ There is no `company_number` column. The CSV is generic XBRL. A context identifi
 | Stdin instance | `-` |
 | Extension-less remote | `Content-Disposition` filename when present, else the URL basename |
 
-Bulk names follow `Prod{product}_{run}_{CRN}_{YYYYMMDD}[_SUFFIX].{ext}` (Prod223 daily, Prod224 monthly). Suggested extraction for consumers. Apply it to `source_file`, not to a fixed character slice (the run number's width can change):
-
-```sql
-upper(regexp_extract(source_file, '^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}', 1))
-```
-
-The captured value is a string. It may contain letters (`SC`, `NI`, `OC`, `FC`). Do not cast it to an integer.
-
 Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstream concern.
 
 A concept is `namespace` plus `concept`. The row has no `schemaRef` column. That pair is what a taxonomy lookup joins on. The evidence, and the check to repeat when a taxonomy suite is added, are in [taxonomy-lookup.md](./taxonomy-lookup.md). That page is not part of this contract.

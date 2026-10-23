@@ -7,10 +7,10 @@
 -- Canonical columns are driven by mapping/concept_map.csv (keep pivot list in sync).
 
 -- 1. Load long facts (force string columns so empty dates do not break auto-detect)
--- company_number is not a CSV column. Derive it from source_file.
--- Prod bulk names use the regex in docs/cli-contract.md. An accounts filename
--- ({CRN}_type_date) uses its leading 8 characters so sample files still group.
--- The result is a string. Letters (SC, NI, OC, FC) stay. Do not cast to an integer.
+-- company_number is not a CSV column. This transform reads a grouping key
+-- from source_file so filings still group. An accounts filename
+-- ({CRN}_type_date) uses its leading 8 characters. The result is a string.
+-- Letters (SC, NI, OC, FC) stay. Do not cast to an integer.
 -- UKCompaniesHouseRegisteredNumber is a fact and can drop leading zeros; it is
 -- not this column.
 CREATE OR REPLACE TABLE facts AS

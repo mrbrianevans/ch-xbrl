@@ -14,9 +14,7 @@ import (
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
 )
 
-// prodCompanyRE is the consumer extraction in docs/cli-contract.md.
-// It is applied to source_file. A fixed character slice is wrong: the run
-// number's width can change.
+// prodCompanyRE reads the company field from a Prod source_file in tests.
 var prodCompanyRE = regexp.MustCompile(`^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}`)
 
 // shortCRNs are members of Accounts_Bulk_Data-2026-10-23.zip whose tags drop

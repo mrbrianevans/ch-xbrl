@@ -1,9 +1,9 @@
 -- Long-format ch-xbrl facts (all sample members) → wide rows using column_map.csv.
 -- Caller creates tables extract_all, col_map.
--- The CSV has no company_number column. company_id is derived from source_file
+-- The CSV has no company_number column. company_id is read from source_file
 -- so extract_wide matches stream-read-xbrl, which reads that field from the
--- member name. Prod names use the regex in docs/cli-contract.md. An accounts
--- filename ({CRN}_type_date) uses its leading 8 characters.
+-- member name. An accounts filename ({CRN}_type_date) uses its leading 8
+-- characters.
 
 CREATE OR REPLACE MACRO is_plain_dim(d) AS (
     d IS NULL OR trim(cast(d AS VARCHAR)) IN ('', '{}')

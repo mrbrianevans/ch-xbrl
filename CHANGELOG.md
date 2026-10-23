@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Breaking change, to be released as v0.5.0. The `company_number` column is removed. The CSV is generic XBRL. Derive the company number from `source_file` (see `docs/cli-contract.md`). `UKCompaniesHouseRegisteredNumber` stays an ordinary fact with the filer's value, including a short number that dropped leading zeros.
+- Breaking change, to be released as v0.5.0. The `company_number` column is removed. The CSV is generic XBRL. `UKCompaniesHouseRegisteredNumber` stays an ordinary fact with the filer's value, including a short number that dropped leading zeros.
 
 ### Changed
 

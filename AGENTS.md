@@ -43,7 +43,7 @@ Design bias: **completeness and speed at extract time**; **semantic shaping in D
 | Final artefact is **Parquet** | Analytics-ready |
 | Taxonomy processing is **decoupled** from the instance parser | Different cadence |
 | Concept priority lives in **`concept_map.csv`**, not hard-coded Go | Curated in git; change without rebuild |
-| The CSV has **no `company_number` column**. Consumers derive it from `source_file` with the regex in [`docs/cli-contract.md`](docs/cli-contract.md). A derived number is a string and may contain letters (`SC`, `NI`, `OC`, `FC`) | Do not put Companies House padding or identifier precedence back into the parser. Do not cast the derived number to an integer |
+| The CSV has **no `company_number` column** | Do not put Companies House padding, identifier capture, or a filename backfill back into the parser |
 | Concept lookup key is **namespace + local name** | Dated UK namespaces keep one set of declaration attributes per concept. `schemaRef` stays off the fact row. Evidence and the re-check: [`docs/taxonomy-lookup.md`](docs/taxonomy-lookup.md) |
 
 Do not port stream-read-xbrl's wide-at-parse architecture into `cmd/ch-xbrl`. Use `verify/stream-read-xbrl/` (the published package + DuckDB pivot) as a soft oracle only.
