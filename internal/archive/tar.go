@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -66,7 +67,9 @@ func streamTarReader(ctx context.Context, r io.Reader, zstdCompressed bool, out 
 		if int64(len(content)) > lim {
 			return n, fmt.Errorf("member %s exceeds size limit", name)
 		}
-		if err := emit(ctx, out, name, content); err != nil {
+		// source_file is the basename. A header of ./Prod223_….html matches
+		// the zip member and the directory file of the same filing.
+		if err := emit(ctx, out, path.Base(name), content); err != nil {
 			return n, err
 		}
 		n++

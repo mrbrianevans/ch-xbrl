@@ -10,7 +10,6 @@ import (
 	"html"
 	"io"
 	"math/big"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -32,11 +31,10 @@ const (
 )
 
 type contextInfo struct {
-	ID            string
-	CompanyNumber string
-	PeriodStart   string
-	PeriodEnd     string
-	Dimensions    map[string]string // dimension local/qname → member local/qname
+	ID          string
+	PeriodStart string
+	PeriodEnd   string
+	Dimensions  map[string]string // dimension local/qname → member local/qname
 }
 
 type unitInfo struct {
@@ -141,7 +139,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	// Active parse state for nested context/unit construction.
 	var curCtx *contextInfo
 	var curUnit *unitInfo
-	var inPeriod, inEntity bool
+	var inPeriod bool
 	var textBuf strings.Builder
 	var captureText bool
 	var lastStart xml.StartElement
@@ -184,7 +182,6 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 		space    string
 		local    string
 	}
-	var curIdentScheme string
 	var facts []pendingFact
 	var openStack []*openFrame
 
@@ -219,8 +216,6 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 					Dimensions: map[string]string{},
 				}
 
-			case isNS(space, nsXBRLI) && local == "entity":
-				inEntity = true
 			case isNS(space, nsXBRLI) && local == "period":
 				inPeriod = true
 
@@ -237,13 +232,10 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				textBuf.Reset()
 				lastStart = t
 
-			case isNS(space, nsXBRLI) && (local == "identifier" || local == "startDate" ||
+			case isNS(space, nsXBRLI) && (local == "startDate" ||
 				local == "endDate" || local == "instant" || local == "measure"):
 				captureText = true
 				textBuf.Reset()
-				if local == "identifier" {
-					curIdentScheme = attrAny(t, "scheme")
-				}
 
 			case isNS(space, nsXBRLI) && local == "unit":
 				curUnit = &unitInfo{ID: attrAny(t, "id")}
@@ -361,19 +353,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 					contexts[curCtx.ID] = curCtx
 				}
 				curCtx = nil
-				inEntity, inPeriod = false, false
+				inPeriod = false
 				explicitDim = ""
 
-			case isNS(space, nsXBRLI) && local == "entity":
-				inEntity = false
 			case isNS(space, nsXBRLI) && local == "period":
 				inPeriod = false
 
-			case isNS(space, nsXBRLI) && local == "identifier" && curCtx != nil && inEntity:
-				if curCtx.CompanyNumber == "" && acceptEntityIdentifier(curIdentScheme, text) {
-					curCtx.CompanyNumber = text
-				}
-				curIdentScheme = ""
 			case isNS(space, nsXBRLI) && local == "startDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodStart = text
 			case isNS(space, nsXBRLI) && local == "endDate" && curCtx != nil && inPeriod:
@@ -439,9 +424,6 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 		}
 	}
 
-	// Fallback company id from filename (e.g. 03024914_aa_2023-03-13.xhtml)
-	fileCompany := companyFromFilename(sourceFile)
-
 	var prodName, prodVersion string
 	for i := range facts {
 		noteProducerFact(qnameLocal(facts[i].Name), facts[i].Value, facts[i].Format, &prodName, &prodVersion)
@@ -459,13 +441,9 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			continue
 		}
 		ctx := contexts[pf.ContextRef]
-		company := fileCompany
 		periodStart, periodEnd := "", ""
 		dimsJSON := ""
 		if ctx != nil {
-			if ctx.CompanyNumber != "" {
-				company = ctx.CompanyNumber
-			}
 			periodStart = ctx.PeriodStart
 			periodEnd = ctx.PeriodEnd
 			if len(ctx.Dimensions) > 0 {
@@ -473,7 +451,6 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				dimsJSON = string(b)
 			}
 		}
-		// company may still be empty; UKCompaniesHouseRegisteredNumber is backfilled later.
 
 		unit := ""
 		if pf.UnitRef != "" {
@@ -507,23 +484,21 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			decimals = pf.Decimals
 		}
 		out = append(out, fact.Fact{
-			CompanyNumber: company,
-			PeriodStart:   periodStart,
-			PeriodEnd:     periodEnd,
-			Concept:       qnameLocal(pf.Name),
-			Value:         val,
-			Unit:          unit,
-			Dimensions:    dimsJSON,
-			Namespace:     pf.Namespace,
-			SourceFile:    sourceFile,
-			Decimals:      decimals,
+			PeriodStart: periodStart,
+			PeriodEnd:   periodEnd,
+			Concept:     qnameLocal(pf.Name),
+			Value:       val,
+			Unit:        unit,
+			Dimensions:  dimsJSON,
+			Namespace:   pf.Namespace,
+			SourceFile:  sourceFile,
+			Decimals:    decimals,
 		})
 	}
 
 	if len(out) == 0 {
 		return nil, 0, errNoFacts(sourceFile)
 	}
-	backfillCompanyNumber(out)
 	return out, corrections, nil
 }
 
@@ -645,24 +620,6 @@ func qnameLocal(q string) string {
 	return q
 }
 
-// Filename patterns seen in Companies House dumps:
-//   - {company}_{type}_{date}.xhtml   e.g. 03024914_aa_2023-03-13.xhtml
-//   - Prod{run}_{batch}_{company}_{yyyymmdd}[_{UKSEF|CIC|AUDIT_EXEMPT}].{html|xml|xhtml|zip}
-//     e.g. Prod223_4203_00134794_20250927.html
-//     e.g. Prod223_4320_05016384_20251231_CIC.zip
-//
-// A company number is a string, not an integer. Letters are normal:
-// SC (Scotland), NI (Northern Ireland), OC/SO (LLP), NC, R, and similar
-// prefixes. Do not require an all-digit value and do not cast to an integer.
-var (
-	// Prefer Prod* first so the middle company field is not confused with batch numbers.
-	prodFileRE = regexp.MustCompile(`(?i)^Prod\d+_\d+_([A-Z]{0,2}\d{6,8})_\d{8}(?:_(?:UKSEF|CIC|AUDIT_EXEMPT))?\.(html|htm|xml|xhtml|zip)$`)
-	// Leading company id before underscore or extension.
-	companyFileRE = regexp.MustCompile(`(?i)^([0-9]{6,8}|[A-Z]{2}[0-9]{6})[_\.]`)
-	// Fallback: company number anywhere in the basename (letters allowed).
-	companyAnyRE = regexp.MustCompile(`(?i)(?:^|_)([0-9]{6,8}|[A-Z]{2}[0-9]{6})(?:[_\.]|$)`)
-)
-
 // isClassicItem reports a non-inline XBRL item: an element that carries
 // contextRef and is not part of the instance, link, or inline-XBRL machinery.
 // Tuple containers omit contextRef, so they are not facts.
@@ -684,76 +641,6 @@ func isClassicItem(space string, t xml.StartElement) bool {
 		return false
 	}
 	return true
-}
-
-// acceptEntityIdentifier reports whether an xbrli:identifier should be used as
-// company_number. The value has to look like a company number. April 2010
-// joint filings (Accounts_Monthly_Data-April2010.zip) use scheme
-// www.companieshouse.gov.uk with the legal name in the identifier and the
-// number in CompaniesHouseRegisteredNumber or the filename.
-// See docs/edge-cases.md.
-func acceptEntityIdentifier(_, id string) bool {
-	return looksLikeCompanyNumber(id)
-}
-
-// looksLikeCompanyNumber reports a Companies House registered number.
-// The value is a short alphanumeric string, not an integer. Letters are
-// part of the number (SC248149, NI012345, OC123456). A digits-only check
-// is wrong. A legal name fails because of length, spaces, or punctuation.
-func looksLikeCompanyNumber(s string) bool {
-	s = strings.TrimSpace(s)
-	if len(s) < 6 || len(s) > 8 {
-		return false
-	}
-	hasDigit := false
-	for _, r := range s {
-		switch {
-		case r >= '0' && r <= '9':
-			hasDigit = true
-		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z':
-		default:
-			return false
-		}
-	}
-	return hasDigit
-}
-
-func backfillCompanyNumber(out []fact.Fact) {
-	regNo := ""
-	for _, f := range out {
-		if f.Value == "" {
-			continue
-		}
-		if f.Concept == "UKCompaniesHouseRegisteredNumber" {
-			regNo = f.Value
-			break
-		}
-		if regNo == "" && f.Concept == "CompaniesHouseRegisteredNumber" {
-			regNo = f.Value
-		}
-	}
-	if regNo == "" {
-		return
-	}
-	for i := range out {
-		if out[i].CompanyNumber == "" {
-			out[i].CompanyNumber = regNo
-		}
-	}
-}
-
-func companyFromFilename(name string) string {
-	base := filepath.Base(name)
-	if m := prodFileRE.FindStringSubmatch(base); len(m) > 1 {
-		return m[1]
-	}
-	if m := companyFileRE.FindStringSubmatch(base); len(m) > 1 {
-		return m[1]
-	}
-	if m := companyAnyRE.FindStringSubmatch(base); len(m) > 1 {
-		return m[1]
-	}
-	return ""
 }
 
 func stripXMLPreamble(data []byte) []byte {
@@ -937,7 +824,6 @@ func trimTrailingZeros(s string) string {
 var (
 	reXMLNS            = regexp.MustCompile(`(?i)(?:\s|^)xmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*["']([^"']*)["']`)
 	reContext          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?context\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?context>`)
-	reIdentifier       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?identifier\b([^>]*)>([^<]*)</(?:[\w.]+:)?identifier>`)
 	reStartDate        = regexp.MustCompile(`(?is)<(?:[\w.]+:)?startDate[^>]*>([^<]*)</(?:[\w.]+:)?startDate>`)
 	reEndDate          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?endDate[^>]*>([^<]*)</(?:[\w.]+:)?endDate>`)
 	reInstant          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?instant[^>]*>([^<]*)</(?:[\w.]+:)?instant>`)
@@ -1038,12 +924,6 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 	for _, m := range reContext.FindAllStringSubmatch(s, -1) {
 		id, body := m[1], m[2]
 		ctx := &contextInfo{ID: id, Dimensions: map[string]string{}}
-		if im := reIdentifier.FindStringSubmatch(body); len(im) > 2 {
-			id := strings.TrimSpace(im[2])
-			if acceptEntityIdentifier(parseAttrs(im[1])["scheme"], id) {
-				ctx.CompanyNumber = id
-			}
-		}
 		if sm := reStartDate.FindStringSubmatch(body); len(sm) > 1 {
 			ctx.PeriodStart = strings.TrimSpace(sm[1])
 		}
@@ -1078,7 +958,6 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 		units[id] = u
 	}
 
-	fileCompany := companyFromFilename(sourceFile)
 	var out []fact.Fact
 
 	// Index ix:continuation fragments for continuedAt chains.
@@ -1141,13 +1020,9 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 		}
 
 		ctx := contexts[ctxRef]
-		company := fileCompany
 		ps, pe := "", ""
 		dimsJSON := ""
 		if ctx != nil {
-			if ctx.CompanyNumber != "" {
-				company = ctx.CompanyNumber
-			}
 			ps, pe = ctx.PeriodStart, ctx.PeriodEnd
 			if len(ctx.Dimensions) > 0 {
 				b, _ := json.Marshal(ctx.Dimensions)
@@ -1175,16 +1050,15 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 			}
 		}
 		out = append(out, fact.Fact{
-			CompanyNumber: company,
-			PeriodStart:   ps,
-			PeriodEnd:     pe,
-			Concept:       qnameLocal(name),
-			Value:         val,
-			Unit:          unit,
-			Dimensions:    dimsJSON,
-			Namespace:     nsURI,
-			SourceFile:    sourceFile,
-			Decimals:      decimals,
+			PeriodStart: ps,
+			PeriodEnd:   pe,
+			Concept:     qnameLocal(name),
+			Value:       val,
+			Unit:        unit,
+			Dimensions:  dimsJSON,
+			Namespace:   nsURI,
+			SourceFile:  sourceFile,
+			Decimals:    decimals,
 		})
 	}
 
@@ -1210,8 +1084,6 @@ func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int,
 	if len(out) == 0 {
 		return nil, 0, errNoFacts(sourceFile)
 	}
-
-	backfillCompanyNumber(out)
 	return out, corrections, nil
 }
 

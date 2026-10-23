@@ -47,15 +47,22 @@ UTF-8, one row per fact. Values stay strings. Frozen contract: [`docs/cli-contra
 
 | Column | Meaning |
 |--------|---------|
-| `company_number` | Companies House number (string; may include letters, e.g. `SC123456`). Not an integer |
 | `period_start` / `period_end` | ISO dates from the fact's context (instants: both equal). The period-end fact to cast is `BalanceSheetDate` |
 | `concept` | Local name |
 | `value` | String (scale / sign / iXT applied). A date format is `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. A date that cannot be transformed, including an unimplemented date format, fails that member (`--continue-on-error` skips it). A positive employee headcount tagged `sign="-"` stays positive. A CCH headcount tagged `scale="-2"` is the displayed integer; see below |
 | `unit` | Measure, if any |
 | `dimensions` | JSON map; empty if none |
 | `namespace` | Namespace URI for the concept's prefix |
-| `source_file` | Archive member or basename |
+| `source_file` | Basename, or the outer package name. The same filing has the same value from a file, a directory, a zip, a tar, a tar.zst, or a stdin tar |
 | `decimals` | Raw iXBRL `decimals` (`INF` kept); empty if absent |
+
+There is no company-number column. For a Companies House bulk name, derive it from `source_file`:
+
+```sql
+upper(regexp_extract(source_file, '^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}', 1))
+```
+
+That value is a string and may contain letters (`SC`, `NI`, `OC`, `FC`). Do not cast it to an integer. `UKCompaniesHouseRegisteredNumber` stays a fact with the filer's own value, which can drop leading zeros. Detail: [`docs/cli-contract.md`](./docs/cli-contract.md).
 
 Join taxonomy attributes on `namespace` and `concept`. The CSV has no `schemaRef` column. Evidence: [`docs/taxonomy-lookup.md`](./docs/taxonomy-lookup.md).
 

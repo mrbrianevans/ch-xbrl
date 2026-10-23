@@ -31,6 +31,11 @@ employee and percentage facts, and the contexts and units those facts use.
 Accounts_Monthly_Data-June2024.zip. It keeps the producer facts, the
 employee facts, and the contexts and unit those facts use.
 
+Five short-number fixtures (`Prod223_4335_00650187_20251231.html`,
+`Prod223_4335_00667698_20260331.html`, `Prod223_4335_01266098_20251231.html`,
+`Prod223_4335_01955720_20260331.html`, `Prod223_4335_02121951_20260630.html`)
+are unchanged members of Accounts_Bulk_Data-2026-10-23.zip.
+
 The Open Government Licence does not cover personal data. Do not treat
 these filings as a source of personal data except as permitted by
 data-protection law.

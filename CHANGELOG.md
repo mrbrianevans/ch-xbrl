@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- Breaking change, to be released as v0.5.0. The `company_number` column is removed. The CSV is generic XBRL. Derive the company number from `source_file` (see `docs/cli-contract.md`). `UKCompaniesHouseRegisteredNumber` stays an ordinary fact with the filer's value, including a short number that dropped leading zeros.
+
+### Changed
+
+- `source_file` for a tar, tar.zst, or stdin tar member is the basename. A header path such as `./Prod223_….html` is recorded as `Prod223_….html`, the same value as a zip member, a directory file, or a single file.
+
 ## [0.4.7] - 2026-10-23
 
 ### Fixed

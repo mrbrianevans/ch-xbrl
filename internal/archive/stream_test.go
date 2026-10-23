@@ -440,6 +440,72 @@ func TestStreamStdinTar(t *testing.T) {
 	}
 }
 
+func TestStreamTarBasename(t *testing.T) {
+	entries := sampleEntries(t)
+	body := map[string][]byte{}
+	for name, path := range entries {
+		if !isXBRLName(name) {
+			continue
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body[name] = b
+	}
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	// Header paths must not become source names. ./ and a directory both
+	// reduce to the basename.
+	headers := map[string]string{}
+	for name := range body {
+		headers["./"+name] = name
+	}
+	// One extra path form, using the first sample under a directory.
+	var first string
+	for name := range body {
+		first = name
+		break
+	}
+	delete(headers, "./"+first)
+	headers["nested/dir/"+first] = first
+	for hdr, name := range headers {
+		b := body[name]
+		if err := tw.WriteHeader(&tar.Header{Name: hdr, Size: int64(len(b)), Mode: 0o644}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(b); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "prefixed.tar")
+	if err := os.WriteFile(dest, buf.Bytes(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := collect(t, dest)
+	if len(got) != len(body) {
+		t.Fatalf("got %d members, want %d", len(got), len(body))
+	}
+	seen := map[string]bool{}
+	for _, m := range got {
+		if strings.Contains(m.Name, "/") || strings.HasPrefix(m.Name, ".") {
+			t.Errorf("source name %q is not a basename", m.Name)
+		}
+		seen[m.Name] = true
+		if !bytes.Equal(m.Content, body[m.Name]) {
+			t.Errorf("%s content mismatch", m.Name)
+		}
+	}
+	for name := range body {
+		if !seen[name] {
+			t.Errorf("missing basename %s", name)
+		}
+	}
+}
+
 func TestStreamStdinZipRefused(t *testing.T) {
 	entries := sampleEntries(t)
 	zipPath := filepath.Join(t.TempDir(), "in.zip")

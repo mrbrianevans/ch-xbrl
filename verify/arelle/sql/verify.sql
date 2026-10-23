@@ -45,7 +45,6 @@ CREATE OR REPLACE MACRO soft_equal(a, b) AS (
 
 CREATE OR REPLACE TABLE arelle AS
 SELECT
-    trim(coalesce(cast(EntityIdentifier AS VARCHAR), '')) AS company_id,
     list_last(string_split(trim(coalesce(cast(Name AS VARCHAR), '')), ':')) AS concept,
     CASE
         WHEN nullif(trim(coalesce(cast("Start" AS VARCHAR), '')), '') IS NULL
@@ -59,7 +58,6 @@ WHERE nullif(list_last(string_split(trim(coalesce(cast(Name AS VARCHAR), '')), '
 
 CREATE OR REPLACE TABLE extract AS
 SELECT
-    trim(coalesce(cast(company_number AS VARCHAR), '')) AS company_id,
     trim(coalesce(cast(concept AS VARCHAR), '')) AS concept,
     trim(coalesce(cast(period_start AS VARCHAR), '')) AS period_start,
     trim(coalesce(cast(period_end AS VARCHAR), '')) AS period_end,

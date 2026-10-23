@@ -28,44 +28,40 @@ func TestRun_FilingHistoryPlainInstances(t *testing.T) {
 			file: "00003284_aa_2024-12-31.xhtml",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '00003284'),
 				count(*) FILTER (WHERE source_file <> '00003284_aa_2024-12-31.xhtml'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'Fenny Compton Water Company Limited(The)'),
 				count(*) FILTER (WHERE concept = 'NetAssetsLiabilities' AND period_end = '2024-12-31' AND value = '8536' AND unit = 'iso4217:GBP' AND dimensions IS NULL)`,
-			want:       []string{"100", "0", "0", "2", "1"},
+			want:       []string{"100", "0", "2", "1"},
 			notPackage: true,
 		},
 		{
 			file: "OC300293_aa_2026-03-31.xhtml",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> 'OC300293'),
 				count(*) FILTER (WHERE source_file <> 'OC300293_aa_2026-03-31.xhtml'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'JORG BETTS ASSOCIATES LLP'),
 				count(*) FILTER (WHERE concept = 'LegalFormEntity' AND dimensions LIKE '%LimitedLiabilityPartnershipLLP%')`,
-			want:       []string{"34", "0", "0", "8", "1"},
+			want:       []string{"34", "0", "8", "1"},
 			notPackage: true,
 		},
 		{
 			file: "16138242_aa_2025-12-31.xhtml",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '16138242'),
 				count(*) FILTER (WHERE source_file <> '16138242_aa_2025-12-31.xhtml'),
 				count(*) FILTER (WHERE concept = 'EntityDormantTruefalse' AND value = 'true'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'HEVERIZ (HOLDING) LTD')`,
-			want:       []string{"22", "0", "0", "1", "1"},
+			want:       []string{"22", "0", "1", "1"},
 			notPackage: true,
 		},
 		{
 			file: "12978643_aa_2025-12-31.xhtml",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '12978643'),
 				count(*) FILTER (WHERE source_file <> '12978643_aa_2025-12-31.xhtml'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'PROJECT BARCLAY TOPCO LIMITED'),
 				count(*) FILTER (WHERE concept = 'ScopeAccounts' AND dimensions LIKE '%ConsolidatedGroupCompanyAccounts%')`,
-			want:       []string{"213", "0", "0", "1", "1"},
+			want:       []string{"213", "0", "1", "1"},
 			notPackage: true,
 		},
 	}
@@ -93,59 +89,54 @@ func TestRun_FilingHistoryPackages(t *testing.T) {
 			skip: "skip nested member: CIC-10878733/cic34/cicReport.xhtml",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '10878733'),
 				count(*) FILTER (WHERE source_file <> '10878733_cic.zip'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'Upbeat Life C.I.C.'),
 				count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Financial Statements'),
 				count(*) FILTER (WHERE concept = 'DirectorSigningCIC34Report')`,
-			want: []string{"52", "0", "0", "2", "1", "0"},
+			want: []string{"52", "0", "2", "1", "0"},
 		},
 		{
 			file: "03033634_uksef.zip",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '03033634'),
 				count(*) FILTER (WHERE source_file <> '03033634_uksef.zip'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'Primary Health Properties PLC'),
 				count(*) FILTER (WHERE concept = 'UKCompaniesHouseRegisteredNumber' AND value = '03033634'),
 				count(*) FILTER (WHERE concept = 'ProfitLoss' AND value = '59100000' AND period_end = '2024-12-31' AND unit = 'iso4217:GBP'),
 				count(*) FILTER (WHERE concept = 'Assets')`,
-			want: []string{"24", "0", "0", "1", "1", "1", "0"},
+			want: []string{"24", "0", "1", "1", "1", "0"},
 		},
 		{
 			file: "00185647_uksef.zip",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '00185647'),
 				count(*) FILTER (WHERE source_file <> '00185647_uksef.zip'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'J Sainsbury plc'),
 				count(*) FILTER (WHERE concept = 'UKCompaniesHouseRegisteredNumber' AND value = '00185647'),
 				count(*) FILTER (WHERE concept = 'NameEntityAuditors' AND value = 'Ernst & Young LLP'),
 				count(*) FILTER (WHERE concept = 'Assets')`,
-			want: []string{"26", "0", "0", "1", "1", "1", "0"},
+			want: []string{"26", "0", "1", "1", "1", "0"},
 		},
 		{
 			file: "04973629_audit_exempt.zip",
 			skip: "skip nested member: AUDITEXEMPT-04973629/agreement/agreement.html",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '04973629'),
 				count(*) FILTER (WHERE source_file <> '04973629_audit_exempt.zip'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'Hastings Specsavers Limited'),
 				count(*) FILTER (WHERE concept = 'DateSigningDSEPAgreement')`,
-			want: []string{"175", "0", "0", "2", "0"},
+			want: []string{"175", "0", "2", "0"},
 		},
 		{
 			file: "13515245_audit_exempt.zip",
 			skip: "skip nested member: AUDITEXEMPT-13515245/consolidated-accounts/LCL_Group_2025.html",
 			expr: `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '13515245'),
 				count(*) FILTER (WHERE source_file <> '13515245_audit_exempt.zip'),
 				count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'LANCE MORTGAGES LIMITED'),
 				count(*) FILTER (WHERE concept = 'DateSigningDSEPAgreement'),
 				count(*) FILTER (WHERE concept = 'UKCompaniesHouseRegisteredNumber' AND value = '13515245')`,
-			want: []string{"83", "0", "0", "1", "0", "1"},
+			want: []string{"83", "0", "1", "0", "1"},
 		},
 	}
 	for _, tc := range cases {
@@ -212,10 +203,9 @@ func TestRun_PackageNestedInBulkZip(t *testing.T) {
 			}
 			expr := `
 				count(*),
-				count(*) FILTER (WHERE company_number <> '` + tc.company + `'),
 				count(*) FILTER (WHERE source_file <> '` + tc.member + `'),
 				count(*) FILTER (WHERE concept = '` + tc.concept + `' AND value = '` + tc.value + `')`
-			assertCounts(t, duckdbCounts(t, csvPath, expr), []string{tc.facts, "0", "0", tc.hits})
+			assertCounts(t, duckdbCounts(t, csvPath, expr), []string{tc.facts, "0", tc.hits})
 		})
 	}
 }
