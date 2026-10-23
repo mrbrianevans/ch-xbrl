@@ -44,6 +44,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 ### Constraints
 
 - Extract: instance XML → CSV; no taxonomy fetch, linkbases, or validation.
+- Instance XML is tokenised by `internal/ixbrl/xmlscan`, not `encoding/xml`. It gives the tokens `encoding/xml`'s non-strict decoder gave (HTML entities, no void-element auto-close, UTF-8 or ASCII) and rejects the same documents. Its parity tests compare the two on every sample, by fuzzing, and on local archives (`CH_XBRL_PARITY_ZIPS`). Keep that parity when changing the tokeniser.
 - A concept is `namespace` plus the local name in `concept`. The fact row does not carry `schemaRef`. See [taxonomy-lookup.md](./taxonomy-lookup.md).
 - Go ↔ DuckDB is **CSV**; final artefact is **Parquet**.
 - Taxonomy processing is decoupled from the instance parser.
@@ -61,7 +62,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 cmd/ch-xbrl/       stream zip / tar.zst / instance / directory / stdin → facts CSV
 cmd/taxonomy/      ch-xbrl-taxonomy -o DIR → DIR/concepts.csv (not committed)
 cmd/mksample/      pack samples/ → sample.tar.zst
-internal/          ixbrl, archive, fact, csvout
+internal/          ixbrl (with ixbrl/xmlscan, the XML tokeniser), archive, fact, csvout
 mapping/           concept_map.csv
 sql/               DuckDB transforms (concept map pivot; not the taxonomy join)
 samples/           example iXBRL and edge-case filings (OGL; samples/NOTICE)

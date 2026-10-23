@@ -5,7 +5,6 @@ package ixbrl
 import (
 	"bytes"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"html"
 	"io"
@@ -17,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
+	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl/xmlscan"
 )
 
 // Well-known namespaces.
@@ -123,19 +123,13 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	// Strip BOM / leading junk before the first '<' (seen in older CH dumps).
 	data = stripXMLPreamble(data)
 
-	dec := xml.NewDecoder(bytes.NewReader(data))
-	dec.Strict = false
-	dec.Entity = xml.HTMLEntity
-	// ASCII is a subset of UTF-8. Without this, encoding="ASCII" fails the
-	// first token and the whole member is parsed by the regex fallback, which
-	// used to leave &#160; in date text.
-	dec.CharsetReader = asciiCharsetReader
-	// AutoClose stays unset. xml.HTMLAutoClose is the void-element list
-	// (col, br, meta, …). The decoder EqualFolds the open element against
-	// that list on every token and, when the next token is not that
-	// element's end tag, invents one. `<col> </col>` is closed before the
-	// space; the real </col> then closes something else, and Token errors,
-	// so the member used to take the regex fallback. See docs/edge-cases.md.
+	// xmlscan gives the tokens encoding/xml's Decoder gave with Strict
+	// false, HTML entities, and an ASCII-only charset reader, and rejects
+	// the same documents. ASCII is a subset of UTF-8, so encoding="ASCII"
+	// is read as is and &#160; in a date is decoded (docs/edge-cases.md).
+	// There is no HTML void-element auto-close: `<col> </col>` is an
+	// ordinary element (docs/edge-cases.md).
+	sc := xmlscan.New(data)
 
 	// prefix → namespace URI (document-level, updated as we go)
 	ns := map[string]string{}
@@ -148,7 +142,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	var inPeriod bool
 	var textBuf strings.Builder
 	var captureText bool
-	var lastStart xml.StartElement
+	var lastDim string     // dimension attr of the most recent start element
 	var explicitDim string // dimension attr while reading explicitMember text
 
 	// ix:continuation fragments (id → text + next continuedAt).
@@ -192,7 +186,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	var openStack []*openFrame
 
 	for {
-		tok, err := dec.Token()
+		kind, err := sc.Next()
 		if err == io.EOF {
 			break
 		}
@@ -201,124 +195,124 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			return parseLenient(data, sourceFile, onlyTarget)
 		}
 
-		switch t := tok.(type) {
-		case xml.StartElement:
-			mergeNS(ns, t)
-			local := t.Name.Local
-			space := t.Name.Space
-			lastStart = t
+		switch kind {
+		case xmlscan.StartElement:
+			mergeNS(ns, sc)
+			// local aliases the input; string(local) == "…" does not allocate.
+			local := sc.Local()
+			space := sc.Space()
+			lastDim = sc.Attr("dimension")
 
 			// ix:exclude hides its text from ancestor facts and continuations.
 			// A fact nested inside it is still its own frame.
-			if isIX(space) && local == "exclude" {
-				openStack = append(openStack, &openFrame{kind: openExclude, space: space, local: local})
+			if isIX(space) && string(local) == "exclude" {
+				openStack = append(openStack, &openFrame{kind: openExclude, space: space, local: string(local)})
 				continue
 			}
 
 			switch {
-			case isNS(space, nsXBRLI) && local == "context":
+			case isNS(space, nsXBRLI) && string(local) == "context":
 				curCtx = &contextInfo{
-					ID:         attrAny(t, "id"),
+					ID:         sc.Attr("id"),
 					Dimensions: map[string]string{},
 				}
 
-			case isNS(space, nsXBRLI) && local == "period":
+			case isNS(space, nsXBRLI) && string(local) == "period":
 				inPeriod = true
 
-			case isNS(space, nsXBRLDI) && local == "explicitMember" && curCtx != nil:
-				explicitDim = attrAny(t, "dimension")
+			case isNS(space, nsXBRLDI) && string(local) == "explicitMember" && curCtx != nil:
+				explicitDim = lastDim
 				captureText = true
 				textBuf.Reset()
-				lastStart = t
 
-			case isNS(space, nsXBRLDI) && local == "typedMember" && curCtx != nil:
+			case isNS(space, nsXBRLDI) && string(local) == "typedMember" && curCtx != nil:
 				// typed members: dimension attr + child element text
-				explicitDim = attrAny(t, "dimension")
-				captureText = true
-				textBuf.Reset()
-				lastStart = t
-
-			case isNS(space, nsXBRLI) && (local == "startDate" ||
-				local == "endDate" || local == "instant" || local == "measure"):
+				explicitDim = lastDim
 				captureText = true
 				textBuf.Reset()
 
-			case isNS(space, nsXBRLI) && local == "unit":
-				curUnit = &unitInfo{ID: attrAny(t, "id")}
+			case isNS(space, nsXBRLI) && (string(local) == "startDate" ||
+				string(local) == "endDate" || string(local) == "instant" || string(local) == "measure"):
+				captureText = true
+				textBuf.Reset()
 
-			case isIX(space) && (local == "nonFraction" || local == "nonNumeric"):
-				qname := attrAny(t, "name")
+			case isNS(space, nsXBRLI) && string(local) == "unit":
+				curUnit = &unitInfo{ID: sc.Attr("id")}
+
+			case isIX(space) && (string(local) == "nonFraction" || string(local) == "nonNumeric"):
+				qname := sc.Attr("name")
 				nsURI, badPrefix := inlineNamespace(qname, ns)
 				if badPrefix != "" {
 					return nil, 0, errUndeclaredPrefix(sourceFile, qnameLocal(qname), badPrefix)
 				}
 				pf := pendingFact{
 					Name:        qname,
-					ContextRef:  attrAny(t, "contextRef"),
-					UnitRef:     attrAny(t, "unitRef"),
+					ContextRef:  sc.Attr("contextRef"),
+					UnitRef:     sc.Attr("unitRef"),
 					Namespace:   nsURI,
-					Scale:       attrAny(t, "scale"),
-					Sign:        attrAny(t, "sign"),
-					Format:      attrAny(t, "format"),
-					Decimals:    attrAny(t, "decimals"),
-					IsNumeric:   local == "nonFraction",
-					ContinuedAt: attrAny(t, "continuedAt"),
-					Target:      attrAny(t, "target"),
+					Scale:       sc.Attr("scale"),
+					Sign:        sc.Attr("sign"),
+					Format:      sc.Attr("format"),
+					Decimals:    sc.Attr("decimals"),
+					IsNumeric:   string(local) == "nonFraction",
+					ContinuedAt: sc.Attr("continuedAt"),
+					Target:      sc.Attr("target"),
 				}
 				// A nilled or empty element is still a fact. Its value is
 				// whatever text it holds when it closes.
 				// Nested ix:nonNumeric / ix:nonFraction (Workiva wraps one
 				// fact inside another). Each layer is a separate fact.
-				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
+				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: string(local)})
 
-			case isClassicItem(space, t):
+			case isClassicItem(space, sc):
 				// Non-inline XBRL: an item is an element with contextRef
 				// (tuple wrappers have no contextRef and are not facts).
-				// encoding/xml has already resolved the prefix. A blank
+				// The scanner has already resolved the prefix. A blank
 				// prefix is the in-scope default xmlns. An unbound prefix
 				// is left as the prefix string.
 				nsURI, badPrefix := classicNamespace(space, ns)
 				if badPrefix != "" {
-					return nil, 0, errUndeclaredPrefix(sourceFile, local, badPrefix)
+					return nil, 0, errUndeclaredPrefix(sourceFile, string(local), badPrefix)
 				}
-				unitRef := attrAny(t, "unitRef")
-				decimals := attrAny(t, "decimals")
+				unitRef := sc.Attr("unitRef")
+				decimals := sc.Attr("decimals")
 				pf := pendingFact{
-					Name:       local,
-					ContextRef: attrAny(t, "contextRef"),
+					Name:       string(local),
+					ContextRef: sc.Attr("contextRef"),
 					UnitRef:    unitRef,
 					Namespace:  nsURI,
-					Scale:      attrAny(t, "scale"),
-					Sign:       attrAny(t, "sign"),
-					Format:     attrAny(t, "format"),
+					Scale:      sc.Attr("scale"),
+					Sign:       sc.Attr("sign"),
+					Format:     sc.Attr("format"),
 					Decimals:   decimals,
-					IsNumeric:  unitRef != "" || decimals != "" || attrAny(t, "precision") != "",
+					IsNumeric:  unitRef != "" || decimals != "" || sc.Attr("precision") != "",
 				}
-				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
+				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: string(local)})
 
-			case isIX(space) && local == "continuation":
+			case isIX(space) && string(local) == "continuation":
 				// Continuation of a prior fact (continuedAt chain).
 				// Nested continuations each keep their own frame.
 				openStack = append(openStack, &openFrame{
 					kind:     openContinuation,
-					contID:   attrAny(t, "id"),
-					contNext: attrAny(t, "continuedAt"),
+					contID:   sc.Attr("id"),
+					contNext: sc.Attr("continuedAt"),
 					space:    space,
-					local:    local,
+					local:    string(local),
 				})
 			}
 
-		case xml.CharData:
+		case xmlscan.CharData:
+			// Text outside any capture is never decoded.
 			if n := len(openStack); n > 0 {
-				openStack[n-1].buf.Write(t)
+				openStack[n-1].buf.Write(sc.Text())
 			} else if captureText {
-				textBuf.Write(t)
+				textBuf.Write(sc.Text())
 			}
 
-		case xml.EndElement:
-			local := t.Name.Local
-			space := t.Name.Space
-			if n := len(openStack); n > 0 && openStack[n-1].local == local && openStack[n-1].space == space {
+		case xmlscan.EndElement:
+			local := sc.Local()
+			space := sc.Space()
+			if n := len(openStack); n > 0 && openStack[n-1].local == string(local) && openStack[n-1].space == space {
 				fr := openStack[n-1]
 				openStack = openStack[:n-1]
 				raw := fr.buf.String()
@@ -349,7 +343,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			text := strings.TrimSpace(textBuf.String())
 
 			switch {
-			case isNS(space, nsXBRLI) && local == "context":
+			case isNS(space, nsXBRLI) && string(local) == "context":
 				if curCtx != nil && curCtx.ID != "" {
 					contexts[curCtx.ID] = curCtx
 				}
@@ -357,32 +351,32 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				inPeriod = false
 				explicitDim = ""
 
-			case isNS(space, nsXBRLI) && local == "period":
+			case isNS(space, nsXBRLI) && string(local) == "period":
 				inPeriod = false
 
-			case isNS(space, nsXBRLI) && local == "startDate" && curCtx != nil && inPeriod:
+			case isNS(space, nsXBRLI) && string(local) == "startDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodStart = text
-			case isNS(space, nsXBRLI) && local == "endDate" && curCtx != nil && inPeriod:
+			case isNS(space, nsXBRLI) && string(local) == "endDate" && curCtx != nil && inPeriod:
 				curCtx.PeriodEnd = text
-			case isNS(space, nsXBRLI) && local == "instant" && curCtx != nil && inPeriod:
+			case isNS(space, nsXBRLI) && string(local) == "instant" && curCtx != nil && inPeriod:
 				// Instant: mirror date into both bounds (matches common wide-row grouping).
 				curCtx.PeriodEnd = text
 				curCtx.PeriodStart = text
 
-			case isNS(space, nsXBRLDI) && local == "explicitMember" && curCtx != nil:
+			case isNS(space, nsXBRLDI) && string(local) == "explicitMember" && curCtx != nil:
 				dim := explicitDim
 				if dim == "" {
-					dim = attrAny(lastStart, "dimension")
+					dim = lastDim
 				}
 				if dim != "" {
 					curCtx.Dimensions[qnameLocal(dim)] = qnameLocal(text)
 				}
 				explicitDim = ""
 
-			case isNS(space, nsXBRLDI) && local == "typedMember" && curCtx != nil:
+			case isNS(space, nsXBRLDI) && string(local) == "typedMember" && curCtx != nil:
 				dim := explicitDim
 				if dim == "" {
-					dim = attrAny(lastStart, "dimension")
+					dim = lastDim
 				}
 				if dim != "" {
 					val := text
@@ -393,14 +387,14 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				}
 				explicitDim = ""
 
-			case isNS(space, nsXBRLI) && local == "measure" && curUnit != nil:
+			case isNS(space, nsXBRLI) && string(local) == "measure" && curUnit != nil:
 				if curUnit.Measure == "" {
 					curUnit.Measure = text
 				} else {
 					curUnit.Measure += "/" + text
 				}
 
-			case isNS(space, nsXBRLI) && local == "unit":
+			case isNS(space, nsXBRLI) && string(local) == "unit":
 				if curUnit != nil && curUnit.ID != "" {
 					units[curUnit.ID] = curUnit
 				}
@@ -411,8 +405,8 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			// end tag is not </typedMember>, so keep the buffer until the
 			// typed member itself ends. An explicit member's text is direct;
 			// its own end tag still clears the buffer.
-			keepMemberText := explicitDim != "" && !(isNS(space, nsXBRLDI) && (local == "typedMember" || local == "explicitMember"))
-			if captureText && !keepMemberText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
+			keepMemberText := explicitDim != "" && !(isNS(space, nsXBRLDI) && (string(local) == "typedMember" || string(local) == "explicitMember"))
+			if captureText && !keepMemberText && (!isIX(space) || (string(local) != "nonFraction" && string(local) != "nonNumeric")) {
 				if len(openStack) == 0 {
 					captureText = false
 					textBuf.Reset()
@@ -517,17 +511,19 @@ func isNS(space, want string) bool {
 	return space == want
 }
 
-// mergeNS records xmlns declarations on se.
-// encoding/xml presents xmlns:prefix as Space="xmlns" Local=prefix, and a
+// mergeNS records xmlns declarations on the current start element.
+// The scanner presents xmlns:prefix as Space="xmlns" Local=prefix, and a
 // default xmlns as Space="" Local="xmlns". A prefixed declaration must not
 // replace the default.
-func mergeNS(ns map[string]string, se xml.StartElement) {
-	for _, a := range se.Attr {
+func mergeNS(ns map[string]string, sc *xmlscan.Scanner) {
+	for i := 0; i < sc.NumAttr(); i++ {
+		local := sc.AttrLocal(i)
+		space := sc.AttrSpace(i)
 		switch {
-		case (a.Name.Space == "xmlns" || a.Name.Space == nsXMLNS) && a.Name.Local != "":
-			ns[a.Name.Local] = a.Value
-		case a.Name.Local == "xmlns" && a.Name.Space == "":
-			ns[""] = a.Value
+		case (space == "xmlns" || space == nsXMLNS) && len(local) != 0:
+			ns[string(local)] = sc.AttrValue(i)
+		case string(local) == "xmlns" && space == "":
+			ns[""] = sc.AttrValue(i)
 		}
 	}
 }
@@ -585,15 +581,6 @@ func errDateTransform(sourceFile, concept, format, text string, err error) error
 	return fmt.Errorf("date transform %s format %q value %q in %s: %v", concept, format, text, sourceFile, err)
 }
 
-func attrAny(se xml.StartElement, local string) string {
-	for _, a := range se.Attr {
-		if a.Name.Local == local {
-			return a.Value
-		}
-	}
-	return ""
-}
-
 // qnameLocal returns the local part of a QName (prefix:local or {uri}local).
 func qnameLocal(q string) string {
 	q = strings.TrimSpace(q)
@@ -612,8 +599,8 @@ func qnameLocal(q string) string {
 // isClassicItem reports a non-inline XBRL item: an element that carries
 // contextRef and is not part of the instance, link, or inline-XBRL machinery.
 // Tuple containers omit contextRef, so they are not facts.
-func isClassicItem(space string, t xml.StartElement) bool {
-	if attrAny(t, "contextRef") == "" || t.Name.Local == "" {
+func isClassicItem(space string, sc *xmlscan.Scanner) bool {
+	if sc.Attr("contextRef") == "" {
 		return false
 	}
 	if space == nsIXBRL || space == nsIXBRL1 || strings.Contains(space, "inlineXBRL") {
@@ -1116,17 +1103,6 @@ func stripTags(s string) string {
 // still the reference text does not match.
 func xmlUnescape(s string) string {
 	return html.UnescapeString(s)
-}
-
-// asciiCharsetReader accepts ASCII declarations as the identity encoding.
-// Any other charset is an error so the caller falls back to the regex parser.
-func asciiCharsetReader(charset string, input io.Reader) (io.Reader, error) {
-	switch strings.ToLower(strings.TrimSpace(charset)) {
-	case "ascii", "us-ascii":
-		return input, nil
-	default:
-		return nil, fmt.Errorf("unsupported charset %q", charset)
-	}
 }
 
 // foldSpaces maps Unicode space separators, and line and paragraph

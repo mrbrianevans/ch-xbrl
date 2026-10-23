@@ -91,6 +91,7 @@ cmd/ch-xbrl/      main CLI — stream zip, tar.zst, instance, directory, or stdi
 cmd/taxonomy/     ch-xbrl-taxonomy -o DIR — pinned suites → DIR/concepts.csv (not committed)
 cmd/mksample/     ch-xbrl-mksample — samples/*.xhtml → samples/sample.tar.zst (gitignored)
 internal/ixbrl/   iXBRL parser
+internal/ixbrl/xmlscan/  zero-copy XML tokeniser; same tokens and rejections as encoding/xml (parity tests)
 internal/archive  zip + tar.zst stream (HTTP range for remote zip) + writers
 internal/fact/    fact row schema
 internal/csvout/  concurrent CSV writer
