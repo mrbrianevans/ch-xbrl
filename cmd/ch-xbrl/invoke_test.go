@@ -1075,6 +1075,52 @@ func TestRun_UntransformableDateFailsMember(t *testing.T) {
 	}
 }
 
+func TestRun_FilesLenientOnDoneLine(t *testing.T) {
+	// The file ends inside an open element. Token returns unexpected EOF,
+	// and the member is parsed again by the regex fallback. A mismatched
+	// end tag is not enough: Strict is false, so that tag is rewritten
+	// onto whatever is open. files_lenient counts the fallback entry. A
+	// well-formed member stays at 0.
+	const broken = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
+<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c">Keep Ltd</ix:nonNumeric>
+<div>
+`
+	const ok = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
+<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c">Keep Ltd</ix:nonNumeric>
+</html>`
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "broken.html"), []byte(broken), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ok.html"), []byte(ok), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "2", dir}, nil)
+	if code != exitOK {
+		t.Fatalf("exit %d stderr=%s", code, stderr)
+	}
+	assertCSV(t, stdout)
+	if !strings.Contains(stderr, "files_ok=2") || !strings.Contains(stderr, "files_err=0") ||
+		!strings.Contains(stderr, "files_lenient=1") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+
+	only := t.TempDir()
+	if err := os.WriteFile(filepath.Join(only, "ok.html"), []byte(ok), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, stderr = runCLI(t, []string{"-o", "-", "-workers", "1", only}, nil)
+	if code != exitOK {
+		t.Fatalf("strict exit %d stderr=%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "files_lenient=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+}
+
 func TestRun_OutputFile(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "facts.csv")
 	code, stdout, stderr := runCLI(t, []string{"-o", out, "-workers", "1", sampleXHTML(t)}, nil)
