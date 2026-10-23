@@ -96,4 +96,4 @@ go run ./cmd/ch-xbrl -o data/facts.csv -workers 16 \
   "https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-05-09.zip"
 ```
 
-Remote zip uses parallel HTTP range batches (~16 MiB, 16 workers), not one GET per member. Retries 429/5xx/connection errors; not 403/404. Zip on stdin or an extension-less URL is refused. Full input table: [cli-contract.md](./cli-contract.md).
+Remote zip uses parallel HTTP range batches (~16 MiB, 16 workers), not one GET per member. Retries 429/5xx/connection errors; not 403/404. Zip on stdin is refused. An extension-less http(s) URL is accepted: one streaming GET, with the name taken from Content-Disposition; a zip is refused only when that disposition is a zip. Full input table: [cli-contract.md](./cli-contract.md).
