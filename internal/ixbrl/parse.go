@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
 	"github.com/mrbrianevans/ch-xbrl/internal/ixbrl/xmlscan"
@@ -674,7 +675,7 @@ func normaliseNonNumeric(val, format string) (string, error) {
 	// escapes a field that contains one. Space separators that unicode.IsSpace
 	// does not treat as space (thin space, narrow no-break space) become an
 	// ASCII space first, so date formats that require one still match.
-	val = strings.Join(strings.Fields(foldSpaces(val)), " ")
+	val = collapseSpaces(foldSpaces(val))
 	out, err := transformDate(fl, val)
 	if err != nil {
 		return val, err
@@ -699,10 +700,14 @@ func normaliseNumeric(val, scale, sign, format string) string {
 	}
 
 	// Strip human-readable prefixes sometimes embedded in tagged text ("2017 - 2").
-	if cleaned := strings.TrimSpace(humanNumericPrefixRE.ReplaceAllString(v, "")); cleaned != "" && cleaned != v {
-		// Only apply when residual looks numeric
-		if looksNumeric(cleaned) {
-			v = cleaned
+	// The pattern needs a ':' or a '-' followed by white space; most values
+	// have neither, and the regexp is skipped.
+	if mayHaveNumericPrefix(v) {
+		if cleaned := strings.TrimSpace(humanNumericPrefixRE.ReplaceAllString(v, "")); cleaned != "" && cleaned != v {
+			// Only apply when residual looks numeric
+			if looksNumeric(cleaned) {
+				v = cleaned
+			}
 		}
 	}
 
@@ -757,6 +762,10 @@ func normaliseNumeric(val, scale, sign, format string) string {
 		}
 	}
 
+	if s, ok := plainDecimal(v, sc, neg); ok {
+		return s
+	}
+
 	// Use big.Rat for precision
 	r := new(big.Rat)
 	if _, ok := r.SetString(v); !ok {
@@ -784,6 +793,76 @@ func normaliseNumeric(val, scale, sign, format string) string {
 	s := r.FloatString(10)
 	s = trimTrailingZeros(s)
 	return s
+}
+
+// mayHaveNumericPrefix reports whether humanNumericPrefixRE can match s:
+// s holds a ':' or a '-' followed by one of RE2's \s characters.
+func mayHaveNumericPrefix(s string) bool {
+	if strings.IndexByte(s, ':') >= 0 {
+		return true
+	}
+	for i := strings.IndexByte(s, '-'); i >= 0 && i+1 < len(s); {
+		switch s[i+1] {
+		case ' ', '\t', '\n', '\f', '\r':
+			return true
+		}
+		j := strings.IndexByte(s[i+1:], '-')
+		if j < 0 {
+			break
+		}
+		i += 1 + j
+	}
+	return false
+}
+
+// plainDecimal is the big.Rat result for the common case: digits, with an
+// optional '.' and at most ten fraction digits, at scale 0, or an integer at
+// a scale from 1 to 30. FloatString(10) is exact for those, so the result
+// is the digits without leading zeros in the integer part or trailing zeros
+// in the fraction. ok is false for anything else.
+func plainDecimal(v string, sc int, neg bool) (string, bool) {
+	dot := strings.IndexByte(v, '.')
+	intPart, frac := v, ""
+	if dot >= 0 {
+		intPart, frac = v[:dot], v[dot+1:]
+		if frac == "" || len(frac) > 10 || sc != 0 {
+			return "", false
+		}
+	}
+	if intPart == "" || !allDigits(intPart) || !allDigits(frac) || sc < 0 || sc > 30 {
+		return "", false
+	}
+	intPart = strings.TrimLeft(intPart, "0")
+	frac = strings.TrimRight(frac, "0")
+	if intPart == "" && frac == "" {
+		return "0", true
+	}
+	if intPart == "" {
+		intPart = "0"
+	}
+	var b strings.Builder
+	b.Grow(1 + len(intPart) + sc + 1 + len(frac))
+	if neg {
+		b.WriteByte('-')
+	}
+	b.WriteString(intPart)
+	for i := 0; i < sc; i++ {
+		b.WriteByte('0')
+	}
+	if frac != "" {
+		b.WriteByte('.')
+		b.WriteString(frac)
+	}
+	return b.String(), true
+}
+
+func allDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func looksNumeric(s string) bool {
@@ -820,11 +899,63 @@ func trimTrailingZeros(s string) string {
 
 // foldSpaces maps Unicode space separators, and line and paragraph
 // separators, to an ASCII space. unicode.IsSpace already covers U+00A0.
+// The only ASCII space separator is the space itself, so ASCII text is
+// returned as it is.
 func foldSpaces(s string) string {
+	if isASCII(s) {
+		return s
+	}
 	return strings.Map(func(r rune) rune {
-		if r == '\u2028' || r == '\u2029' || unicode.Is(unicode.Zs, r) {
+		if r >= utf8.RuneSelf && (r == 0x2028 || r == 0x2029 || unicode.Is(unicode.Zs, r)) {
 			return ' '
 		}
 		return r
 	}, s)
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// collapseSpaces is strings.Join(strings.Fields(s), " "). Text that already
+// has no leading, trailing or repeated white space, and no white space but
+// the ASCII space, is returned without splitting it.
+func collapseSpaces(s string) string {
+	prevSpace := true // a leading space is not collapsed
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == ' ':
+			if prevSpace {
+				return strings.Join(strings.Fields(s), " ")
+			}
+			prevSpace = true
+		case c < utf8.RuneSelf:
+			if asciiSpace(c) {
+				return strings.Join(strings.Fields(s), " ")
+			}
+			prevSpace = false
+		default:
+			r, size := utf8.DecodeRuneInString(s[i:])
+			if unicode.IsSpace(r) {
+				return strings.Join(strings.Fields(s), " ")
+			}
+			i += size - 1
+			prevSpace = false
+		}
+	}
+	if prevSpace && s != "" {
+		return strings.Join(strings.Fields(s), " ")
+	}
+	return s
+}
+
+// asciiSpace is unicode.IsSpace for an ASCII byte other than ' '.
+func asciiSpace(c byte) bool {
+	return c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'
 }
