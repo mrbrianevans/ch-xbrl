@@ -3,38 +3,52 @@ package fact
 import "testing"
 
 func TestCSVHeaderAndRecord(t *testing.T) {
-	if len(CSVHeader) != 10 {
-		t.Fatalf("CSVHeader len=%d want 10", len(CSVHeader))
+	if len(CSVHeader) != 9 {
+		t.Fatalf("CSVHeader len=%d want 9", len(CSVHeader))
 	}
-	if CSVHeader[0] != "company_number" {
-		t.Fatalf("CSVHeader[0]=%q want company_number", CSVHeader[0])
+	for _, h := range CSVHeader {
+		if h == "company_number" {
+			t.Fatal("company_number must not be a CSV column")
+		}
 	}
-	if CSVHeader[7] != "namespace" {
-		t.Fatalf("CSVHeader[7]=%q want namespace", CSVHeader[7])
+	want := []string{
+		"period_start",
+		"period_end",
+		"concept",
+		"value",
+		"unit",
+		"dimensions",
+		"namespace",
+		"source_file",
+		"decimals",
 	}
-	if CSVHeader[9] != "decimals" {
-		t.Fatalf("CSVHeader[9]=%q want decimals", CSVHeader[9])
+	for i, h := range want {
+		if CSVHeader[i] != h {
+			t.Fatalf("CSVHeader[%d]=%q want %q", i, CSVHeader[i], h)
+		}
 	}
 	f := Fact{
-		CompanyNumber: "123",
-		PeriodStart:   "2024-01-01",
-		PeriodEnd:     "2024-12-31",
-		Concept:       "FixedAssets",
-		Value:         "100",
-		Unit:          "iso4217:GBP",
-		Dimensions:    "",
-		Namespace:     "http://example.com/core",
-		SourceFile:    "a.html",
-		Decimals:      "INF",
+		PeriodStart: "2024-01-01",
+		PeriodEnd:   "2024-12-31",
+		Concept:     "FixedAssets",
+		Value:       "100",
+		Unit:        "iso4217:GBP",
+		Dimensions:  "",
+		Namespace:   "http://example.com/core",
+		SourceFile:  "a.html",
+		Decimals:    "INF",
 	}
 	rec := f.Record()
-	if len(rec) != 10 {
-		t.Fatalf("Record len=%d want 10", len(rec))
+	if len(rec) != 9 {
+		t.Fatalf("Record len=%d want 9", len(rec))
 	}
-	if rec[7] != "http://example.com/core" {
-		t.Fatalf("namespace=%q", rec[7])
+	if rec[6] != "http://example.com/core" {
+		t.Fatalf("namespace=%q", rec[6])
 	}
-	if rec[9] != "INF" {
-		t.Fatalf("decimals=%q want INF", rec[9])
+	if rec[7] != "a.html" {
+		t.Fatalf("source_file=%q", rec[7])
+	}
+	if rec[8] != "INF" {
+		t.Fatalf("decimals=%q want INF", rec[8])
 	}
 }

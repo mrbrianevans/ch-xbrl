@@ -32,15 +32,8 @@ func TestParseSampleFiles(t *testing.T) {
 				t.Fatal("expected facts")
 			}
 
-			wantCompany := companyFromFilename(base)
-			var hasCompany, hasConcept, companyMatches bool
+			var hasConcept bool
 			for _, f := range facts {
-				if f.CompanyNumber != "" {
-					hasCompany = true
-					if wantCompany != "" && f.CompanyNumber == wantCompany {
-						companyMatches = true
-					}
-				}
 				if f.Concept != "" {
 					hasConcept = true
 				}
@@ -52,18 +45,10 @@ func TestParseSampleFiles(t *testing.T) {
 					break
 				}
 			}
-			if !hasCompany {
-				t.Error("no company_number on any fact")
-			}
 			if !hasConcept {
 				t.Error("no concepts")
 			}
-			if wantCompany != "" && !companyMatches {
-				// Company may also come from entity identifier / registered-number fact;
-				// require at least one fact carries the id implied by the filename.
-				t.Errorf("expected some fact with company_number=%q (from filename)", wantCompany)
-			}
-			t.Logf("%s: %d facts company=%s", base, len(facts), wantCompany)
+			t.Logf("%s: %d facts", base, len(facts))
 		})
 	}
 }
@@ -101,26 +86,6 @@ func TestNormaliseNumeric(t *testing.T) {
 		if got != c.want {
 			t.Errorf("normaliseNumeric(%q,%q,%q,%q)=%q want %q",
 				c.val, c.scale, c.sign, c.format, got, c.want)
-		}
-	}
-}
-
-func TestCompanyFromFilename(t *testing.T) {
-	cases := map[string]string{
-		// Modern accounts dump: {company}_{type}_{date}.xhtml
-		"03024914_aa_2023-03-13.xhtml":         "03024914",
-		"path/to/09652677_aa_2026-03-25.xhtml": "09652677",
-		"13566765_aa_2026-03-26.xhtml":         "13566765",
-		// Bulk / historic: Prod{run}_{batch}_{company}_{yyyymmdd}.html
-		"Prod224_9956_04944372_20100331.xml":      "04944372",
-		"Prod223_4203_00134794_20250927.html":     "00134794",
-		"Prod223_4203_15145702_20251231.html":     "15145702",
-		"Prod223_4203_10941963_20250930.html":     "10941963",
-		"dir/Prod223_4203_08798715_20250331.html": "08798715",
-	}
-	for in, want := range cases {
-		if got := companyFromFilename(in); got != want {
-			t.Errorf("companyFromFilename(%q)=%q want %q", in, got, want)
 		}
 	}
 }
@@ -598,9 +563,6 @@ func TestParseClassicXBRL(t *testing.T) {
 	if sh.PeriodStart != "2020-03-31" || sh.PeriodEnd != "2020-03-31" {
 		t.Fatalf("ShareholderFunds period = %s..%s", sh.PeriodStart, sh.PeriodEnd)
 	}
-	if sh.CompanyNumber != "08974483" {
-		t.Fatalf("name-identifier context company=%q want registered-number backfill", sh.CompanyNumber)
-	}
 	if sh.Namespace != "http://www.xbrl.org/uk/fr/gaap/pt/2004-12-01" {
 		t.Fatalf("namespace=%q", sh.Namespace)
 	}
@@ -611,7 +573,7 @@ func TestParseClassicXBRL(t *testing.T) {
 	}
 
 	name := mustOne(t, byConcept, "NameApprovingDirector")
-	if name.Value != "Mr David Anthony Cooper" || name.CompanyNumber != "08974483" {
+	if name.Value != "Mr David Anthony Cooper" {
 		t.Fatalf("director = %+v", name)
 	}
 	if name.PeriodStart != "2019-04-01" || name.PeriodEnd != "2020-03-31" {
@@ -624,7 +586,7 @@ func TestParseClassicXBRL(t *testing.T) {
 	}
 
 	cash := mustOne(t, byConcept, "CashBankInHand")
-	if cash.CompanyNumber != "06022930" || cash.Value != "5" {
+	if cash.Value != "5" {
 		t.Fatalf("cash = %+v", cash)
 	}
 
@@ -632,15 +594,12 @@ func TestParseClassicXBRL(t *testing.T) {
 	if eq.Dimensions != `{"EquityClassesDimension":"ShareCapital"}` {
 		t.Fatalf("dimensions=%q", eq.Dimensions)
 	}
-	if eq.CompanyNumber != "08974483" {
-		t.Fatalf("dimensional company=%q", eq.CompanyNumber)
-	}
 }
 
 func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
 	// Found in https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-April2010.zip
-	// The scheme mentions Companies House, but the identifier is the legal name.
-	// See docs/edge-cases.md.
+	// The identifier is the legal name. It is not copied onto the fact row.
+	// The registered-number fact keeps the filer's value. See docs/edge-cases.md.
 	doc := `<?xml version="1.0"?>
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:ae="http://example.com/ae">
   <ae:CompaniesHouseRegisteredNumber contextRef="y">06651382</ae:CompaniesHouseRegisteredNumber>
@@ -659,10 +618,20 @@ func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	byConcept := map[string]fact.Fact{}
 	for _, f := range facts {
-		if f.CompanyNumber != "06651382" {
-			t.Fatalf("%s company_number=%q", f.Concept, f.CompanyNumber)
+		if f.SourceFile != "Prod224_9953_06651382_20091231.xml" {
+			t.Fatalf("%s source_file=%q", f.Concept, f.SourceFile)
 		}
+		byConcept[f.Concept] = f
+	}
+	reg, ok := byConcept["CompaniesHouseRegisteredNumber"]
+	if !ok || reg.Value != "06651382" {
+		t.Fatalf("registered number = %+v", reg)
+	}
+	name, ok := byConcept["EntityCurrentLegalName"]
+	if !ok || name.Value != "BEST MONEY HOLDING LIMITED" {
+		t.Fatalf("legal name = %+v", name)
 	}
 }
 
@@ -693,35 +662,8 @@ func TestParseKnownArchiveAnomalies(t *testing.T) {
 	}
 }
 
-func TestCompanyNumberAllowsLetters(t *testing.T) {
-	for _, id := range []string{"SC248149", "NI012345", "OC123456", "SO123456", "R0000001", "08972528"} {
-		if !looksLikeCompanyNumber(id) {
-			t.Errorf("%s should be a company number; letters are valid", id)
-		}
-	}
-	for _, id := range []string{"BEST MONEY HOLDING LIMITED", "12345", "LIMITED", "123456789"} {
-		if looksLikeCompanyNumber(id) {
-			t.Errorf("%s should not be accepted as a company number", id)
-		}
-	}
-	if got := companyFromFilename("Prod224_0088_SC248149_20100331.xml"); got != "SC248149" {
-		t.Fatalf("filename company=%q", got)
-	}
-	if got := companyFromFilename("Prod223_4320_05016384_20251231_CIC.zip"); got != "05016384" {
-		t.Fatalf("CIC wrapper filename company=%q", got)
-	}
-	suffixes := []struct{ name, want string }{
-		{"Prod224_0088_SC248149_20200331_UKSEF.zip", "SC248149"},
-		{"Prod224_0088_SC248149_20200331_CIC.zip", "SC248149"},
-		{"Prod224_0088_SC248149_20200331_AUDIT_EXEMPT.zip", "SC248149"},
-		{"Prod224_0088_08972528_20200331_UKSEF.html", "08972528"},
-	}
-	for _, tc := range suffixes {
-		if got := companyFromFilename(tc.name); got != tc.want {
-			t.Fatalf("filename %s company=%q want %s", tc.name, got, tc.want)
-		}
-	}
-
+func TestLetterBearingIdentifierStillParses(t *testing.T) {
+	// SC / NI / OC numbers are ordinary identifier text. They are not a column.
 	doc := `<?xml version="1.0"?>
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:pt="http://example.com/pt">
   <pt:ShareholderFunds contextRef="y" unitRef="u" decimals="0">1</pt:ShareholderFunds>
@@ -737,8 +679,11 @@ func TestCompanyNumberAllowsLetters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if facts[0].CompanyNumber != "SC248149" {
-		t.Fatalf("company_number=%q", facts[0].CompanyNumber)
+	if len(facts) != 1 || facts[0].Concept != "ShareholderFunds" || facts[0].Value != "1" {
+		t.Fatalf("facts=%+v", facts)
+	}
+	if facts[0].SourceFile != "Prod224_0088_SC248149_20100331.xml" {
+		t.Fatalf("source_file=%q", facts[0].SourceFile)
 	}
 	if facts[0].Namespace != "http://example.com/pt" {
 		t.Fatalf("namespace=%q", facts[0].Namespace)
@@ -958,7 +903,7 @@ func TestASCIICharsetDecodesNBSPDate(t *testing.T) {
 			t.Fatalf("%s facts=%d, want 1", enc, len(facts))
 		}
 		f := facts[0]
-		if f.Concept != "BusinessReportPublicationDate" || f.Value != "2026-09-05" || f.CompanyNumber != "12874000" {
+		if f.Concept != "BusinessReportPublicationDate" || f.Value != "2026-09-05" {
 			t.Fatalf("%s fact=%+v", enc, f)
 		}
 	}
@@ -1035,9 +980,6 @@ func TestParseASCIIIxbrlReporterSample(t *testing.T) {
 	}
 	seen := map[string]int{}
 	for _, f := range facts {
-		if f.CompanyNumber != "12874000" {
-			t.Errorf("%s company_number=%q", f.Concept, f.CompanyNumber)
-		}
 		if f.SourceFile != name {
 			t.Errorf("%s source_file=%q", f.Concept, f.SourceFile)
 		}

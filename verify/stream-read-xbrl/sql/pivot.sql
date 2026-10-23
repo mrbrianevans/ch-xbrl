@@ -1,7 +1,9 @@
 -- Long-format ch-xbrl facts (all sample members) → wide rows using column_map.csv.
 -- Caller creates tables extract_all, col_map.
--- ch-xbrl emits company_number; alias to company_id so extract_wide matches the
--- stream-read-xbrl oracle (which we do not change).
+-- The CSV has no company_number column. company_id is read from source_file
+-- so extract_wide matches stream-read-xbrl, which reads that field from the
+-- member name. An accounts filename ({CRN}_type_date) uses its leading 8
+-- characters.
 
 CREATE OR REPLACE MACRO is_plain_dim(d) AS (
     d IS NULL OR trim(cast(d AS VARCHAR)) IN ('', '{}')
@@ -10,14 +12,27 @@ CREATE OR REPLACE MACRO is_plain_dim(d) AS (
 CREATE OR REPLACE TABLE facts_src AS
 SELECT
     fact_ord,
-    trim(cast(company_number AS VARCHAR)) AS company_id,
-    try_cast(nullif(trim(cast(period_start AS VARCHAR)), '') AS DATE) AS period_start,
-    try_cast(nullif(trim(cast(period_end AS VARCHAR)), '') AS DATE) AS period_end,
-    trim(cast(concept AS VARCHAR)) AS concept,
-    nullif(trim(cast(value AS VARCHAR)), '') AS value,
-    trim(coalesce(cast(dimensions AS VARCHAR), '')) AS dimensions,
-    list_last(string_split(replace(cast(source_file AS VARCHAR), '\', '/'), '/')) AS source_file
-FROM extract_all;
+    upper(coalesce(
+        nullif(regexp_extract(base, '^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}', 1), ''),
+        nullif(regexp_extract(base, '^([A-Za-z0-9]{8})_[^_]+_', 1), '')
+    )) AS company_id,
+    period_start,
+    period_end,
+    concept,
+    value,
+    dimensions,
+    base AS source_file
+FROM (
+    SELECT
+        fact_ord,
+        try_cast(nullif(trim(cast(period_start AS VARCHAR)), '') AS DATE) AS period_start,
+        try_cast(nullif(trim(cast(period_end AS VARCHAR)), '') AS DATE) AS period_end,
+        trim(cast(concept AS VARCHAR)) AS concept,
+        nullif(trim(cast(value AS VARCHAR)), '') AS value,
+        trim(coalesce(cast(dimensions AS VARCHAR), '')) AS dimensions,
+        list_last(string_split(replace(cast(source_file AS VARCHAR), '\', '/'), '/')) AS base
+    FROM extract_all
+);
 
 CREATE OR REPLACE TABLE facts_mapped AS
 SELECT

@@ -7,9 +7,18 @@
 -- Canonical columns are driven by mapping/concept_map.csv (keep pivot list in sync).
 
 -- 1. Load long facts (force string columns so empty dates do not break auto-detect)
+-- company_number is not a CSV column. This transform reads a grouping key
+-- from source_file so filings still group. An accounts filename
+-- ({CRN}_type_date) uses its leading 8 characters. The result is a string.
+-- Letters (SC, NI, OC, FC) stay. Do not cast to an integer.
+-- UKCompaniesHouseRegisteredNumber is a fact and can drop leading zeros; it is
+-- not this column.
 CREATE OR REPLACE TABLE facts AS
 SELECT
-  company_number,
+  upper(coalesce(
+    nullif(regexp_extract(base, '^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}', 1), ''),
+    nullif(regexp_extract(base, '^([A-Za-z0-9]{8})_[^_]+_', 1), '')
+  )) AS company_number,
   TRY_CAST(NULLIF(TRIM(CAST(period_start AS VARCHAR)), '') AS DATE) AS period_start,
   TRY_CAST(NULLIF(TRIM(CAST(period_end AS VARCHAR)), '') AS DATE)   AS period_end,
   concept,
@@ -17,14 +26,26 @@ SELECT
   unit,
   dimensions,
   namespace,
-  source_file,
+  base AS source_file,
   decimals
-FROM read_csv(
-  'data/facts.csv',
-  header = true,
-  all_varchar = true,
-  ignore_errors = true,
-  null_padding = true
+FROM (
+  SELECT
+    list_last(string_split(replace(source_file, '\', '/'), '/')) AS base,
+    period_start,
+    period_end,
+    concept,
+    value,
+    unit,
+    dimensions,
+    namespace,
+    decimals
+  FROM read_csv(
+    'data/facts.csv',
+    header = true,
+    all_varchar = true,
+    ignore_errors = true,
+    null_padding = true
+  )
 );
 
 -- 2. Load the hand-curated concept map.
@@ -95,8 +116,9 @@ FROM (
 WHERE rn = 1;
 
 -- 6. Pivot canonicals to columns (must match mapping/concept_map.csv canonical names).
--- company_number is the fact-row identifier, not a pivoted canonical (same name as
--- UKCompaniesHouseRegisteredNumber in the map; the identifier already backfills from it).
+-- company_number above is derived from source_file, not the registered-number fact.
+-- The map's company_number canonical (UKCompaniesHouseRegisteredNumber) stays out
+-- of the pivot so a short tagged value does not replace the filename number.
 CREATE OR REPLACE TABLE wide_raw AS
 SELECT *
 FROM (

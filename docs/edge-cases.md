@@ -1,6 +1,6 @@
 # Edge cases
 
-Maintainer notes. This page is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). The contract freezes that `company_number` is populated with a company-number string. It does not freeze which sources fill that column.
+Maintainer notes. This page is not part of the ch-xbrl SemVer contract in [cli-contract.md](./cli-contract.md). The contract freezes `source_file`. It does not include a company-number column. That column was removed for v0.5.0.
 
 Real Companies House inputs that a straightforward parser gets wrong. Each case below records where it was found and the behaviour the regression tests lock in today. The tests fail if that behaviour is removed. Changing it on purpose means updating this page and the tests in the same change.
 
@@ -44,11 +44,27 @@ Joint filings put the legal name in the context entity, for example:
 <xbrli:identifier scheme="www.companieshouse.gov.uk">BEST MONEY HOLDING LIMITED</xbrli:identifier>
 ```
 
-The registered number is a separate fact (`CompaniesHouseRegisteredNumber` or `UKCompaniesHouseRegisteredNumber`) and is also in the member name (`Prod224_9953_06651382_20091231.xml` for that example). The scheme mentions Companies House, so a scheme-based check stores the legal name as `company_number`.
+The registered number is a separate fact (`CompaniesHouseRegisteredNumber` or `UKCompaniesHouseRegisteredNumber`) and is also in the member name (`Prod224_9953_06651382_20091231.xml` for that example). The scheme mentions Companies House. A scheme-based check used to store the legal name as `company_number`.
 
-`company_number` must be `06651382` on every fact from that example. It must not be `BEST MONEY HOLDING LIMITED`. The same rule applies when the number contains letters (`SC248149` and similar); rejecting a legal name must not turn into a digits-only check.
+The column is gone. The identifier is not copied. `CompaniesHouseRegisteredNumber` on that example stays `06651382`, and `EntityCurrentLegalName` stays `BEST MONEY HOLDING LIMITED`. A letter-bearing identifier such as `SC248149` is the same: the filing still parses, and the identifier is not a column. See [Short company numbers](#short-company-numbers) for filers who drop leading zeros instead of writing a name.
 
-Test: `TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName`. Letter-bearing numbers: `TestCompanyNumberAllowsLetters`.
+Test: `TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName`. Letter-bearing identifier: `TestLetterBearingIdentifierStillParses`.
+
+## Short company numbers
+
+Found in [Accounts_Bulk_Data-2026-10-23.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-23.zip). 72 of 11,606 members had a 6- or 7-digit number in the context `xbrli:identifier` and in `UKCompaniesHouseRegisteredNumber`. The Prod filename carries the 8-character number with the leading zeros filled in. Reported in [#30](https://github.com/mrbrianevans/ch-xbrl/issues/30).
+
+`ch-xbrl` used to prefer the identifier over the filename, so `Prod223_4335_00650187_20251231.html` was stored as `0650187`. Joins on the real company number missed the filing. Padding rules and a Companies House precedence list do not belong in the public CSV. The `company_number` column is removed. The tagged value stays an ordinary fact.
+
+`samples/Prod223_4335_00650187_20251231.html` is committed unchanged. `UKCompaniesHouseRegisteredNumber` is `0650187`. The filename carries `00650187`.
+
+Behaviour that must stay:
+
+- The CSV header has no `company_number` column.
+- `source_file` is the Prod member name. The same set of names comes from a single file, a directory, a zip, a tar.zst whose headers are `./`-prefixed, and a stdin tar.
+- Every `UKCompaniesHouseRegisteredNumber` fact keeps the short value in the table. It is not padded.
+
+Tests: `TestRun_ShortCompanyNumbers`, `TestRun_SourceFileSameAcrossInputs`, `TestConsumerCompanyNumberRegex`.
 
 ## CIC accounts in a nested zip
 
@@ -65,7 +81,7 @@ Other `*_CIC.zip` members in that pack follow the same layout: exactly one accou
 
 The reliable split is the directory segment, not the basename. All 14 wrappers use a segment named `accounts` for the filing and `cic34` for the CIC34 report. Basenames vary (`financialStatement.xhtml`, `accounts.html`, `cic_accts.xhtml`, `9881-LTD CH Copy-31_12_2025.html`, `cicReport.xhtml`, `cic34.html`, `CIC34.xhtml`). Both documents contain facts. The CIC34 report is a different filing (community-interest statements), so unwrapping a bulk member keeps the accounts file and leaves the CIC34 report out.
 
-A name ending in `.zip` used to be dropped before it was counted. `ch-xbrl` on that pack reported `members=9518` and `files_err=0`, and `05016384` was absent from the CSV. Opening the inner zip and passing it as the positional input parses both documents (79 facts, `company_number` `05016384`).
+A name ending in `.zip` used to be dropped before it was counted. `ch-xbrl` on that pack reported `members=9518` and `files_err=0`, and `05016384` was absent from the CSV. Opening the inner zip and passing it as the positional input parses both documents (79 facts). The package path keeps only the accounts file.
 
 Behaviour that must stay:
 
@@ -107,7 +123,7 @@ A name ending in `.zip` used to be passed to `zip.NewReader`. That returns `zip:
 Behaviour that must stay:
 
 - On a local or remote `.zip` input, a member whose name ends in `.zip` is classified by content. Zip magic (`PK` local-file, end-of-central-directory, or spanning header) is opened one level, with the package rules above. XML/XHTML/iXBRL (optional BOM, then optional whitespace, then `<`) is emitted as one instance.
-- `source_file` for that instance is the bulk member name (`Prod224_0089_05546298_20201231.zip`). The run logs `instance named .zip: …`. This sample produces 26 facts, all with `company_number` `05546298`, including `EntityCurrentLegalOrRegisteredName` `Imex Consultancy Ltd` and `CashBankInHand` `1` at `2020-12-31`. `files_err` stays 0.
+- `source_file` for that instance is the bulk member name (`Prod224_0089_05546298_20201231.zip`). The run logs `instance named .zip: …`. This sample produces 26 facts, including `EntityCurrentLegalOrRegisteredName` `Imex Consultancy Ltd` and `CashBankInHand` `1` at `2020-12-31`. `files_err` stays 0.
 - A `.zip`-named member that is neither a zip nor XML/HTML is a member error, not a stream error. See [Attachment placeholder published under a .zip name](#attachment-placeholder-published-under-a-zip-name).
 - Opening this sample file itself as the positional input still fails. A path ending in `.zip` is an archive, and these bytes are not one. The sniff applies to members inside a zip.
 - A zip inside an inner zip is still skipped by name. This classification is only for a `.zip`-named member of the input zip.
@@ -228,7 +244,7 @@ Behaviour that must stay:
 - A package whose top-level folder is `OVERSEAS-<CRN>` (case-insensitive) emits only the iXBRL files under `english-accounts/` (case-insensitive, exact segment). An original-language folder, or an `accounts/` folder, in the same package is skipped and logged (`skip nested member: …`).
 - An `OVERSEAS` package with no `english-accounts/` report is a member error (`no reports`).
 - `english-accounts/` is not selected in other `PREFIX-CRN` packages.
-- The package emits 177 facts with `company_number` `FC041186`, `EntityCurrentLegalOrRegisteredName` `Farrington Homes Limited`, and `NetAssetsLiabilities` `-434780` GBP at 2025-03-31 (`100` at 2024-03-31). `source_file` is the package name, both as the input and as a bulk member.
+- The package emits 177 facts, including `EntityCurrentLegalOrRegisteredName` `Farrington Homes Limited` and `NetAssetsLiabilities` `-434780` GBP at 2025-03-31 (`100` at 2024-03-31). `source_file` is the package name (`Prod223_4334_FC041186_20250331_OVERSEAS.zip`), both as the input and as a bulk member. The inner path is not a `source_file`.
 
 The member is committed at `samples/Prod223_4334_FC041186_20250331_OVERSEAS.zip`.
 
@@ -295,7 +311,7 @@ Behaviour that must stay:
 - `ProfessionalConsultancyFees` for `2025-01-01` to `2025-12-31` is `107816000` (`107,816` with `scale="3"`), `decimals` `-3`, unit `iso4217:GBP`, no dimensions.
 - The 2024 comparative is `104907000`, same decimals and unit, period `2024-01-01` to `2024-12-31`.
 - `TurnoverRevenueFree-textComment` for that 2025 period still contains `107,816` and `civil engineering consultancy`. The nested fact's text is part of the continuation.
-- 589 facts. Every row has `company_number` `01922327` and `source_file` `01922327_aa_2025-12-31.xhtml`.
+- 589 facts. Every row has `source_file` `01922327_aa_2025-12-31.xhtml`.
 
 Tests: `TestFactInsideContinuation`, `TestRun_EdgeSampleFactInsideContinuation`.
 
@@ -326,7 +342,7 @@ Behaviour that must stay, for this file:
 
 - 40 `EndDateForPeriodCoveredByReport` facts and 20 `BalanceSheetDate` facts, each `2025-12-31` at period end `2025-12-31`. The nest above is one of those groups (two end dates and one balance-sheet date) and the document repeats it.
 - Neither concept is left as `31 December` or `31 December 2025`.
-- 591 facts. Every row has `company_number` `07068009` and `source_file` `07068009_aa_2025-12-31.xhtml`.
+- 591 facts. Every row has `source_file` `07068009_aa_2025-12-31.xhtml`.
 
 Tests: `TestNestedContinuations`, `TestNestedContinuationsLenient`, `TestRun_EdgeSampleNestedContinuations`.
 
@@ -346,7 +362,7 @@ These financial statements have been prepared in accordance with Financial Repor
 
 Whitespace is still collapsed. The quotes stay. The CSV writer escapes a field that contains `"`. The value is not wrapped in an extra pair of quotes.
 
-88 facts. Every row has `company_number` `00340611` and `source_file` `00340611_aa_2026-01-31.xhtml`. The legal name is `LONDON SAILPLANES LIMITED`.
+88 facts. Every row has `source_file` `00340611_aa_2026-01-31.xhtml`. The legal name is `LONDON SAILPLANES LIMITED`.
 
 Tests: `TestQuotesKeptInSailplanesComplianceStatement`, `TestRun_EdgeSampleQuotesKept`.
 
@@ -374,7 +390,7 @@ Behaviour that must stay, for this file:
 - `AddressLine1` is `Stanhope, The Reddings`. Three facts.
 - `PostalCodeZip` is `GL51 6RL`. Three facts.
 - No fact value still contains the characters `&#160;`.
-- 86 facts. Every row has `company_number` `12874000` and `source_file` `Prod223_4327_12874000_20260831.html`. `files_err` stays 0.
+- 86 facts. Every row has `source_file` `Prod223_4327_12874000_20260831.html`. `files_err` stays 0.
 
 An unknown charset is still a member that falls back to the regex parser. A date with no year (`31 December` and `datedaymonthyearen`) still fails the member.
 

@@ -72,7 +72,7 @@ This query is an example. It is not part of the ch-xbrl SemVer contract in [cli-
 
 ```sql
 SELECT
-  f.company_number,
+  f.source_file,
   f.period_end,
   f.concept,
   f.namespace,

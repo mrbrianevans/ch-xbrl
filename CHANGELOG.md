@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-23
+
+### Removed
+
+- Breaking change. The `company_number` column is removed. The CSV is generic XBRL. `UKCompaniesHouseRegisteredNumber` stays an ordinary fact with the filer's value, including a short number that dropped leading zeros.
+
+### Changed
+
+- `source_file` for a tar, tar.zst, or stdin tar member is the basename. A header path such as `./Prod223_….html` is recorded as `Prod223_….html`, the same value as a zip member, a directory file, or a single file.
+
 ## [0.4.7] - 2026-10-23
 
 ### Fixed
@@ -142,7 +152,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.7...v0.5.0
 [0.4.7]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.4...v0.4.5

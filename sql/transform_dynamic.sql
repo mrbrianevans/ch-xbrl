@@ -3,15 +3,28 @@
 --
 --   duckdb -c ".read sql/transform_dynamic.sql"
 
+-- company_number is derived from source_file. See sql/transform.sql.
 CREATE OR REPLACE TABLE facts AS
 SELECT
-  company_number,
+  upper(coalesce(
+    nullif(regexp_extract(base, '^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}', 1), ''),
+    nullif(regexp_extract(base, '^([A-Za-z0-9]{8})_[^_]+_', 1), '')
+  )) AS company_number,
   TRY_CAST(NULLIF(TRIM(period_start), '') AS DATE) AS period_start,
   TRY_CAST(NULLIF(TRIM(period_end), '') AS DATE)   AS period_end,
   concept,
   value,
   dimensions
-FROM read_csv('data/facts.csv', header = true, all_varchar = true, ignore_errors = true);
+FROM (
+  SELECT
+    list_last(string_split(replace(source_file, '\', '/'), '/')) AS base,
+    period_start,
+    period_end,
+    concept,
+    value,
+    dimensions
+  FROM read_csv('data/facts.csv', header = true, all_varchar = true, ignore_errors = true)
+);
 
 CREATE OR REPLACE TABLE concept_map AS
 SELECT canonical, concept, CAST(priority AS INTEGER) AS priority

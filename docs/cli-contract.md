@@ -64,20 +64,33 @@ A frozen column meaning is what a caller can rely on. The procedure that fills t
 Column order is frozen:
 
 ```text
-company_number,period_start,period_end,concept,value,unit,dimensions,namespace,source_file,decimals
+period_start,period_end,concept,value,unit,dimensions,namespace,source_file,decimals
 ```
+
+There is no `company_number` column. The CSV is generic XBRL. A context identifier, including a legal name or a number with dropped leading zeros, is not copied onto the row. `UKCompaniesHouseRegisteredNumber` and `CompaniesHouseRegisteredNumber` stay ordinary facts, with the filer's value.
 
 | Column | Frozen meaning |
 |--------|----------------|
-| `company_number` | Populated with the company's registered number, as a string. The value may contain letters. It is not an integer. |
 | `period_start` / `period_end` | ISO dates from the fact's context. Instant: `period_start` = `period_end`. This is not the period-end fact: cast `BalanceSheetDate`. |
 | `concept` | **Local name** (not a namespace-qualified QName) |
 | `value` | Effective string (scale / sign / iXT applied). A date format writes the registry form: `YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD` when the format is only part of a date. No date format leaves the text. |
 | `unit` | Unit measure(s), empty if none |
 | `dimensions` | JSON object of local-name → member; empty if none |
 | `namespace` | Namespace URI for the concept's prefix, taken from the document's `xmlns` declarations. The prefix itself is never written, and a `schemaRef` href is not written. An inline `ix:` name with no prefix is empty; the default `xmlns` is not used. A classic item with no prefix uses the in-scope default `xmlns`, or is empty when none is in scope. |
-| `source_file` | Archive member name, instance basename, or `-` for a stdin instance |
+| `source_file` | See the table below. The same filing has the same `source_file` whichever input method produced it. |
 | `decimals` | Raw iXBRL `decimals` attribute (`INF` stays `INF`); empty when absent or non-numeric |
+
+`source_file` forms:
+
+| Input | `source_file` |
+|-------|----------------|
+| Bulk zip member | Member name, e.g. `Prod223_4335_00650187_20251231.html` |
+| Nested zip (CIC / AUDIT_EXEMPT / OVERSEAS / UKSEF package, or accounts-dir fallback) | Outer zip member name, e.g. `Prod223_4335_07133374_20260131_CIC.zip` (inner path not recorded) |
+| Remote package | URL basename |
+| Single file / directory | Basename |
+| tar / tar.zst / stdin tar | Basename. A header path such as `./Prod223_….html` is recorded as `Prod223_….html` |
+| Stdin instance | `-` |
+| Extension-less remote | `Content-Disposition` filename when present, else the URL basename |
 
 Dimensional facts are **kept**. Filtering to non-dimensional rows is a downstream concern.
 
@@ -88,7 +101,6 @@ A concept is `namespace` plus `concept`. The row has no `schemaRef` column. That
 - Row order (worker pool).
 - Exact numeric pretty-print / trailing zeros.
 - Full narrative prose (nested `ix:exclude` or similar may still truncate). Fact **inventory** (concepts present, periods, numeric values) must still match.
-- How `company_number` is chosen. Today that can be the context identifier, the filename, or a registered-number fact such as `UKCompaniesHouseRegisteredNumber` / `CompaniesHouseRegisteredNumber`. A minor version may add or remove a source, including the filename.
 - Which component folders of a Companies House package are selected, beyond the rules in [edge-cases.md](./edge-cases.md). `source_file` for a package filing is the package name.
 - How tuples are represented. See [Tuples](#tuples). Shipping `v1.0.0` does not freeze this. A minor release after v1.0 may change it.
 - Stderr wording, including the text of a parse error.
@@ -126,7 +138,7 @@ A date format that cannot be transformed is a failed member in the same way. Tha
 
 **Major** if we:
 
-- Rename, reorder, or remove any of the ten CSV columns.
+- Rename, reorder, or remove any of the nine CSV columns.
 - Change `concept` to a QName.
 - Change instant encoding (`period_start` = `period_end`).
 - Change the meaning of positional input or `-o` / `--output` (additive new input kinds are minor, not major).
@@ -139,7 +151,7 @@ A date format that cannot be transformed is a failed member in the same way. Tha
 - Add a new flag.
 - Add an input kind or archive format that does not change existing invocations (e.g. later `.tar.gz`; not implemented).
 - Accept flags after the positional (today they must come first).
-- Change how an existing column is populated while it still means what the frozen cell says (for example, add or remove the filename as a source of `company_number`).
+- Change how an existing column is populated while it still means what the frozen cell says.
 
 **Patch:** bug fixes that do not change the frozen meaning above.
 

@@ -51,7 +51,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 - Instants: `period_start = period_end`. Those columns are the fact's context period. `BalanceSheetDate` in `value` is the period-end fact.
 - A date format writes `value` as the registry form (`YYYY-MM-DD`, or `YYYY-MM` / `--MM-DD`). No date format leaves the text. A date that cannot be transformed fails that member and contributes no facts.
 - CCH Accounts Production and iXBRL Review & Tag tag some employee headcounts with `scale="-2"`. Those pure-unit integer displays are stored as the displayed number. A positive headcount tagged `sign="-"` is stored as that positive number. The `done:` line includes `corrections`. Other facts keep the tagged sign and scale. See [edge-cases.md](./edge-cases.md).
-- `company_number` stays a string. Letters are part of the number (`SC`, `NI`, `OC`). Do not cast it to an integer.
+- The fact CSV has no company-number column. `source_file` is the basename (including a tar member stored as `./name`) or the outer package name. See [cli-contract.md](./cli-contract.md).
 - A member with no facts is a parse error. Known archive edge cases, including where they were found: [edge-cases.md](./edge-cases.md).
 
 ## Layout

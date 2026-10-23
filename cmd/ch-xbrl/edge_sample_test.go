@@ -75,7 +75,6 @@ func TestRun_EdgeSampleCharityAccounts(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '04986021'),
 		count(*) FILTER (WHERE source_file <> 'Prod223_4320_04986021_20260331.html'),
 		count(*) FILTER (
 			WHERE concept = 'CharityRegistrationNumberEnglandWales'
@@ -97,7 +96,7 @@ func TestRun_EdgeSampleCharityAccounts(t *testing.T) {
 			WHERE concept IN ('CharityRegistrationNumberEnglandWales', 'CharityFunds')
 			  AND namespace <> 'http://xbrl.frc.org.uk/char/2025-01-01'
 		)`)
-	assertCounts(t, got, []string{"159", "0", "0", "3", "8", "6", "82", "0"})
+	assertCounts(t, got, []string{"159", "0", "3", "8", "6", "82", "0"})
 }
 
 func sampleMisnamedZip(t *testing.T) string {
@@ -130,7 +129,6 @@ func TestRun_EdgeSampleMisnamedZipInstance(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '05546298'),
 		count(*) FILTER (WHERE source_file <> 'Prod224_0089_05546298_20201231.zip'),
 		count(*) FILTER (WHERE concept = 'UKCompaniesHouseRegisteredNumber' AND value = '05546298'),
 		count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'Imex Consultancy Ltd'),
@@ -141,7 +139,7 @@ func TestRun_EdgeSampleMisnamedZipInstance(t *testing.T) {
 			  AND unit = 'iso4217:GBP'
 			  AND dimensions IS NULL
 		)`)
-	assertCounts(t, got, []string{"26", "0", "0", "1", "1", "1"})
+	assertCounts(t, got, []string{"26", "0", "1", "1", "1"})
 
 	code, _, directErr := runCLI(t, []string{"-o", "-", "-workers", "1", sample}, nil)
 	if code != exitFail {
@@ -164,12 +162,11 @@ func TestRun_EdgeSampleCICZipDirect(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '05016384'),
 		count(*) FILTER (WHERE source_file <> '`+base+`'),
 		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Financial Statements'),
 		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Community Interest Company Report'),
 		count(*) FILTER (WHERE concept = 'DirectorSigningCIC34Report')`)
-	assertCounts(t, got, []string{"60", "0", "0", "1", "0", "0"})
+	assertCounts(t, got, []string{"60", "0", "1", "0", "0"})
 }
 
 func TestRun_EdgeSampleCICZipNested(t *testing.T) {
@@ -193,13 +190,12 @@ func TestRun_EdgeSampleCICZipNested(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '05016384'),
 		count(*) FILTER (WHERE source_file <> 'Prod223_4320_05016384_20251231_CIC.zip'),
 		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Financial Statements'),
 		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'Community Interest Company Report'),
 		count(*) FILTER (WHERE concept = 'DirectorSigningCIC34Report'),
 		count(*) FILTER (WHERE concept = 'ConsultationHasBeenHeldTruefalse')`)
-	assertCounts(t, got, []string{"60", "0", "0", "1", "0", "0", "0"})
+	assertCounts(t, got, []string{"60", "0", "1", "0", "0", "0"})
 }
 
 const overseasZip = "Prod223_4334_FC041186_20250331_OVERSEAS.zip"
@@ -209,7 +205,6 @@ func overseasCounts(t *testing.T, csvPath string) {
 	t.Helper()
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> 'FC041186'),
 		count(*) FILTER (WHERE source_file <> '`+overseasZip+`'),
 		count(*) FILTER (
 			WHERE concept = 'EntityCurrentLegalOrRegisteredName'
@@ -229,7 +224,7 @@ func overseasCounts(t *testing.T, csvPath string) {
 			  AND period_end = '2024-03-31'
 			  AND dimensions IS NULL
 		)`)
-	assertCounts(t, got, []string{"177", "0", "0", "true", "1", "1"})
+	assertCounts(t, got, []string{"177", "0", "true", "1", "1"})
 }
 
 func TestRun_EdgeSampleOverseasEnglishAccountsDirect(t *testing.T) {
@@ -267,7 +262,6 @@ func TestRun_EdgeSampleFactInsideContinuation(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '01922327'),
 		count(*) FILTER (WHERE source_file <> '`+file+`'),
 		count(*) FILTER (
 			WHERE concept = 'ProfessionalConsultancyFees'
@@ -294,7 +288,7 @@ func TestRun_EdgeSampleFactInsideContinuation(t *testing.T) {
 			  AND contains(value, '107,816')
 			  AND contains(value, 'civil engineering consultancy')
 		)`)
-	assertCounts(t, got, []string{"589", "0", "0", "1", "1", "1"})
+	assertCounts(t, got, []string{"589", "0", "1", "1", "1"})
 }
 
 func TestRun_EdgeSampleNestedContinuations(t *testing.T) {
@@ -305,7 +299,6 @@ func TestRun_EdgeSampleNestedContinuations(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '07068009'),
 		count(*) FILTER (WHERE source_file <> '`+file+`'),
 		count(*) FILTER (
 			WHERE concept = 'EndDateForPeriodCoveredByReport'
@@ -321,7 +314,7 @@ func TestRun_EdgeSampleNestedContinuations(t *testing.T) {
 			WHERE concept IN ('EndDateForPeriodCoveredByReport', 'BalanceSheetDate')
 			  AND value IN ('31 December', '31 December 2025')
 		)`)
-	assertCounts(t, got, []string{"591", "0", "0", "40", "20", "0"})
+	assertCounts(t, got, []string{"591", "0", "40", "20", "0"})
 }
 
 func TestRun_EdgeSampleQuotesKept(t *testing.T) {
@@ -336,7 +329,6 @@ func TestRun_EdgeSampleQuotesKept(t *testing.T) {
 	const statement = `These financial statements have been prepared in accordance with Financial Reporting Standard 102 "The Financial Reporting Standard applicable in the UK and Republic of Ireland" including the provisions of Section 1A "Small Entities" and the Companies Act 2006. The financial statements have been prepared under the historical cost convention.`
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '00340611'),
 		count(*) FILTER (WHERE source_file <> '`+file+`'),
 		count(*) FILTER (WHERE concept = 'EntityCurrentLegalOrRegisteredName' AND value = 'LONDON SAILPLANES LIMITED'),
 		count(*) FILTER (
@@ -347,7 +339,7 @@ func TestRun_EdgeSampleQuotesKept(t *testing.T) {
 			  AND dimensions IS NULL
 			  AND namespace = 'http://xbrl.frc.org.uk/fr/2025-01-01/core'
 		)`)
-	assertCounts(t, got, []string{"88", "0", "0", "1", "1"})
+	assertCounts(t, got, []string{"88", "0", "1", "1"})
 }
 
 func TestRun_EdgeSampleASCIINonBreakingSpace(t *testing.T) {
@@ -358,7 +350,6 @@ func TestRun_EdgeSampleASCIINonBreakingSpace(t *testing.T) {
 	}
 	got := duckdbCounts(t, csvPath, `
 		count(*),
-		count(*) FILTER (WHERE company_number <> '12874000'),
 		count(*) FILTER (WHERE source_file <> '`+file+`'),
 		count(*) FILTER (WHERE concept = 'BusinessReportPublicationDate' AND value = '2026-09-05'),
 		count(*) FILTER (WHERE concept = 'BalanceSheetDate' AND value = '2026-08-31'),
@@ -366,5 +357,5 @@ func TestRun_EdgeSampleASCIINonBreakingSpace(t *testing.T) {
 		count(*) FILTER (WHERE concept = 'AddressLine1' AND value = 'Stanhope, The Reddings'),
 		count(*) FILTER (WHERE concept = 'PostalCodeZip' AND value = 'GL51 6RL'),
 		count(*) FILTER (WHERE value LIKE '%&#160;%')`)
-	assertCounts(t, got, []string{"86", "0", "0", "1", "2", "1", "3", "3", "0"})
+	assertCounts(t, got, []string{"86", "0", "1", "2", "1", "3", "3", "0"})
 }

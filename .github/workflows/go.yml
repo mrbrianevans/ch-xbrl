@@ -174,7 +174,8 @@ jobs:
           cp samples/Prod223_4203_00134794_20250927.html "$fx/dir/"
 
           zip -j "$fx/sample.zip" "$fx/dir"/*
-          /tmp/ch-xbrl-mksample -dir "$fx/dir" -out "$fx/sample.tar.zst"
+          # ./ prefixes must not change source_file. ch-xbrl records the basename.
+          /tmp/ch-xbrl-mksample -dir "$fx/dir" -member-prefix ./ -out "$fx/sample.tar.zst"
 
           echo "dir"
           "$bin" -o "$fx/dir.csv" -workers 2 "$fx/dir"

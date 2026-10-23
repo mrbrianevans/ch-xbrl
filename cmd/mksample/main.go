@@ -19,6 +19,7 @@ import (
 func main() {
 	dir := flag.String("dir", "samples", "directory of sample iXBRL files")
 	out := flag.String("out", "samples/sample.tar.zst", "output tar.zst path")
+	memberPrefix := flag.String("member-prefix", "", "prefix each archive member name (for example ./)")
 	flag.Parse()
 
 	entries := map[string]string{}
@@ -39,8 +40,9 @@ func main() {
 			!strings.HasSuffix(low, ".xml") {
 			return nil
 		}
-		// archive member name = basename (flat layout, typical of CH bulk dumps)
-		entries[d.Name()] = path
+		// archive member name = basename (flat layout, typical of CH bulk dumps).
+		// -member-prefix ./ stores a header path; ch-xbrl still records the basename.
+		entries[*memberPrefix+d.Name()] = path
 		return nil
 	})
 	if err != nil {

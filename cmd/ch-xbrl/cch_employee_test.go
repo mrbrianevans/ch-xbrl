@@ -73,8 +73,8 @@ func TestRun_EmployeeSignDropped(t *testing.T) {
 		t.Fatalf("headcounts=%v", got)
 	}
 	for _, row := range rows {
-		if row["concept"] == "AverageNumberEmployeesDuringPeriod" && row["company_number"] != "02955230" {
-			t.Fatalf("company=%q", row["company_number"])
+		if row["source_file"] != name {
+			t.Fatalf("source_file=%q", row["source_file"])
 		}
 	}
 }
