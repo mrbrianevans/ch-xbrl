@@ -171,3 +171,4 @@ These may change without a `ch-xbrl` major:
 - Progress log text and timing
 - Default `-workers` formula remaining `NumCPU` (changing the default is not a major; changing the flag’s meaning is)
 - Which employee headcounts are adjusted, and what `corrections` on the `done:` line counts. Current behaviour is in [edge-cases.md](./edge-cases.md) and may change in a patch.
+- `files_lenient` on the `done:` line: how many members entered the regex fallback, including a member that then failed. The spelling may change in a patch.

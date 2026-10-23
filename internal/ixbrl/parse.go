@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
@@ -124,12 +125,17 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = false
-	dec.AutoClose = xml.HTMLAutoClose
 	dec.Entity = xml.HTMLEntity
 	// ASCII is a subset of UTF-8. Without this, encoding="ASCII" fails the
 	// first token and the whole member is parsed by the regex fallback, which
 	// used to leave &#160; in date text.
 	dec.CharsetReader = asciiCharsetReader
+	// AutoClose stays unset. xml.HTMLAutoClose is the void-element list
+	// (col, br, meta, …). The decoder EqualFolds the open element against
+	// that list on every token and, when the next token is not that
+	// element's end tag, invents one. `<col> </col>` is closed before the
+	// space; the real </col> then closes something else, and Token errors,
+	// so the member used to take the regex fallback. See docs/edge-cases.md.
 
 	// prefix → namespace URI (document-level, updated as we go)
 	ns := map[string]string{}
@@ -406,7 +412,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				curUnit = nil
 			}
 
-			if captureText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
+			// A typed member's value is the child element's text. That child's
+			// end tag is not </typedMember>, so keep the buffer until the
+			// typed member itself ends. An explicit member's text is direct;
+			// its own end tag still clears the buffer.
+			keepMemberText := explicitDim != "" && !(isNS(space, nsXBRLDI) && (local == "typedMember" || local == "explicitMember"))
+			if captureText && !keepMemberText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
 				if len(openStack) == 0 {
 					captureText = false
 					textBuf.Reset()
@@ -913,7 +924,21 @@ func documentNamespaces(s string) map[string]string {
 	return ns
 }
 
+// lenientParses counts entries to parseLenient. The increment is the first
+// line of that function, so the strict XML decoder never reads or writes it.
+// Tests and benchmarks take a delta around one single-threaded parse.
+// The CLI reads the total after its workers finish. That total is how many
+// members entered the regex fallback. A delta taken while workers still
+// overlap does not say which member.
+var lenientParses atomic.Uint64
+
+// LenientParses is how many times this process entered the regex fallback.
+func LenientParses() uint64 {
+	return lenientParses.Load()
+}
+
 func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
+	lenientParses.Add(1)
 	data = stripXMLPreamble(data)
 	s := string(data)
 	docNS := documentNamespaces(s)

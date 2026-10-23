@@ -342,6 +342,43 @@ func TestRun_EdgeSampleQuotesKept(t *testing.T) {
 	assertCounts(t, got, []string{"88", "0", "1", "1"})
 }
 
+func TestRun_EdgeSampleColWithSpace(t *testing.T) {
+	const file = "Prod224_0042_02952712_20161231.html"
+	csvPath, stderr := extractSample(t, samplePath(t, file))
+	if !strings.Contains(stderr, "files_err=0") || !strings.Contains(stderr, "files_lenient=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	// Quotes in the compliance statement are the filer's. DuckDB sees the
+	// unescaped CSV field. '' is one quote inside this SQL string.
+	const statement = "These abridged financial statements have been prepared in compliance with FRS 102 Section 1A, ''The Financial Reporting Standard applicable to the UK and Republic of Ireland''."
+	const section477 = "For the year ending 31 December 2016, the company was entitled to exemption from audit under section 477 of the Companies Act 2006 relating to small companies."
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE source_file <> '`+file+`'),
+		count(*) FILTER (
+			WHERE concept = 'StatementComplianceWithApplicableReportingFramework'
+			  AND period_start = '2016-01-01'
+			  AND period_end = '2016-12-31'
+			  AND value = '`+statement+`'
+			  AND dimensions IS NULL
+		),
+		count(*) FILTER (
+			WHERE concept = 'StatementComplianceWithApplicableReportingFramework'
+			  AND value = 'These abridged financial statements'
+		),
+		count(*) FILTER (
+			WHERE concept = 'StatementThatCompanyEntitledToExemptionFromAuditUnderSection477CompaniesAct2006RelatingToSmallCompanies'
+			  AND value = '`+section477+`'
+		),
+		count(*) FILTER (WHERE concept = 'ReportTitle' AND value = 'abridged financial statements'),
+		count(*) FILTER (
+			WHERE concept = 'ControllingPartyUltimateControllingPartyTruefalse'
+			  AND value = 'true'
+			  AND dimensions = '{"X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension":"1"}'
+		)`)
+	assertCounts(t, got, []string{"149", "0", "1", "0", "1", "7", "1"})
+}
+
 func TestRun_EdgeSampleASCIINonBreakingSpace(t *testing.T) {
 	const file = "Prod223_4327_12874000_20260831.html"
 	csvPath, stderr := extractSample(t, samplePath(t, file))
