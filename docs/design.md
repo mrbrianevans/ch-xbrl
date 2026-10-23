@@ -44,7 +44,7 @@ Extract is completeness and speed. Filter, synonym pick, and casts are DuckDB so
 ### Constraints
 
 - Extract: instance XML → CSV; no taxonomy fetch, linkbases, or validation.
-- Instance XML is tokenised by `internal/ixbrl/xmlscan`, not `encoding/xml`. It gives the tokens `encoding/xml`'s non-strict decoder gave (HTML entities, no void-element auto-close, UTF-8 or ASCII) and rejects the same documents. Its parity tests compare the two on every sample, by fuzzing, and on local archives (`CH_XBRL_PARITY_ZIPS`). Keep that parity when changing the tokeniser.
+- Instance XML is tokenised by `internal/ixbrl/xmlscan`, not `encoding/xml`. It gives the tokens `encoding/xml`'s non-strict decoder gave (HTML entities, no void-element auto-close, UTF-8 or ASCII) and rejects the same documents. Its parity tests compare the two on every sample, by fuzzing, and on local archives (`CH_XBRL_PARITY_ZIPS`). Keep that parity when changing the tokeniser. Contract, tests and performance: [tokeniser.md](./tokeniser.md).
 - A concept is `namespace` plus the local name in `concept`. The fact row does not carry `schemaRef`. See [taxonomy-lookup.md](./taxonomy-lookup.md).
 - Go ↔ DuckDB is **CSV**; final artefact is **Parquet**.
 - Taxonomy processing is decoupled from the instance parser.
@@ -74,6 +74,7 @@ docs/design.md     this file
 docs/edge-cases.md real archive inputs that must stay documented and tested
 docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
 docs/benchmarking.md  parser benchmarks and CPU profiles (samples/ only)
+docs/tokeniser.md  XML tokeniser: contract, parity tests, performance
 ```
 
 ## Build from source

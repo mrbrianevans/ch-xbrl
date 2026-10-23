@@ -44,8 +44,34 @@ go tool pprof -http=:8080 cpu.out
 
 `-top` sorts by flat time (time in that function itself). `-cum` sorts by cumulative time (that function plus everything it calls). Do not add up cumulative percentages: callers and callees are both counted.
 
-The decoder's share of the profile is the cumulative percentage on `encoding/xml.(*Decoder).Token`. Flat time on `encoding/xml` alone is smaller, because the decoder spends a lot of its time in `bytes.Reader`. Those callees are inside `Token`.
-
-`Decoder.AutoClose` is left unset. A 10s profile of `BenchmarkParseDocument/all` from before that change (`samples/` without the `<col> </col>` filing) had `strings.EqualFold` at 4.55% flat, all of it from `Decoder.autoClose` walking `xml.HTMLAutoClose` on every token. `autoClose` itself was 2.50% flat and 7.05% cumulative. The same benchmark, unprofiled, went from 588 ms/op (77.35 MB/s) to 542 ms/op (83.92 MB/s). Setting `AutoClose` also sends a filing that writes `<col> </col>` down the regex fallback; see [edge-cases.md](edge-cases.md).
+The tokeniser's share of the profile is the cumulative percentage on `xmlscan.(*Scanner).Next`, plus `xmlscan.(*Scanner).Reset`, which runs the whole-document character check (`legalChars`). Everything else under `ixbrl.parseBytes` is the parser: namespace and attribute lookups, frames, value normalisation, and the facts it builds.
 
 The default profiling rate is 100 Hz. A one-second benchmark is a coarse sample. Pass `-benchtime 10s` on the single benchmark you care about before treating a percentage as stable.
+
+## Tokeniser benchmarks
+
+`internal/ixbrl/xmlscan` has its own benchmarks on five ordinary filings from `samples/` (not the UKSEF reports):
+
+| Name | What it measures |
+|------|------------------|
+| `BenchmarkScan` | `Reset` and `Next` to the end of each document, decoding no values. |
+| `BenchmarkLegalChars` | The whole-document UTF-8 and XML-character check that `Reset` runs. |
+
+```bash
+go test -run '^$' -bench . -benchmem ./internal/ixbrl/xmlscan/
+```
+
+## Hybrid CPUs
+
+On a laptop with performance and efficiency cores (for example a Core Ultra 7 155H), the same benchmark binary can swing more than 2× between runs as Windows moves it between core types. Pin the process to one core and compare only pinned runs. Build the test binary, then on Linux run it under `taskset -c 2`. On Windows, start it from PowerShell and set the affinity:
+
+```powershell
+go test -c -o ixbrl.test.exe ./internal/ixbrl/
+$psi = New-Object System.Diagnostics.ProcessStartInfo 'ixbrl.test.exe', '-test.run ^$ -test.bench ParseDocument/other$ -test.count 3'
+$psi.WorkingDirectory = (Resolve-Path internal/ixbrl).Path; $psi.UseShellExecute = $false
+$p = [System.Diagnostics.Process]::Start($psi); $p.ProcessorAffinity = [IntPtr]4; $p.WaitForExit()
+```
+
+## Reference numbers
+
+Current numbers, the CPU profile of a CLI run, and optimisations that were measured and did not help are in [tokeniser.md](tokeniser.md#performance).

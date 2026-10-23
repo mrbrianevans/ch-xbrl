@@ -171,4 +171,4 @@ These may change without a `ch-xbrl` major:
 - Progress log text and timing
 - Default `-workers` formula remaining `NumCPU` (changing the default is not a major; changing the flag’s meaning is)
 - Which employee headcounts are adjusted, and what `corrections` on the `done:` line counts. Current behaviour is in [edge-cases.md](./edge-cases.md) and may change in a patch.
-- Which malformed documents the XML tokeniser rejects. Today it rejects what `encoding/xml`'s non-strict decoder rejected (see [design.md](./design.md)). A rejected member is a failed member like any other parse error. The `done:` line no longer has `files_lenient`; there is no regex fallback.
+- Which malformed documents the XML tokeniser rejects. Today it rejects what `encoding/xml`'s non-strict decoder rejected (see [tokeniser.md](./tokeniser.md)). A rejected member is a failed member like any other parse error. The `done:` line no longer has `files_lenient`; there is no regex fallback.

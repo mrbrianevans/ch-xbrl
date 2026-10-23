@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Instance XML is read by a new tokeniser (`internal/ixbrl/xmlscan`) instead of `encoding/xml`. It gives the same tokens and rejects the same documents. On one monthly archive per two years from 2008 to 2025 (1.5 million members) the fact CSV is identical to 0.5.0.
+- Instance XML is read by a new tokeniser (`internal/ixbrl/xmlscan`) instead of `encoding/xml`. It gives the same tokens and rejects the same documents. On one monthly archive per two years from 2008 to 2025 (1.5 million members) the fact CSV is identical to 0.5.0. Parsing one document is about 6.5× faster on ordinary accounts (one core) and allocates about 16× fewer objects. Contract and numbers: `docs/tokeniser.md`.
+- Members of a local zip are inflated by several goroutines instead of one. With parsing cheaper, a single inflater had become the limit. A local monthly archive now takes about a third of the time (May 2017: 52-68 s down to 19-21 s on a laptop, `-workers 10`).
 
 ### Removed
 

@@ -108,6 +108,7 @@ docs/design.md    pipeline, layout, build-from-source
 docs/edge-cases.md  real archive inputs that must stay documented and tested
 docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
 docs/benchmarking.md  parser benchmarks and CPU profiles (samples/ only)
+docs/tokeniser.md  xmlscan contract (encoding/xml parity), tests, performance, dead ends
 AGENTS.md         this file
 README.md         user getting started (releases)
 ```
@@ -161,6 +162,10 @@ README.md         user getting started (releases)
 go test ./...
 # parser benchmark (not part of go test ./...): docs/benchmarking.md
 # go test -bench . -benchmem -cpuprofile cpu.out ./internal/ixbrl/
+# tokeniser parity with encoding/xml: go test runs the samples and hand cases; also fuzz,
+# and compare every member of local zips after changing internal/ixbrl/xmlscan:
+# go test -run '^$' -fuzz FuzzParity -fuzztime 10m ./internal/ixbrl/xmlscan/
+# CH_XBRL_PARITY_ZIPS=/data/Accounts_Monthly_Data-May2017.zip go test ./internal/ixbrl/xmlscan/ -run TestParityArchives -v -timeout 60m
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -o data
 go run ./cmd/ch-xbrl -V
