@@ -927,9 +927,15 @@ func documentNamespaces(s string) map[string]string {
 // lenientParses counts entries to parseLenient. The increment is the first
 // line of that function, so the strict XML decoder never reads or writes it.
 // Tests and benchmarks take a delta around one single-threaded parse.
-// Concurrent parses stay race-free; a delta taken across them does not mean
-// anything. The CLI does not read this.
+// The CLI reads the total after its workers finish. That total is how many
+// members entered the regex fallback. A delta taken while workers still
+// overlap does not say which member.
 var lenientParses atomic.Uint64
+
+// LenientParses is how many times this process entered the regex fallback.
+func LenientParses() uint64 {
+	return lenientParses.Load()
+}
 
 func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
 	lenientParses.Add(1)

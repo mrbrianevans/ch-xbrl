@@ -54,6 +54,6 @@ The default profiling rate is 100 Hz. A one-second benchmark is a coarse sample.
 
 ## Lenient-path counter
 
-`lenientParses` is an unexported `atomic.Uint64`. `parseLenient` increments it on entry. The strict decoder does not read or write it, so a successful XML parse pays nothing for the counter. Take a delta around one single-threaded parse (`TestSampleLenientPaths` and the benchmark do). The CLI does not report it.
+`lenientParses` is an unexported `atomic.Uint64`. `parseLenient` increments it on entry. The strict decoder does not read or write it, so a successful XML parse pays nothing for the counter. Take a delta around one single-threaded parse (`TestSampleLenientPaths` and the benchmark do). The `done:` line reports that total as `files_lenient`, after the workers finish.
 
 The counter moves when the regex fallback runs, including a direct call from a test. It does not move when `encoding/xml` accepts the document.

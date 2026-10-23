@@ -70,6 +70,8 @@ A positive displayed headcount (`AverageNumberEmployeesDuringPeriod`, or a depar
 
 The CSV columns are unchanged. The end-of-run `done:` line on stderr includes `corrections=N`, how many fact values were adjusted for either fix. A fact that needs both is counted once. The count is 0 when none were. It is reported for every input kind and with `--continue-on-error`.
 
+The same line includes `files_lenient=N`: how many members left the XML decoder and were parsed by the regex fallback, including a member that then failed. It is 0 when every member stayed on the decoder.
+
 ## Licence
 
 [MIT](./LICENSE). Filings you extract (Companies House / `samples/`) are **not** MIT — typically OGL; see [`samples/NOTICE`](./samples/NOTICE).

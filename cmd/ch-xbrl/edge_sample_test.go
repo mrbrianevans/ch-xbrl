@@ -345,7 +345,7 @@ func TestRun_EdgeSampleQuotesKept(t *testing.T) {
 func TestRun_EdgeSampleColWithSpace(t *testing.T) {
 	const file = "Prod224_0042_02952712_20161231.html"
 	csvPath, stderr := extractSample(t, samplePath(t, file))
-	if !strings.Contains(stderr, "files_err=0") {
+	if !strings.Contains(stderr, "files_err=0") || !strings.Contains(stderr, "files_lenient=0") {
 		t.Fatalf("stderr: %s", stderr)
 	}
 	// Quotes in the compliance statement are the filer's. DuckDB sees the

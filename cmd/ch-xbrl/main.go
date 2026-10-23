@@ -153,6 +153,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 	}()
 
 	start := time.Now()
+	lenientBefore := ixbrl.LenientParses()
 	log.Printf("input: %s format=%s", cfg.input, archive.Describe(cfg.input))
 	n, streamErr := archive.StreamFrom(ctx, cfg.input, stdin, members)
 	wg.Wait()
@@ -161,8 +162,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, stdoutIsTTY b
 	flushErr := csvW.Flush()
 
 	elapsed := time.Since(start).Round(time.Millisecond)
-	log.Printf("done: members=%d files_ok=%d files_err=%d corrections=%d facts=%d elapsed=%s out=%s",
-		n, filesOK.Load(), filesErr.Load(), corrections.Load(), factCount.Load(), elapsed, outName)
+	// Workers have finished, so this delta is the number of members that
+	// entered the regex fallback, including a member that then failed.
+	filesLenient := ixbrl.LenientParses() - lenientBefore
+	log.Printf("done: members=%d files_ok=%d files_err=%d files_lenient=%d corrections=%d facts=%d elapsed=%s out=%s",
+		n, filesOK.Load(), filesErr.Load(), filesLenient, corrections.Load(), factCount.Load(), elapsed, outName)
 
 	if len(firstErrs) > 0 {
 		log.Printf("sample errors (%d total err files):", filesErr.Load())
