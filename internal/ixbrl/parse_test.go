@@ -1007,3 +1007,106 @@ func mustOne(t *testing.T, m map[string][]factView, concept string) fact.Fact {
 	}
 	return got[0].Fact
 }
+
+func TestColWithSpaceStaysOnXMLPath(t *testing.T) {
+	// `<col> </col>` must not push the member onto the regex fallback.
+	// A nested ix:nonNumeric stays inside the outer fact, and a typed
+	// member's value is the child element's text. See docs/edge-cases.md.
+	const doc = `<?xml version="1.0"?>
+<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
+      xmlns:xbrli="http://www.xbrl.org/2003/instance"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+      xmlns:core="http://example.com/core"
+      xmlns:bus="http://example.com/bus">
+<body>
+<table><colgroup><col> </col></colgroup><tr><td>Director</td></tr></table>
+<ix:nonNumeric name="core:StatementComplianceWithApplicableReportingFramework" contextRef="c1">These <ix:nonNumeric name="bus:ReportTitle" contextRef="c1">abridged financial statements</ix:nonNumeric> have been prepared in compliance with FRS 102.</ix:nonNumeric>
+<ix:nonNumeric name="core:ControllingPartyUltimateControllingPartyTruefalse" contextRef="typed">true</ix:nonNumeric>
+<xbrli:context id="c1">
+  <xbrli:entity><xbrli:identifier scheme="http://www.companieshouse.gov.uk/">02952712</xbrli:identifier></xbrli:entity>
+  <xbrli:period><xbrli:startDate>2016-01-01</xbrli:startDate><xbrli:endDate>2016-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+<xbrli:context id="typed">
+  <xbrli:entity>
+    <xbrli:identifier scheme="http://www.companieshouse.gov.uk/">02952712</xbrli:identifier>
+    <xbrli:segment><xbrldi:typedMember dimension="core:X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension"><core:ParentEntityOrControllingPartyAndUltimateControllingPartyGroupingDimension.domain>1</core:ParentEntityOrControllingPartyAndUltimateControllingPartyGroupingDimension.domain></xbrldi:typedMember></xbrli:segment>
+  </xbrli:entity>
+  <xbrli:period><xbrli:startDate>2016-01-01</xbrli:startDate><xbrli:endDate>2016-12-31</xbrli:endDate></xbrli:period>
+</xbrli:context>
+</body>
+</html>`
+	before := lenientParses.Load()
+	facts, err := ParseBytes([]byte(doc), "col-space.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lenientParses.Load(); got != before {
+		t.Fatalf("lenientParses=%d want %d", got, before)
+	}
+	got := map[string]fact.Fact{}
+	for _, f := range facts {
+		if _, ok := got[f.Concept]; ok {
+			t.Fatalf("duplicate %s", f.Concept)
+		}
+		got[f.Concept] = f
+	}
+	stmt := got["StatementComplianceWithApplicableReportingFramework"]
+	if stmt.Value != "These abridged financial statements have been prepared in compliance with FRS 102." {
+		t.Fatalf("statement=%q", stmt.Value)
+	}
+	if got["ReportTitle"].Value != "abridged financial statements" {
+		t.Fatalf("title=%q", got["ReportTitle"].Value)
+	}
+	party := got["ControllingPartyUltimateControllingPartyTruefalse"]
+	if party.Value != "true" {
+		t.Fatalf("controlling party=%q", party.Value)
+	}
+	const dim = `{"X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension":"1"}`
+	if party.Dimensions != dim {
+		t.Fatalf("dimensions=%q", party.Dimensions)
+	}
+}
+
+func TestParseMay2017ColSpaceSample(t *testing.T) {
+	const name = "Prod224_0042_02952712_20161231.html"
+	data, err := os.ReadFile(filepath.Join("..", "..", "samples", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := lenientParses.Load()
+	facts, err := ParseBytes(data, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lenientParses.Load(); got != before {
+		t.Fatalf("lenientParses=%d want %d", got, before)
+	}
+	if len(facts) != 149 {
+		t.Fatalf("facts=%d", len(facts))
+	}
+	var stmt, party fact.Fact
+	var titles int
+	for _, f := range facts {
+		switch f.Concept {
+		case "StatementComplianceWithApplicableReportingFramework":
+			stmt = f
+		case "ControllingPartyUltimateControllingPartyTruefalse":
+			party = f
+		case "ReportTitle":
+			titles++
+			if f.Value != "abridged financial statements" {
+				t.Fatalf("ReportTitle=%q", f.Value)
+			}
+		}
+	}
+	const wantStmt = "These abridged financial statements have been prepared in compliance with FRS 102 Section 1A, 'The Financial Reporting Standard applicable to the UK and Republic of Ireland'."
+	if stmt.Value != wantStmt {
+		t.Fatalf("statement=%q", stmt.Value)
+	}
+	if party.Value != "true" || party.Dimensions != `{"X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension":"1"}` {
+		t.Fatalf("controlling party value=%q dimensions=%q", party.Value, party.Dimensions)
+	}
+	if titles != 7 {
+		t.Fatalf("ReportTitle count=%d", titles)
+	}
+}

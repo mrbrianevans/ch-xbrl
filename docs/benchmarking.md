@@ -46,7 +46,9 @@ go tool pprof -http=:8080 cpu.out
 
 `-top` sorts by flat time (time in that function itself). `-cum` sorts by cumulative time (that function plus everything it calls). Do not add up cumulative percentages: callers and callees are both counted.
 
-The decoder's share of the profile is the cumulative percentage on `encoding/xml.(*Decoder).Token`. Flat time on `encoding/xml` alone is smaller, because the decoder spends a lot of its time in `bytes.Reader` and `strings.EqualFold`. Those callees are inside `Token`.
+The decoder's share of the profile is the cumulative percentage on `encoding/xml.(*Decoder).Token`. Flat time on `encoding/xml` alone is smaller, because the decoder spends a lot of its time in `bytes.Reader`. Those callees are inside `Token`.
+
+`Decoder.AutoClose` is left unset. A 10s profile of `BenchmarkParseDocument/all` from before that change (`samples/` without the `<col> </col>` filing) had `strings.EqualFold` at 4.55% flat, all of it from `Decoder.autoClose` walking `xml.HTMLAutoClose` on every token. `autoClose` itself was 2.50% flat and 7.05% cumulative. The same benchmark, unprofiled, went from 588 ms/op (77.35 MB/s) to 542 ms/op (83.92 MB/s). Setting `AutoClose` also sends a filing that writes `<col> </col>` down the regex fallback; see [edge-cases.md](edge-cases.md).
 
 The default profiling rate is 100 Hz. A one-second benchmark is a coarse sample. Pass `-benchtime 10s` on the single benchmark you care about before treating a percentage as stable.
 

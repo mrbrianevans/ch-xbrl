@@ -125,12 +125,17 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = false
-	dec.AutoClose = xml.HTMLAutoClose
 	dec.Entity = xml.HTMLEntity
 	// ASCII is a subset of UTF-8. Without this, encoding="ASCII" fails the
 	// first token and the whole member is parsed by the regex fallback, which
 	// used to leave &#160; in date text.
 	dec.CharsetReader = asciiCharsetReader
+	// AutoClose stays unset. xml.HTMLAutoClose is the void-element list
+	// (col, br, meta, …). The decoder EqualFolds the open element against
+	// that list on every token and, when the next token is not that
+	// element's end tag, invents one. `<col> </col>` is closed before the
+	// space; the real </col> then closes something else, and Token errors,
+	// so the member used to take the regex fallback. See docs/edge-cases.md.
 
 	// prefix → namespace URI (document-level, updated as we go)
 	ns := map[string]string{}
@@ -407,7 +412,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				curUnit = nil
 			}
 
-			if captureText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
+			// A typed member's value is the child element's text. That child's
+			// end tag is not </typedMember>, so keep the buffer until the
+			// typed member itself ends. An explicit member's text is direct;
+			// its own end tag still clears the buffer.
+			keepMemberText := explicitDim != "" && !(isNS(space, nsXBRLDI) && (local == "typedMember" || local == "explicitMember"))
+			if captureText && !keepMemberText && (!isIX(space) || (local != "nonFraction" && local != "nonNumeric")) {
 				if len(openStack) == 0 {
 					captureText = false
 					textBuf.Reset()

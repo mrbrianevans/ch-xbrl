@@ -475,3 +475,48 @@ A few signed facts are not this product. They are still a positive display on th
 `samples/Prod224_2266_02955230_20230930.html` is trimmed from [Accounts_Monthly_Data-June2024.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-June2024.zip). Company `02955230`. Headcounts `7` and `7`. Two corrections.
 
 Tests: `TestEmployeeSignDroppedWhenDisplayPositive`, `TestCCHEmployeeScaleSamples`, `TestRun_EmployeeSignDropped`.
+
+## Void `col` with a space and an end tag
+
+Found in [Accounts_Monthly_Data-May2017.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-May2017.zip), member `Prod224_0042_02952712_20161231.html` (S T Control Services ltd, company `02952712`, period end 2016-12-31). The sample is that member. Produced by `2.4.2 limited_company_frs_102_section_1a`. 72,130 bytes.
+
+The accounts tables write a void element with a space and an explicit end tag:
+
+```html
+<colgroup><col> </col><col> </col></colgroup>
+```
+
+This member has 13 of those, and `<br />` (already empty). It has no unclosed `meta`, `img`, `hr`, or `input`. `link:schemaRef` is an XBRL element, not an HTML `link`.
+
+`xml.HTMLAutoClose` is the void-element list (`col`, `br`, `meta`, `link`, and the rest). `encoding/xml` checks it on every token: if the open element's local name matches and the next token is not that element's end tag, the decoder invents the end tag. For `<col> </col>` the next token is the space, so it emits `</col>` first. The real `</col>` then names an element that is no longer open. `Strict` is false, so that end tag is rewritten onto whatever is open. After enough of those, `Token` returns `unexpected end element </col>`. The whole member used to be parsed again by the regex fallback.
+
+That fallback's `nonNumeric` pattern stops at the first `</ix:nonNumeric>`. The compliance statement nests `ReportTitle` inside the outer fact:
+
+```html
+<ix:nonNumeric name="core:StatementComplianceWithApplicableReportingFramework" contextRef="Period_TMinusZero">
+  These <ix:nonNumeric name="bus:ReportTitle" contextRef="Period_TMinusZero">abridged financial statements</ix:nonNumeric> have been prepared in compliance with FRS 102 Section 1A, 'The Financial Reporting Standard applicable to the UK and Republic of Ireland'.
+</ix:nonNumeric>
+```
+
+The regex value was `These abridged financial statements`. The inner `ReportTitle` was not its own fact. The same cut hits the small-companies regime statement, the section 477 audit exemption, the section 444 consent, and the measurement-basis policies.
+
+`HTMLAutoClose` stays off. The token parser reads `<col> </col>` as an ordinary element. Nested `ix` text stays in the outer fact, and the inner fact is its own row. In that May 2017 monthly, 297 of 171,017 members contain `<col> </col>`. Each of them gains 1 to 6 facts, the nested facts the regex dropped. Both parses of that zip had `files_err=0` and `corrections=40`. Fact rows went from 9,458,223 to 9,458,818.
+
+A typed member's value is the child element's text, including on this file:
+
+```xml
+<xbrldi:typedMember dimension="core:X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension"><core:ParentEntityOrControllingPartyAndUltimateControllingPartyGroupingDimension.domain>1</core:ParentEntityOrControllingPartyAndUltimateControllingPartyGroupingDimension.domain></xbrldi:typedMember>
+```
+
+The regex fallback used to keep that `1`. The token parser used to clear its text buffer on the child end tag, before `</typedMember>`, so the dimension was empty on any member that already parsed as XML. The child text is kept until the typed member ends. On the other 170,720 members of that May 2017 zip, concepts, values, periods, units, and decimals match the old parse. 30,396 fact groups differ only in `dimensions`, and each of those fills an empty typed member (`""` becomes the child text, such as `1` or `42`). None of them drop a member that was already filled. On the 297 `<col> </col>` members, `ControllingPartyUltimateControllingPartyTruefalse` stays `true` with member `1` (186 facts).
+
+Behaviour that must stay, for this file:
+
+- The member does not take the regex fallback. `files_err` stays 0.
+- 149 facts. Every row has `source_file` `Prod224_0042_02952712_20161231.html`.
+- `StatementComplianceWithApplicableReportingFramework` for `2016-01-01` to `2016-12-31` is `These abridged financial statements have been prepared in compliance with FRS 102 Section 1A, 'The Financial Reporting Standard applicable to the UK and Republic of Ireland'.` One fact. The value is not the truncated `These abridged financial statements`.
+- `StatementThatCompanyEntitledToExemptionFromAuditUnderSection477CompaniesAct2006RelatingToSmallCompanies` is `For the year ending 31 December 2016, the company was entitled to exemption from audit under section 477 of the Companies Act 2006 relating to small companies.`
+- `ReportTitle` is `abridged financial statements`. Seven facts.
+- `ControllingPartyUltimateControllingPartyTruefalse` is `true`, with dimensions `{"X-ParentEntityOrControllingPartyUltimateControllingPartyGroupingDimension":"1"}`.
+
+Tests: `TestColWithSpaceStaysOnXMLPath`, `TestParseMay2017ColSpaceSample`, `TestRun_EdgeSampleColWithSpace`.
