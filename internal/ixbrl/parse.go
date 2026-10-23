@@ -265,10 +265,8 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 					ContinuedAt: attrAny(t, "continuedAt"),
 					Target:      attrAny(t, "target"),
 				}
-				// nilled / empty elements still count as facts
-				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
-					pf.Value = ""
-				}
+				// A nilled or empty element is still a fact. Its value is
+				// whatever text it holds when it closes.
 				// Nested ix:nonNumeric / ix:nonFraction (Workiva wraps one
 				// fact inside another). Each layer is a separate fact.
 				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
@@ -295,9 +293,6 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 					Format:     attrAny(t, "format"),
 					Decimals:   decimals,
 					IsNumeric:  unitRef != "" || decimals != "" || attrAny(t, "precision") != "",
-				}
-				if hasAttr(t, "xsi", "nil") || hasAttrAny(t, "nil") {
-					pf.Value = ""
 				}
 				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: local})
 
@@ -590,15 +585,6 @@ func errDateTransform(sourceFile, concept, format, text string, err error) error
 	return fmt.Errorf("date transform %s format %q value %q in %s: %v", concept, format, text, sourceFile, err)
 }
 
-func attr(se xml.StartElement, space, local string) string {
-	for _, a := range se.Attr {
-		if a.Name.Local == local && (space == "" || a.Name.Space == space) {
-			return a.Value
-		}
-	}
-	return ""
-}
-
 func attrAny(se xml.StartElement, local string) string {
 	for _, a := range se.Attr {
 		if a.Name.Local == local {
@@ -606,14 +592,6 @@ func attrAny(se xml.StartElement, local string) string {
 		}
 	}
 	return ""
-}
-
-func hasAttr(se xml.StartElement, space, local string) bool {
-	return attr(se, space, local) != ""
-}
-
-func hasAttrAny(se xml.StartElement, local string) bool {
-	return attrAny(se, local) != ""
 }
 
 // qnameLocal returns the local part of a QName (prefix:local or {uri}local).
