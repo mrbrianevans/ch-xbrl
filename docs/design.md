@@ -71,6 +71,7 @@ docs/cli-contract.md  frozen CLI
 docs/design.md     this file
 docs/edge-cases.md real archive inputs that must stay documented and tested
 docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
+docs/benchmarking.md  parser benchmarks and CPU profiles (samples/ only)
 ```
 
 ## Build from source

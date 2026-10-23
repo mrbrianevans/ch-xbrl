@@ -76,4 +76,4 @@ The CSV columns are unchanged. The end-of-run `done:` line on stderr includes `c
 
 ## Contributors
 
-Design, layout, and build-from-source: [`docs/design.md`](./docs/design.md). Workflow: [`AGENTS.md`](./AGENTS.md).
+Design, layout, and build-from-source: [`docs/design.md`](./docs/design.md). Workflow: [`AGENTS.md`](./AGENTS.md). Parser benchmarks: [`docs/benchmarking.md`](./docs/benchmarking.md).

@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"unicode"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
@@ -913,7 +914,15 @@ func documentNamespaces(s string) map[string]string {
 	return ns
 }
 
+// lenientParses counts entries to parseLenient. The increment is the first
+// line of that function, so the strict XML decoder never reads or writes it.
+// Tests and benchmarks take a delta around one single-threaded parse.
+// Concurrent parses stay race-free; a delta taken across them does not mean
+// anything. The CLI does not read this.
+var lenientParses atomic.Uint64
+
 func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
+	lenientParses.Add(1)
 	data = stripXMLPreamble(data)
 	s := string(data)
 	docNS := documentNamespaces(s)

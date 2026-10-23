@@ -104,6 +104,7 @@ docs/cli-contract.md  frozen ch-xbrl CLI (not taxonomy / mksample / DuckDB)
 docs/design.md    pipeline, layout, build-from-source
 docs/edge-cases.md  real archive inputs that must stay documented and tested
 docs/taxonomy-lookup.md  concept key is namespace + local name; schemaRef stays off the fact row
+docs/benchmarking.md  parser benchmarks and CPU profiles (samples/ only)
 AGENTS.md         this file
 README.md         user getting started (releases)
 ```
@@ -155,6 +156,8 @@ README.md         user getting started (releases)
 
 ```bash
 go test ./...
+# parser benchmark (not part of go test ./...): docs/benchmarking.md
+# go test -bench . -benchmem -cpuprofile cpu.out ./internal/ixbrl/
 go run ./cmd/mksample -out samples/sample.tar.zst
 go run ./cmd/taxonomy -o data
 go run ./cmd/ch-xbrl -V
