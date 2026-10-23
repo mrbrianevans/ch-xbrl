@@ -349,7 +349,7 @@ func TestRun_ContinueOnErrorSkipsBadMember(t *testing.T) {
 	if !strings.Contains(stdout, "03024914") {
 		t.Fatal("--continue-on-error CSV missing facts from the good member")
 	}
-	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "no facts extracted") || !strings.Contains(stderr, "files_err=1") {
+	if !strings.Contains(stderr, badName) || !strings.Contains(stderr, "XML syntax error") || !strings.Contains(stderr, "files_err=1") {
 		t.Fatalf("--continue-on-error should still log the bad member: %s", stderr)
 	}
 
@@ -1075,49 +1075,69 @@ func TestRun_UntransformableDateFailsMember(t *testing.T) {
 	}
 }
 
-func TestRun_FilesLenientOnDoneLine(t *testing.T) {
-	// The file ends inside an open element. Token returns unexpected EOF,
-	// and the member is parsed again by the regex fallback. A mismatched
-	// end tag is not enough: Strict is false, so that tag is rewritten
-	// onto whatever is open. files_lenient counts the fallback entry. A
-	// well-formed member stays at 0.
+func TestRun_MalformedXMLIsMemberError(t *testing.T) {
+	// Real members that encoding/xml rejected, from
+	// https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-JanuaryToDecember2008.zip
+	// and https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-July2010.zip,
+	// plus a member that ends inside an open element. The tokeniser rejects
+	// each one and there is no regex fallback, so each is a member error
+	// with no fact rows. See docs/edge-cases.md.
 	const broken = `<?xml version="1.0"?>
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
-<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c">Keep Ltd</ix:nonNumeric>
+<ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c">Lost Ltd</ix:nonNumeric>
 <div>
 `
 	const ok = `<?xml version="1.0"?>
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
 <ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c">Keep Ltd</ix:nonNumeric>
 </html>`
-
+	bad := map[string]string{
+		"Prod224_8998_03552913_20080430.xml": "invalid XML name: 0",
+		"Prod224_8998_03009032_20080131.xml": "unexpected end element </CompanyNotDormant>",
+		"Prod224_9956_06715582_20100331.xml": "unexpected end element </period>",
+		"broken.html":                        "unexpected EOF",
+	}
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "broken.html"), []byte(broken), 0o644); err != nil {
-		t.Fatal(err)
+	for name := range bad {
+		data := []byte(broken)
+		if name != "broken.html" {
+			var err error
+			data, err = os.ReadFile(filepath.Join("..", "..", "internal", "ixbrl", "testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(dir, "ok.html"), []byte(ok), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, stderr := runCLI(t, []string{"-o", "-", "-workers", "2", dir}, nil)
+
+	code, stdout, stderr := runCLI(t, []string{"--continue-on-error", "-o", "-", "-workers", "2", dir}, nil)
 	if code != exitOK {
 		t.Fatalf("exit %d stderr=%s", code, stderr)
 	}
 	assertCSV(t, stdout)
-	if !strings.Contains(stderr, "files_ok=2") || !strings.Contains(stderr, "files_err=0") ||
-		!strings.Contains(stderr, "files_lenient=1") {
+	if !strings.Contains(stderr, "files_ok=1") || !strings.Contains(stderr, "files_err=4") || strings.Contains(stderr, "files_lenient") {
 		t.Fatalf("stderr: %s", stderr)
+	}
+	for name, msg := range bad {
+		if !strings.Contains(stderr, name+": XML syntax error") || !strings.Contains(stderr, msg+" in "+name) {
+			t.Errorf("%s: want %q in stderr: %s", name, msg, stderr)
+		}
+		if strings.Contains(stdout, name) {
+			t.Errorf("%s wrote fact rows", name)
+		}
+	}
+	if !strings.Contains(stdout, "Keep Ltd") || strings.Contains(stdout, "Lost Ltd") {
+		t.Fatalf("stdout:\n%s", stdout)
 	}
 
-	only := t.TempDir()
-	if err := os.WriteFile(filepath.Join(only, "ok.html"), []byte(ok), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	code, _, stderr = runCLI(t, []string{"-o", "-", "-workers", "1", only}, nil)
-	if code != exitOK {
-		t.Fatalf("strict exit %d stderr=%s", code, stderr)
-	}
-	if !strings.Contains(stderr, "files_lenient=0") {
-		t.Fatalf("stderr: %s", stderr)
+	code, _, stderr = runCLI(t, []string{"-o", "-", "-workers", "2", dir}, nil)
+	if code != exitFail {
+		t.Fatalf("without --continue-on-error exit %d, want %d stderr=%s", code, exitFail, stderr)
 	}
 }
 

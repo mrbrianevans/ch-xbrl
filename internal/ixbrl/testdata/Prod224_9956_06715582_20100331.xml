@@ -1,0 +1,26 @@
+      <startDate>2008-10-06</startDate>
+      <endDate>2010-03-31</endDate>
+    </period>
+  </context>
+  <context id="s2008-10-06">
+    <entity>
+      <identifier scheme="Weatherweave Limited/results">Weatherweave Limited</identifier>
+    </entity>
+    <period>
+      <instant>2008-10-06</instant>
+    </period>
+  </context>
+  <context id="e2010-03-31">
+    <entity>
+      <identifier scheme="Weatherweave Limited/results">Weatherweave Limited</identifier>
+    </entity>
+    <period>
+      <instant>2010-03-31</instant>
+    </period>
+  </context>
+  <gc:EntityNames>
+    <gc:EntityCurrentLegalName contextRef="y2010-03-31">Weatherweave Limited</gc:EntityCurrentLegalName>
+  </gc:EntityNames>
+<ae:DateAccountsReceived contextRef="e2010-03-31">2010-07-06</ae:DateAccountsReceived></xbrl>
+
+

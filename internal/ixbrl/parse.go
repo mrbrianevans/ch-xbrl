@@ -6,13 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"unicode"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
@@ -191,8 +189,9 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			break
 		}
 		if err != nil {
-			// Recover: many CH files are not well-formed XML; try a lenient pass.
-			return parseLenient(data, sourceFile, onlyTarget)
+			// A document encoding/xml would reject fails the member. There
+			// is no second parser to fall back to.
+			return nil, 0, errSyntax(sourceFile, err)
 		}
 
 		switch kind {
@@ -581,6 +580,14 @@ func errDateTransform(sourceFile, concept, format, text string, err error) error
 	return fmt.Errorf("date transform %s format %q value %q in %s: %v", concept, format, text, sourceFile, err)
 }
 
+func errSyntax(sourceFile string, err error) error {
+	return fmt.Errorf("%w in %s", err, sourceFile)
+}
+
+func errNoFacts(sourceFile string) error {
+	return fmt.Errorf("no facts extracted from %s", sourceFile)
+}
+
 // qnameLocal returns the local part of a QName (prefix:local or {uri}local).
 func qnameLocal(q string) string {
 	q = strings.TrimSpace(q)
@@ -793,316 +800,6 @@ func trimTrailingZeros(s string) string {
 		return "0"
 	}
 	return s
-}
-
-// --- Lenient fallback parser using regex when strict XML fails ----------------
-
-var (
-	reXMLNS            = regexp.MustCompile(`(?i)(?:\s|^)xmlns(?::([A-Za-z_][\w.-]*))?\s*=\s*["']([^"']*)["']`)
-	reContext          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?context\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?context>`)
-	reStartDate        = regexp.MustCompile(`(?is)<(?:[\w.]+:)?startDate[^>]*>([^<]*)</(?:[\w.]+:)?startDate>`)
-	reEndDate          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?endDate[^>]*>([^<]*)</(?:[\w.]+:)?endDate>`)
-	reInstant          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?instant[^>]*>([^<]*)</(?:[\w.]+:)?instant>`)
-	reExplicit         = regexp.MustCompile(`(?is)<(?:[\w.]+:)?explicitMember\s+[^>]*dimension=["']([^"']+)["'][^>]*>([^<]*)</(?:[\w.]+:)?explicitMember>`)
-	reTyped            = regexp.MustCompile(`(?is)<(?:[\w.]+:)?typedMember\s+[^>]*dimension=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?typedMember>`)
-	reUnit             = regexp.MustCompile(`(?is)<(?:[\w.]+:)?unit\s+[^>]*id=["']([^"']+)["'][^>]*>(.*?)</(?:[\w.]+:)?unit>`)
-	reMeasure          = regexp.MustCompile(`(?is)<(?:[\w.]+:)?measure[^>]*>([^<]*)</(?:[\w.]+:)?measure>`)
-	reNonFraction      = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonFraction\b([^>]*)>(.*?)</(?:[\w.]+:)?nonFraction>`)
-	reNonNumeric       = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)>(.*?)</(?:[\w.]+:)?nonNumeric>`)
-	reNonFractionEmpty = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonFraction\b([^>]*)/>`)
-	reNonNumericEmpty  = regexp.MustCompile(`(?is)<(?:[\w.]+:)?nonNumeric\b([^>]*)/>`)
-	// Open, close, or empty ix:continuation. Group 1 is "/" for a close tag,
-	// group 2 is the attribute text, group 3 is "/" for an empty element.
-	reContTag = regexp.MustCompile(`(?is)<(/)?(?:[\w.]+:)?continuation\b([^>]*?)(/?)>`)
-	reAttr    = regexp.MustCompile(`(?i)([:\w]+)\s*=\s*["']([^"']*)["']`)
-)
-
-func errNoFacts(sourceFile string) error {
-	return fmt.Errorf("no facts extracted from %s", sourceFile)
-}
-
-// indexContinuations records every ix:continuation, including ones nested
-// inside another. Each part's text is the descendant text of that element
-// (tags removed, ix:exclude dropped), so an outer continuation includes the
-// inner one's text. Unbalanced tags are an error: a partial map would
-// reassemble facts with the wrong chain.
-func indexContinuations(s string) (map[string]*continuationPart, error) {
-	locs := reContTag.FindAllStringSubmatchIndex(s, -1)
-	type frame struct {
-		id, next     string
-		contentStart int
-	}
-	var st []frame
-	out := map[string]*continuationPart{}
-	for _, loc := range locs {
-		isClose := loc[2] >= 0 && loc[3] > loc[2]
-		selfClose := loc[6] >= 0 && loc[7] > loc[6]
-		if isClose {
-			if len(st) == 0 {
-				return nil, fmt.Errorf("unbalanced ix:continuation")
-			}
-			fr := st[len(st)-1]
-			st = st[:len(st)-1]
-			if fr.id != "" {
-				out[fr.id] = &continuationPart{
-					Text:        xmlUnescape(stripTags(s[fr.contentStart:loc[0]])),
-					ContinuedAt: fr.next,
-				}
-			}
-			continue
-		}
-		attrs := ""
-		if loc[4] >= 0 && loc[5] >= loc[4] {
-			attrs = s[loc[4]:loc[5]]
-		}
-		am := parseAttrs(attrs)
-		id := am["id"]
-		next := ""
-		for k, v := range am {
-			if strings.EqualFold(k, "continuedAt") {
-				next = v
-			}
-		}
-		if selfClose {
-			if id != "" {
-				out[id] = &continuationPart{ContinuedAt: next}
-			}
-			continue
-		}
-		st = append(st, frame{id: id, next: next, contentStart: loc[1]})
-	}
-	if len(st) != 0 {
-		return nil, fmt.Errorf("unbalanced ix:continuation")
-	}
-	return out, nil
-}
-
-func documentNamespaces(s string) map[string]string {
-	ns := map[string]string{}
-	for _, m := range reXMLNS.FindAllStringSubmatch(s, -1) {
-		if m[1] == "" {
-			ns[""] = m[2]
-			continue
-		}
-		ns[m[1]] = m[2]
-	}
-	return ns
-}
-
-// lenientParses counts entries to parseLenient. The increment is the first
-// line of that function, so the strict XML decoder never reads or writes it.
-// Tests and benchmarks take a delta around one single-threaded parse.
-// The CLI reads the total after its workers finish. That total is how many
-// members entered the regex fallback. A delta taken while workers still
-// overlap does not say which member.
-var lenientParses atomic.Uint64
-
-// LenientParses is how many times this process entered the regex fallback.
-func LenientParses() uint64 {
-	return lenientParses.Load()
-}
-
-func parseLenient(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
-	lenientParses.Add(1)
-	data = stripXMLPreamble(data)
-	s := string(data)
-	docNS := documentNamespaces(s)
-	var nsErr error
-	var dateErr error
-
-	contexts := map[string]*contextInfo{}
-	for _, m := range reContext.FindAllStringSubmatch(s, -1) {
-		id, body := m[1], m[2]
-		ctx := &contextInfo{ID: id, Dimensions: map[string]string{}}
-		if sm := reStartDate.FindStringSubmatch(body); len(sm) > 1 {
-			ctx.PeriodStart = strings.TrimSpace(sm[1])
-		}
-		if em := reEndDate.FindStringSubmatch(body); len(em) > 1 {
-			ctx.PeriodEnd = strings.TrimSpace(em[1])
-		}
-		if im := reInstant.FindStringSubmatch(body); len(im) > 1 {
-			d := strings.TrimSpace(im[1])
-			ctx.PeriodEnd = d
-			ctx.PeriodStart = d
-		}
-		for _, dm := range reExplicit.FindAllStringSubmatch(body, -1) {
-			ctx.Dimensions[qnameLocal(dm[1])] = qnameLocal(strings.TrimSpace(dm[2]))
-		}
-		for _, dm := range reTyped.FindAllStringSubmatch(body, -1) {
-			// strip tags from typed body
-			val := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(dm[2], "")
-			ctx.Dimensions[qnameLocal(dm[1])] = strings.TrimSpace(val)
-		}
-		contexts[id] = ctx
-	}
-
-	units := map[string]*unitInfo{}
-	for _, m := range reUnit.FindAllStringSubmatch(s, -1) {
-		id, body := m[1], m[2]
-		u := &unitInfo{ID: id}
-		var measures []string
-		for _, mm := range reMeasure.FindAllStringSubmatch(body, -1) {
-			measures = append(measures, strings.TrimSpace(mm[1]))
-		}
-		u.Measure = strings.Join(measures, "/")
-		units[id] = u
-	}
-
-	var out []fact.Fact
-
-	// Index ix:continuation fragments for continuedAt chains.
-	// Nested continuations need a matching-tag scan; a non-greedy match
-	// would stop at the first close and drop the outer ids.
-	continuations, contErr := indexContinuations(s)
-	if contErr != nil {
-		return nil, 0, fmt.Errorf("%s: %w", sourceFile, contErr)
-	}
-
-	prodName, prodVersion := markupProducer(s, continuations)
-	gate := cchEmployeeProducer(prodName, prodVersion)
-	corrections := 0
-
-	collect := func(attrs, body string, numeric bool) {
-		if nsErr != nil || dateErr != nil {
-			return
-		}
-		am := parseAttrs(attrs)
-		name := am["name"]
-		if name == "" {
-			return
-		}
-		if onlyTarget != "" && am["target"] != onlyTarget {
-			return
-		}
-		nsURI, badPrefix := inlineNamespace(name, docNS)
-		if badPrefix != "" {
-			nsErr = errUndeclaredPrefix(sourceFile, qnameLocal(name), badPrefix)
-			return
-		}
-		ctxRef := am["contextref"]
-		if ctxRef == "" {
-			ctxRef = am["contextRef"]
-		}
-		// attrs keys are lowercased
-		for k, v := range am {
-			if strings.EqualFold(k, "contextRef") {
-				ctxRef = v
-			}
-		}
-		unitRef := ""
-		continuedAt := ""
-		for k, v := range am {
-			if strings.EqualFold(k, "unitRef") {
-				unitRef = v
-			}
-			if strings.EqualFold(k, "continuedAt") {
-				continuedAt = v
-			}
-		}
-		scale, sign, format := am["scale"], am["sign"], am["format"]
-
-		// strip nested tags from body for text value
-		val := xmlUnescape(stripTags(body))
-		if continuedAt != "" {
-			val = joinContinuation(val, continuedAt, continuations)
-		} else {
-			val = strings.TrimSpace(val)
-		}
-
-		ctx := contexts[ctxRef]
-		ps, pe := "", ""
-		dimsJSON := ""
-		if ctx != nil {
-			ps, pe = ctx.PeriodStart, ctx.PeriodEnd
-			if len(ctx.Dimensions) > 0 {
-				b, _ := json.Marshal(ctx.Dimensions)
-				dimsJSON = string(b)
-			}
-		}
-		unit := unitRef
-		if u, ok := units[unitRef]; ok && u.Measure != "" {
-			unit = u.Measure
-		}
-		decimals := ""
-		if numeric {
-			decimals = am["decimals"]
-			scaleUsed, signUsed, fixed := adjustEmployeeValue(qnameLocal(name), scale, unit, val, format, sign, gate)
-			if fixed {
-				corrections++
-			}
-			val = normaliseNumeric(val, scaleUsed, signUsed, format)
-		} else {
-			var nerr error
-			val, nerr = normaliseNonNumeric(val, format)
-			if nerr != nil {
-				dateErr = errDateTransform(sourceFile, qnameLocal(name), format, val, nerr)
-				return
-			}
-		}
-		out = append(out, fact.Fact{
-			PeriodStart: ps,
-			PeriodEnd:   pe,
-			Concept:     qnameLocal(name),
-			Value:       val,
-			Unit:        unit,
-			Dimensions:  dimsJSON,
-			Namespace:   nsURI,
-			SourceFile:  sourceFile,
-			Decimals:    decimals,
-		})
-	}
-
-	for _, m := range reNonFraction.FindAllStringSubmatch(s, -1) {
-		collect(m[1], m[2], true)
-	}
-	for _, m := range reNonFractionEmpty.FindAllStringSubmatch(s, -1) {
-		collect(m[1], "", true)
-	}
-	for _, m := range reNonNumeric.FindAllStringSubmatch(s, -1) {
-		collect(m[1], m[2], false)
-	}
-	for _, m := range reNonNumericEmpty.FindAllStringSubmatch(s, -1) {
-		collect(m[1], "", false)
-	}
-
-	if nsErr != nil {
-		return nil, 0, nsErr
-	}
-	if dateErr != nil {
-		return nil, 0, dateErr
-	}
-	if len(out) == 0 {
-		return nil, 0, errNoFacts(sourceFile)
-	}
-	return out, corrections, nil
-}
-
-func parseAttrs(s string) map[string]string {
-	m := map[string]string{}
-	for _, a := range reAttr.FindAllStringSubmatch(s, -1) {
-		key := a[1]
-		if i := strings.Index(key, ":"); i >= 0 {
-			key = key[i+1:]
-		}
-		m[strings.ToLower(key)] = a[2]
-		// also keep original-case local
-		m[key] = a[2]
-	}
-	return m
-}
-
-func stripTags(s string) string {
-	// Drop ix:exclude blocks entirely (iXBRL presentation-only content).
-	s = regexp.MustCompile(`(?is)<(?:[\w.]+:)?exclude\b[^>]*>.*?</(?:[\w.]+:)?exclude>`).ReplaceAllString(s, "")
-	return regexp.MustCompile(`(?s)<[^>]*>`).ReplaceAllString(s, "")
-}
-
-// xmlUnescape decodes XML/HTML character references left in the regex
-// fallback. encoding/xml already did this on the strict path. Numeric
-// references such as &#160; contain digits, so a date separator that is
-// still the reference text does not match.
-func xmlUnescape(s string) string {
-	return html.UnescapeString(s)
 }
 
 // foldSpaces maps Unicode space separators, and line and paragraph

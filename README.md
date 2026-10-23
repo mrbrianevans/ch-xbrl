@@ -70,7 +70,9 @@ A positive displayed headcount (`AverageNumberEmployeesDuringPeriod`, or a depar
 
 The CSV columns are unchanged. The end-of-run `done:` line on stderr includes `corrections=N`, how many fact values were adjusted for either fix. A fact that needs both is counted once. The count is 0 when none were. It is reported for every input kind and with `--continue-on-error`.
 
-The same line includes `files_lenient=N`: how many members left the XML decoder and were parsed by the regex fallback, including a member that then failed. It is 0 when every member stayed on the decoder.
+### Malformed members
+
+A member that is not well-formed enough to tokenise (truncated, or damaged inside its tags) fails with an `XML syntax error` that names the file. It counts in `files_err` and writes no rows; `--continue-on-error` skips it. There is no second, regex-based parser, so the `done:` line has no `files_lenient` count any more.
 
 ## Licence
 

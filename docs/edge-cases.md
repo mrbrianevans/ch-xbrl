@@ -16,7 +16,7 @@ Found in [Accounts_Monthly_Data-March2021.zip](https://download.companieshouse.g
 
 The member is 56,697 bytes and starts `<*` followed by binary, not `<?xml` or `<html`. The zip CRC matches those bytes, so Companies House published the member this way. It is not the iXBRL filing served for 08972528 (`08972528_aa_2021-03-01.xhtml` on the filing-history document API), which parses to 68 facts.
 
-`ParseBytes` returns `no facts extracted`. There is no fact row for this member. Without `--continue-on-error` the process exits 1. With the flag the member is logged and skipped.
+`ParseBytes` returns `XML syntax error on line 1: expected element name after < in Prod224_0088_08972528_20200331.xml`. Before the regex fallback was removed, the fallback ran, found nothing, and the error was `no facts extracted`. There is no fact row for this member either way. Without `--continue-on-error` the process exits 1. With the flag the member is logged and skipped.
 
 Fixture: `internal/ixbrl/testdata/Prod224_0088_08972528_20200331.xml`.
 
@@ -33,6 +33,32 @@ This is a parse error (`no facts extracted`), not a successful file with zero fa
 Fixture: `internal/ixbrl/testdata/Prod224_0088_11426842_20200630.xml`.
 
 Tests: `TestParseKnownArchiveAnomalies`, `TestRun_AttachmentPlaceholderIsAnError`.
+
+## Malformed XML
+
+A member that `internal/ixbrl/xmlscan` rejects fails with `XML syntax error … in <member>`. The tokeniser rejects exactly what `encoding/xml`'s non-strict decoder rejected. Such a member used to be parsed again by a regex fallback that only knew `ix:nonFraction` and `ix:nonNumeric`. The fallback is removed, so there is one parser and no partial second answer.
+
+One monthly archive per two years was scanned (January to December 2008, July 2010, February 2012, February 2014, May 2017, February 2018, April 2021, February 2022, February 2025; 1,505,088 instance members). The decoder rejected 26 members, all in the first two. All 26 are classic XBRL, so the regex fallback found nothing and they already failed with `no facts extracted`. No output row changed when the fallback was removed. The other seven archives had no rejected member.
+
+[Accounts_Monthly_Data-JanuaryToDecember2008.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-JanuaryToDecember2008.zip), 24 of 185,187 members (`Prod224_8998_*`). A blank line (`\n\n`) is inserted every 75 or so bytes, wherever it falls. In `Prod224_8998_03552913_20080430.xml` the root element also has a stray `0` between two attributes:
+
+```xml
+xmlns:html='http://www.w3.org/1999/xhtml'                     0              xmlns:iso4217='http://www.xbrl.org/2003/iso4217'
+```
+
+19 members fail there (`invalid XML name: 0`). In the other 5, such as `Prod224_8998_03009032_20080131.xml`, the break splits an element name: `<ae:CompanyNotDo` and then `rmant contextRef='y2003'>` on the next line. The real end tag `</ae:CompanyNotDormant>` then matches nothing that is open (`unexpected end element </CompanyNotDormant>`). Members of the same archive whose breaks only fall in text or attribute values still parse, with the line breaks kept in those values.
+
+[Accounts_Monthly_Data-July2010.zip](https://download.companieshouse.gov.uk/archive/Accounts_Monthly_Data-July2010.zip), 2 of 42,810 members. Each is the tail of a document with the beginning missing. `Prod224_9956_06715582_20100331.xml` (787 bytes) starts with `      <startDate>2008-10-06</startDate>`, so the first end tag that does not match is `</period>` (`unexpected end element </period>`). `Prod224_9956_04944372_20100331.xml` starts in the middle of an attribute value, `">represents net invoiced sales of goods, excluding VAT</ae:ContentAccountingPolicy>`.
+
+Behaviour that must stay:
+
+- Each of these members is a failed member: no fact rows, counted in `files_err`, logged with the file name and the syntax error. Without `--continue-on-error` the process exits 1. With it, the other members are written and the exit code follows `files_ok`.
+- A truncated document (an element still open at the end), a NUL or other illegal character in text, `a < b` in text, an end tag with nothing open, and a non-UTF-8, non-ASCII `encoding=` declaration fail the same way.
+- The `done:` line has no `files_lenient` count.
+
+Fixtures (corrupt, so not under `samples/`): `internal/ixbrl/testdata/Prod224_8998_03552913_20080430.xml`, `internal/ixbrl/testdata/Prod224_8998_03009032_20080131.xml`, `internal/ixbrl/testdata/Prod224_9956_06715582_20100331.xml`.
+
+Tests: `TestParseKnownArchiveAnomalies`, `TestMalformedXMLFailsMember`, `TestUnsupportedCharsetFailsMember`, `TestRun_MalformedXMLIsMemberError`, and the tokeniser parity tests in `internal/ixbrl/xmlscan`.
 
 ## Legal name in the entity identifier
 
@@ -344,7 +370,7 @@ Behaviour that must stay, for this file:
 - Neither concept is left as `31 December` or `31 December 2025`.
 - 591 facts. Every row has `source_file` `07068009_aa_2025-12-31.xhtml`.
 
-Tests: `TestNestedContinuations`, `TestNestedContinuationsLenient`, `TestRun_EdgeSampleNestedContinuations`.
+Tests: `TestNestedContinuations`, `TestRun_EdgeSampleNestedContinuations`.
 
 ## Double quotes in non-numeric text
 
@@ -380,7 +406,7 @@ The same `&#160;` separates the other dates (`01&#160;September&#160;2025`, `31&
 
 `encoding/xml` stops on the first token when no charset reader is set (`encoding "ASCII" declared but Decoder.CharsetReader is nil`). The whole member then takes the regex fallback. That fallback used to decode only a short list of entities, so the fact value stayed `05&#160;September&#160;2026`. The day-month-year pattern treats the gap between day, month, and year as non-digits, and the digits inside `160` do not match. The member was a date-transform error. There was no fact row.
 
-ASCII is a subset of UTF-8, so `ASCII` and `US-ASCII` are read as the bytes themselves. The XML decoder then turns `&#160;` into U+00A0, and whitespace collapse turns that into an ordinary space before the date transform. A file that still takes the regex fallback decodes character references the same way, including `&#160;`. Other Unicode space separators (thin space, narrow no-break space) are folded to an ASCII space before that collapse, including on numbers.
+ASCII is a subset of UTF-8, so `ASCII` and `US-ASCII` are read as the bytes themselves. The tokeniser then turns `&#160;` into U+00A0, and whitespace collapse turns that into an ordinary space before the date transform. Other Unicode space separators (thin space, narrow no-break space) are folded to an ASCII space before that collapse, including on numbers.
 
 Behaviour that must stay, for this file:
 
@@ -392,9 +418,9 @@ Behaviour that must stay, for this file:
 - No fact value still contains the characters `&#160;`.
 - 86 facts. Every row has `source_file` `Prod223_4327_12874000_20260831.html`. `files_err` stays 0.
 
-An unknown charset is still a member that falls back to the regex parser. A date with no year (`31 December` and `datedaymonthyearen`) still fails the member.
+Any other declared encoding (`ISO-8859-1`, `windows-1252`) fails the member with `unsupported charset`. It used to go to the regex fallback, which is removed; see [Malformed XML](#malformed-xml). None of the scanned archives had such a member. A date with no year (`31 December` and `datedaymonthyearen`) still fails the member.
 
-Tests: `TestASCIICharsetDecodesNBSPDate`, `TestLenientNBSPDate`, `TestThinSpaceDateAndNumericSeparator`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace`.
+Tests: `TestASCIICharsetDecodesNBSPDate`, `TestUnsupportedCharsetFailsMember`, `TestThinSpaceDateAndNumericSeparator`, `TestParseASCIIIxbrlReporterSample`, `TestRun_EdgeSampleASCIINonBreakingSpace`.
 
 ## CCH employee headcount scale
 
@@ -430,7 +456,7 @@ The same rule already applies to full samples `09652677_aa_2026-03-25.xhtml` (di
 
 Arelle still applies the tagged scale, so those headcount values differ from Arelle on purpose. The stream-read-xbrl check skips the employee column.
 
-Tests: `TestCCHEmployeeScaleGate`, `TestCCHEmployeeScaleProducers`, `TestCCHEmployeeScaleSamples`, `TestCCHEmployeeScaleSampleLeavesOtherFacts`, `TestCCHEmployeeScaleLenient`, `TestRun_CCHEmployeeScale`, `TestRun_CCHEmployeeScaleInputs`, `TestRun_CCHEmployeeScaleContinueOnError`.
+Tests: `TestCCHEmployeeScaleGate`, `TestCCHEmployeeScaleProducers`, `TestCCHEmployeeScaleSamples`, `TestCCHEmployeeScaleSampleLeavesOtherFacts`, `TestRun_CCHEmployeeScale`, `TestRun_CCHEmployeeScaleInputs`, `TestRun_CCHEmployeeScaleContinueOnError`.
 
 ## Positive employee headcount tagged sign="-"
 
@@ -512,7 +538,7 @@ The regex fallback used to keep that `1`. The token parser used to clear its tex
 
 Behaviour that must stay, for this file:
 
-- The member does not take the regex fallback. `files_err` stays 0.
+- The member parses. `files_err` stays 0.
 - 149 facts. Every row has `source_file` `Prod224_0042_02952712_20161231.html`.
 - `StatementComplianceWithApplicableReportingFramework` for `2016-01-01` to `2016-12-31` is `These abridged financial statements have been prepared in compliance with FRS 102 Section 1A, 'The Financial Reporting Standard applicable to the UK and Republic of Ireland'.` One fact. The value is not the truncated `These abridged financial statements`.
 - `StatementThatCompanyEntitledToExemptionFromAuditUnderSection477CompaniesAct2006RelatingToSmallCompanies` is `For the year ending 31 December 2016, the company was entitled to exemption from audit under section 477 of the Companies Act 2006 relating to small companies.`

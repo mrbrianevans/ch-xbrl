@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Instance XML is read by a new tokeniser (`internal/ixbrl/xmlscan`) instead of `encoding/xml`. It gives the same tokens and rejects the same documents. On one monthly archive per two years from 2008 to 2025 (1.5 million members) the fact CSV is identical to 0.5.0.
+
+### Removed
+
+- The regex fallback parser. A member the tokeniser rejects (truncated, damaged inside its tags, or declaring an encoding other than UTF-8 or ASCII) now fails with `XML syntax error … in <member>`. Before, the fallback re-read inline `ix:` facts from such a member. On the archives above, the 26 rejected members are classic XBRL that the fallback could not read, so they already failed with `no facts extracted`.
+- `files_lenient` on the `done:` line.
+
 ## [0.5.0] - 2026-10-23
 
 ### Removed

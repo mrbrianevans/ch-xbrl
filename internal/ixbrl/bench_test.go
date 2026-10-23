@@ -27,7 +27,6 @@ type sampleFiling struct {
 	source    string
 	data      []byte
 	onlyUKFRS bool
-	lenient   bool
 	facts     int
 }
 
@@ -177,7 +176,6 @@ func streamMembers(path string) ([]archive.Member, error) {
 }
 
 func annotateFiling(f *sampleFiling) error {
-	before := lenientParses.Load()
 	doc, err := parseFiling(*f)
 	if err != nil {
 		return fmt.Errorf("parse %s: %w", f.benchName, err)
@@ -185,7 +183,6 @@ func annotateFiling(f *sampleFiling) error {
 	if len(doc.Facts) == 0 {
 		return fmt.Errorf("parse %s: no facts", f.benchName)
 	}
-	f.lenient = lenientParses.Load() != before
 	f.facts = len(doc.Facts)
 	return nil
 }
@@ -211,7 +208,6 @@ func benchFilings(b *testing.B, filings []sampleFiling, writeCSV bool) {
 	if writeCSV {
 		w = csvout.New(io.Discard)
 	}
-	before := lenientParses.Load()
 	b.ResetTimer()
 	var sink Document
 	for i := 0; i < b.N; i++ {
@@ -234,12 +230,6 @@ func benchFilings(b *testing.B, filings []sampleFiling, writeCSV bool) {
 			b.Fatal(err)
 		}
 	}
-	// ReportMetric stores the value as given. Divide so the column is per parse of this set.
-	hits := float64(lenientParses.Load() - before)
-	if b.N > 0 {
-		hits /= float64(b.N)
-	}
-	b.ReportMetric(hits, "lenient-files/op")
 	if len(sink.Facts) == 0 {
 		b.Fatal("no facts")
 	}
@@ -247,23 +237,17 @@ func benchFilings(b *testing.B, filings []sampleFiling, writeCSV bool) {
 
 // BenchmarkParseDocument parses every filing under samples/.
 // Sub-benchmarks: all (byte-weighted corpus), report-package (target UKFRS),
-// other (everything else), strict, lenient (only when a filing took the
-// regex fallback), and one benchmark per filing.
+// other (everything else), and one benchmark per filing.
 func BenchmarkParseDocument(b *testing.B) {
 	filings := loadSampleFilings(b)
 	b.Run("all", func(b *testing.B) { benchFilings(b, filings, false) })
 
-	var report, other, strict, lenient []sampleFiling
+	var report, other []sampleFiling
 	for _, f := range filings {
 		if f.onlyUKFRS {
 			report = append(report, f)
 		} else {
 			other = append(other, f)
-		}
-		if f.lenient {
-			lenient = append(lenient, f)
-		} else {
-			strict = append(strict, f)
 		}
 	}
 	if len(report) > 0 {
@@ -271,12 +255,6 @@ func BenchmarkParseDocument(b *testing.B) {
 	}
 	if len(other) > 0 {
 		b.Run("other", func(b *testing.B) { benchFilings(b, other, false) })
-	}
-	if len(strict) > 0 {
-		b.Run("strict", func(b *testing.B) { benchFilings(b, strict, false) })
-	}
-	if len(lenient) > 0 {
-		b.Run("lenient", func(b *testing.B) { benchFilings(b, lenient, false) })
 	}
 	for _, f := range filings {
 		b.Run(f.benchName, func(b *testing.B) { benchFilings(b, []sampleFiling{f}, false) })
@@ -290,36 +268,12 @@ func BenchmarkParseAndWriteCSV(b *testing.B) {
 	b.Run("all", func(b *testing.B) { benchFilings(b, filings, true) })
 }
 
-func TestLenientParsesCountsFallbackOnly(t *testing.T) {
-	doc := `<?xml version="1.0"?>
-<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
-  <ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c">Keep Ltd</ix:nonNumeric>
-</html>`
-	before := lenientParses.Load()
-	facts, err := ParseBytes([]byte(doc), "strict.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(facts) != 1 || facts[0].Concept != "EntityCurrentLegalOrRegisteredName" {
-		t.Fatalf("facts=%+v", facts)
-	}
-	if got := lenientParses.Load(); got != before {
-		t.Fatalf("strict parse incremented lenientParses to %d from %d", got, before)
-	}
-
-	before = lenientParses.Load()
-	if _, _, err := parseLenient([]byte(doc), "strict.html", ""); err != nil {
-		t.Fatal(err)
-	}
-	if got := lenientParses.Load(); got != before+1 {
-		t.Fatalf("lenientParses=%d want %d", got, before+1)
-	}
-}
-
-func TestSampleLenientPaths(t *testing.T) {
+// TestSampleFilings parses the benchmark corpus once, so a filing that stops
+// parsing fails go test and not only the benchmark. It logs what each
+// filing contributes.
+func TestSampleFilings(t *testing.T) {
 	filings := loadSampleFilings(t)
-	var nLenient, nbytes, nfacts int
-	var names []string
+	var nbytes, nfacts int
 	for _, f := range filings {
 		nbytes += len(f.data)
 		nfacts += f.facts
@@ -327,16 +281,7 @@ func TestSampleLenientPaths(t *testing.T) {
 		if f.onlyUKFRS {
 			kind = "report-package"
 		}
-		path := "strict"
-		if f.lenient {
-			path = "lenient"
-			nLenient++
-			names = append(names, f.benchName)
-		}
-		t.Logf("%s %s %s bytes=%d facts=%d", path, kind, f.benchName, len(f.data), f.facts)
+		t.Logf("%s %s bytes=%d facts=%d", kind, f.benchName, len(f.data), f.facts)
 	}
-	t.Logf("filings=%d bytes=%d facts=%d lenient=%d", len(filings), nbytes, nfacts, nLenient)
-	if nLenient > 0 {
-		t.Logf("lenient filings: %s", strings.Join(names, ", "))
-	}
+	t.Logf("filings=%d bytes=%d facts=%d", len(filings), nbytes, nfacts)
 }

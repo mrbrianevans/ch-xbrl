@@ -179,14 +179,14 @@ func TestBadDateDropsMember(t *testing.T) {
 		t.Fatalf("error: %v", err)
 	}
 
-	// A NUL makes the XML decoder fail so the regex fallback runs.
-	broken := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
+	// An unimplemented date format fails the member the same way.
+	unimpl := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
 <ix:nonNumeric name="bus:EntityCurrentLegalOrRegisteredName" contextRef="c1">Should Not Appear</ix:nonNumeric>
 <ix:nonNumeric name="bus:BalanceSheetDate" contextRef="c1" format="ixt:date-day-monthname-year-de">31. Dezember 2025</ix:nonNumeric>
-` + "\x00" + `</html>`)
-	facts, err = ParseBytes(broken, "unimplemented.xhtml")
+</html>`)
+	facts, err = ParseBytes(unimpl, "unimplemented.xhtml")
 	if err == nil || facts != nil {
-		t.Fatalf("lenient facts=%v err=%v", facts, err)
+		t.Fatalf("facts=%v err=%v", facts, err)
 	}
 	if !strings.Contains(err.Error(), "unimplemented") || !strings.Contains(err.Error(), "date-day-monthname-year-de") {
 		t.Fatalf("error: %v", err)
@@ -439,27 +439,6 @@ func TestExcludeInsideContinuation(t *testing.T) {
 	}
 }
 
-// The regex fallback used to stop at the first closing continuation tag.
-// A trailing broken tag forces that path; the three dates still reassemble.
-func TestNestedContinuationsLenient(t *testing.T) {
-	doc := ixDoc(`<ix:nonNumeric name="bus:DateA" contextRef="c1" continuedAt="f-34-1">31 December</ix:nonNumeric><ix:nonNumeric name="bus:DateB" contextRef="c1" continuedAt="f-35-1">31 December</ix:nonNumeric><ix:nonNumeric name="bus:DateC" contextRef="c1" continuedAt="f-36-1">31 December</ix:nonNumeric><ix:continuation id="f-34-1"><ix:continuation id="f-35-1"><ix:continuation id="f-36-1"> 2025</ix:continuation></ix:continuation></ix:continuation>`) + "<ix:nonNumeric"
-	got := factsByConcept(t, doc)
-	for _, concept := range []string{"DateA", "DateB", "DateC"} {
-		if got[concept].Value != "31 December 2025" {
-			t.Errorf("%s=%q", concept, got[concept].Value)
-		}
-	}
-}
-
-func TestContinuationChainLenient(t *testing.T) {
-	doc := ixDoc(`<ix:nonNumeric name="core:CashCashEquivalentsPolicy" contextRef="c1" continuedAt="c0"><span>Cash and cash equivalents</span></ix:nonNumeric><ix:continuation id="c0" continuedAt="c1"><span>are basic financial assets</span></ix:continuation><ix:continuation id="c1"><span> and</span></ix:continuation>`) + "<ix:nonNumeric"
-	got := factsByConcept(t, doc)
-	want := "Cash and cash equivalentsare basic financial assets and"
-	if got["CashCashEquivalentsPolicy"].Value != want {
-		t.Fatalf("value=%q want %q", got["CashCashEquivalentsPolicy"].Value, want)
-	}
-}
-
 // Hand-read from samples/00340611_aa_2026-01-31.xhtml (LONDON SAILPLANES LIMITED).
 // The compliance statement is one ix:nonNumeric. The title of FRS 102 and
 // "Small Entities" are in double quotes in the source.
@@ -482,11 +461,26 @@ func TestQuotesKeptInSailplanesComplianceStatement(t *testing.T) {
 	}
 }
 
-func TestUnbalancedContinuationIsError(t *testing.T) {
-	doc := ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1" continuedAt="c0">Head</ix:nonNumeric><ix:continuation id="c0">tail`) + "<ix:nonNumeric"
-	_, err := ParseBytes([]byte(doc), "broken.xhtml")
-	if err == nil || !strings.Contains(err.Error(), "unbalanced ix:continuation") {
-		t.Fatalf("err=%v", err)
+// A document the tokeniser rejects fails the member, naming the file.
+// There is no regex fallback, so facts that parsed before the error are
+// not returned.
+func TestMalformedXMLFailsMember(t *testing.T) {
+	cases := map[string]string{
+		"truncated":      ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1" continuedAt="c0">Head</ix:nonNumeric><ix:continuation id="c0">tail`) + "<ix:nonNumeric",
+		"open element":   strings.TrimSuffix(ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1">Head</ix:nonNumeric>`), "</html>"),
+		"NUL in text":    ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1">Head</ix:nonNumeric>` + "\x00"),
+		"less-than text": ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1">a < b</ix:nonNumeric>`),
+		"stray end tag":  ixDoc(`<ix:nonNumeric name="core:Policy" contextRef="c1">Head</ix:nonNumeric>`) + "</div>",
+	}
+	for name, doc := range cases {
+		facts, err := ParseBytes([]byte(doc), "broken.xhtml")
+		if err == nil || facts != nil {
+			t.Errorf("%s: facts=%v err=%v", name, facts, err)
+			continue
+		}
+		if !strings.Contains(err.Error(), "XML syntax error") || !strings.HasSuffix(err.Error(), " in broken.xhtml") {
+			t.Errorf("%s: err=%v", name, err)
+		}
 	}
 }
 
@@ -636,26 +630,35 @@ func TestParseClassicXBRLCompaniesHouseSchemeUsesLegalName(t *testing.T) {
 }
 
 func TestParseKnownArchiveAnomalies(t *testing.T) {
-	// Real members from Companies House monthly archives.
-	// See docs/edge-cases.md. The .xml names are from March 2021.
-	// The .zip name is an attachment placeholder from October 2021.
-	cases := []string{
-		"Prod224_0088_11426842_20200630.xml",
-		"Prod224_0088_08972528_20200331.xml",
-		// .zip name, attachment-placeholder bytes. October 2021.
-		"Prod224_0095_04869811_20210131.zip",
+	// Real members from Companies House monthly archives. See
+	// docs/edge-cases.md. An attachment placeholder holds no markup and
+	// has no facts. The other members are rejected by the tokeniser.
+	cases := []struct{ name, err string }{
+		// March 2021: attachment placeholder.
+		{"Prod224_0088_11426842_20200630.xml", "no facts extracted from Prod224_0088_11426842_20200630.xml"},
+		// March 2021: binary after "<*".
+		{"Prod224_0088_08972528_20200331.xml", "expected element name after <"},
+		// October 2021: attachment placeholder under a .zip name.
+		{"Prod224_0095_04869811_20210131.zip", "no facts extracted from Prod224_0095_04869811_20210131.zip"},
+		// January to December 2008: blank lines inside tags, and a stray 0
+		// between the root element's attributes.
+		{"Prod224_8998_03552913_20080430.xml", "invalid XML name: 0"},
+		// The same damage splits <ae:CompanyNotDormant> into two names.
+		{"Prod224_8998_03009032_20080131.xml", "unexpected end element </CompanyNotDormant>"},
+		// July 2010: the first part of the document is missing.
+		{"Prod224_9956_06715582_20100331.xml", "unexpected end element </period>"},
 	}
-	for _, name := range cases {
-		t.Run(name, func(t *testing.T) {
-			data, err := os.ReadFile(filepath.Join("testdata", name))
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", c.name))
 			if err != nil {
 				t.Fatal(err)
 			}
-			facts, err := ParseBytes(data, name)
-			if err == nil {
+			facts, err := ParseBytes(data, c.name)
+			if err == nil || facts != nil {
 				t.Fatalf("expected error, got %d facts", len(facts))
 			}
-			if !strings.Contains(err.Error(), "no facts extracted from "+name) {
+			if !strings.Contains(err.Error(), c.err) || !strings.Contains(err.Error(), c.name) {
 				t.Fatalf("err=%v", err)
 			}
 		})
@@ -814,35 +817,6 @@ func TestUndeclaredClassicPrefixDropsFacts(t *testing.T) {
 	}
 }
 
-func TestParseLenientNamespace(t *testing.T) {
-	// A NUL makes the XML decoder fail so the regex fallback runs.
-	good := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:core="http://example.com/core">
-<ix:nonNumeric name="core:Ok" contextRef="c">yes</ix:nonNumeric>
-` + "\x00" + `</html>`)
-	facts, err := ParseBytes(good, "lenient.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(facts) != 1 || facts[0].Concept != "Ok" || facts[0].Namespace != "http://example.com/core" {
-		t.Fatalf("facts=%+v", facts)
-	}
-
-	bad := []byte(`<html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:core="http://example.com/core">
-<ix:nonNumeric name="core:Ok" contextRef="c">yes</ix:nonNumeric>
-<ix:nonNumeric name="missing:CharityFunds" contextRef="c">1</ix:nonNumeric>
-` + "\x00" + `</html>`)
-	facts, err = ParseBytes(bad, "lenient-bad.html")
-	if err == nil {
-		t.Fatalf("expected error, got %d facts", len(facts))
-	}
-	if facts != nil {
-		t.Fatal("facts returned")
-	}
-	if !strings.Contains(err.Error(), `undeclared prefix "missing"`) || !strings.Contains(err.Error(), "lenient-bad.html") {
-		t.Fatalf("err=%v", err)
-	}
-}
-
 func TestParseOnlyUKFRS(t *testing.T) {
 	doc := `<?xml version="1.0"?>
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL" xmlns:bus="http://example.com/bus">
@@ -863,16 +837,6 @@ func TestParseOnlyUKFRS(t *testing.T) {
 	}
 	if len(kept) != 1 || kept[0].Concept != "EntityCurrentLegalOrRegisteredName" || kept[0].Value != "Keep Ltd" {
 		t.Fatalf("UKFRS facts = %+v", kept)
-	}
-
-	// Lenient path: an unclosed tag forces the regex fallback.
-	broken := doc + "<ix:nonNumeric"
-	kept, _, err = parseLenient([]byte(broken), "uksef.xhtml", "UKFRS")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(kept) != 1 || kept[0].Value != "Keep Ltd" {
-		t.Fatalf("lenient UKFRS facts = %+v", kept)
 	}
 }
 
@@ -909,39 +873,17 @@ func TestASCIICharsetDecodesNBSPDate(t *testing.T) {
 	}
 }
 
-func TestLenientNBSPDate(t *testing.T) {
-	// A NUL makes the XML decoder fail so the regex fallback runs.
-	doc := nbspDateDoc("UTF-8", "") + "\x00"
-	facts, err := ParseBytes([]byte(doc), "lenient-nbsp.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(facts) != 1 || facts[0].Value != "2026-09-05" || facts[0].Concept != "BusinessReportPublicationDate" {
-		t.Fatalf("facts=%+v", facts)
-	}
-
-	// An unsupported charset is still a fallback, and the reference is still decoded.
-	comment := `<!-- <ix:nonNumeric name="bus:Bogus" contextRef="c1">nope</ix:nonNumeric> -->`
-	facts, err = ParseBytes([]byte(nbspDateDoc("ISO-8859-1", comment)), "latin1.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var date, bogus int
-	for _, f := range facts {
-		switch f.Concept {
-		case "BusinessReportPublicationDate":
-			date++
-			if f.Value != "2026-09-05" {
-				t.Fatalf("value=%q", f.Value)
-			}
-		case "Bogus":
-			bogus++
-		default:
-			t.Fatalf("unexpected %s", f.Concept)
+func TestUnsupportedCharsetFailsMember(t *testing.T) {
+	// Only UTF-8 and ASCII are read. Another declared encoding used to send
+	// the member to the regex fallback. There is no fallback now.
+	for _, enc := range []string{"ISO-8859-1", "windows-1252"} {
+		facts, err := ParseBytes([]byte(nbspDateDoc(enc, "")), "latin1.html")
+		if err == nil || facts != nil {
+			t.Fatalf("%s: facts=%v err=%v", enc, facts, err)
 		}
-	}
-	if date != 1 || bogus != 1 {
-		t.Fatalf("date=%d bogus=%d", date, bogus)
+		if !strings.Contains(err.Error(), "unsupported charset") || !strings.Contains(err.Error(), "latin1.html") {
+			t.Fatalf("%s: err=%v", enc, err)
+		}
 	}
 }
 
@@ -1009,8 +951,8 @@ func mustOne(t *testing.T, m map[string][]factView, concept string) fact.Fact {
 }
 
 func TestColWithSpaceStaysOnXMLPath(t *testing.T) {
-	// `<col> </col>` must not push the member onto the regex fallback.
-	// A nested ix:nonNumeric stays inside the outer fact, and a typed
+	// `<col> </col>` is an ordinary element, not a void element closed
+	// early. A nested ix:nonNumeric stays inside the outer fact, and a typed
 	// member's value is the child element's text. See docs/edge-cases.md.
 	const doc = `<?xml version="1.0"?>
 <html xmlns:ix="http://www.xbrl.org/2013/inlineXBRL"
@@ -1035,13 +977,9 @@ func TestColWithSpaceStaysOnXMLPath(t *testing.T) {
 </xbrli:context>
 </body>
 </html>`
-	before := lenientParses.Load()
 	facts, err := ParseBytes([]byte(doc), "col-space.html")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if got := lenientParses.Load(); got != before {
-		t.Fatalf("lenientParses=%d want %d", got, before)
 	}
 	got := map[string]fact.Fact{}
 	for _, f := range facts {
@@ -1073,13 +1011,9 @@ func TestParseMay2017ColSpaceSample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := lenientParses.Load()
 	facts, err := ParseBytes(data, name)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if got := lenientParses.Load(); got != before {
-		t.Fatalf("lenientParses=%d want %d", got, before)
 	}
 	if len(facts) != 149 {
 		t.Fatalf("facts=%d", len(facts))

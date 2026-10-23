@@ -179,20 +179,6 @@ func TestEmployeeSignDroppedWhenDisplayPositive(t *testing.T) {
 	if got := valuesOf(doc.Facts, "StaffCostsEmployeeBenefitsExpense"); !slices.Equal(got, []string{"-86516"}) {
 		t.Fatalf("staff costs=%v", got)
 	}
-	lenient := strings.TrimSuffix(cchDoc("IRIS Accounts Production", "v1", "", `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="0" scale="0" sign="-">9</ix:nonFraction>`), "</html>") + "\x00</html>"
-	got := parseDoc(t, lenient, "sign-lenient.html")
-	if got.Corrections != 1 || !slices.Equal(valuesOf(got.Facts, "AverageNumberEmployeesDuringPeriod"), []string{"9"}) {
-		t.Fatalf("lenient corrections=%d values=%v", got.Corrections, valuesOf(got.Facts, "AverageNumberEmployeesDuringPeriod"))
-	}
-}
-
-func TestCCHEmployeeScaleLenient(t *testing.T) {
-	doc := cchDoc("CCH Software", "iXBRL Review & Tag 2025.2", "", `<ix:nonFraction name="core:AverageNumberEmployeesDuringPeriod" contextRef="c1" unitRef="Pure" decimals="2" scale="-2">8</ix:nonFraction>`)
-	doc = strings.TrimSuffix(doc, "</html>") + "\x00</html>"
-	got := parseDoc(t, doc, "lenient.html")
-	if got.Corrections != 1 || !slices.Equal(valuesOf(got.Facts, "AverageNumberEmployeesDuringPeriod"), []string{"8"}) {
-		t.Fatalf("lenient corrections=%d values=%v", got.Corrections, valuesOf(got.Facts, "AverageNumberEmployeesDuringPeriod"))
-	}
 }
 
 func TestCCHEmployeeScaleSamples(t *testing.T) {
