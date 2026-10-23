@@ -20,7 +20,7 @@ func legalCharsRef(b []byte) bool {
 
 var charCases = []string{
 	"", "a", "plain ascii text that is longer than one word",
-	"\t\n\r", "x\x00", "\x01", "\x1f", "\x7f", "0123456\x0b", "01234567\x0c", "\u0085 £€",
+	"\t\n\r", "x\x00", "\x01", "\x1f", "\x7f", "0123456\x0b", "01234567\x0c", "\xc2\x85\xc2\xa0\xc2\xa3\xe2\x82\xac",
 	"\xef\xbf\xbd", "\xef\xbf\xbe", "\xef\xbf\xbf", "1234567\xef\xbf\xbf", "\xef\xbf", "\xef\xbf\xbc",
 	"\xff", "\xc3", "\xed\xa0\x80", "\xf4\x90\x80\x80", "\U0010FFFF", "\U0001F600",
 	"<a b='c'>\n\t text &amp; \r\n</a>", "aaaaaaa\x80", "aaaaaaaa\x1fbbbbbbb",
