@@ -56,15 +56,7 @@ Found in [Accounts_Bulk_Data-2026-10-23.zip](https://download.companieshouse.gov
 
 `ch-xbrl` used to prefer the identifier over the filename, so `Prod223_4335_00650187_20251231.html` was stored as `0650187`. Joins on the real company number missed the filing. Padding rules and a Companies House precedence list do not belong in the public CSV. The `company_number` column is removed. The tagged value stays an ordinary fact.
 
-These five members are committed unchanged under `samples/`:
-
-| Member | `UKCompaniesHouseRegisteredNumber` | Number in the filename |
-|--------|------------------------------------|------------------------|
-| `Prod223_4335_00650187_20251231.html` | `0650187` | `00650187` |
-| `Prod223_4335_00667698_20260331.html` | `667698` | `00667698` |
-| `Prod223_4335_01266098_20251231.html` | `1266098` | `01266098` |
-| `Prod223_4335_01955720_20260331.html` | `1955720` | `01955720` |
-| `Prod223_4335_02121951_20260630.html` | `2121951` | `02121951` |
+`samples/Prod223_4335_00650187_20251231.html` is committed unchanged. `UKCompaniesHouseRegisteredNumber` is `0650187`. The filename carries `00650187`.
 
 Behaviour that must stay:
 

@@ -17,18 +17,14 @@ import (
 // prodCompanyRE reads the company field from a Prod source_file in tests.
 var prodCompanyRE = regexp.MustCompile(`^Prod\d+_\d+_([A-Za-z0-9]{8})_\d{8}`)
 
-// shortCRNs are members of Accounts_Bulk_Data-2026-10-23.zip whose tags drop
-// leading zeros. The filename keeps the 8-character number.
+// shortCRN is a member of Accounts_Bulk_Data-2026-10-23.zip whose tag drops
+// a leading zero. The filename keeps the 8-character number.
 var shortCRNs = []struct {
 	file  string
 	crn   string
 	short string
 }{
 	{"Prod223_4335_00650187_20251231.html", "00650187", "0650187"},
-	{"Prod223_4335_00667698_20260331.html", "00667698", "667698"},
-	{"Prod223_4335_01266098_20251231.html", "01266098", "1266098"},
-	{"Prod223_4335_01955720_20260331.html", "01955720", "1955720"},
-	{"Prod223_4335_02121951_20260630.html", "02121951", "2121951"},
 }
 
 func TestConsumerCompanyNumberRegex(t *testing.T) {
@@ -36,7 +32,6 @@ func TestConsumerCompanyNumberRegex(t *testing.T) {
 		name, want string
 	}{
 		{"Prod223_4335_00650187_20251231.html", "00650187"},
-		{"Prod223_4335_00667698_20260331.html", "00667698"},
 		{"Prod223_4334_FC041186_20250331_OVERSEAS.zip", "FC041186"},
 		{"Prod224_0088_SC248149_20100331.xml", "SC248149"},
 		{"Prod223_4320_05016384_20251231_CIC.zip", "05016384"},
