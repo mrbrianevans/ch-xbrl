@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-10-23
+
 ### Fixed
 
 - An `OVERSEAS-<CRN>` accounts package was rejected with `no reports` because its report is under `english-accounts/`. Overseas packages now keep only `english-accounts/` and skip any original-language folder. Other packages are unchanged.
@@ -140,7 +142,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - First release.
 
-[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.7...HEAD
+[0.4.7]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/mrbrianevans/ch-xbrl/compare/v0.4.3...v0.4.4
