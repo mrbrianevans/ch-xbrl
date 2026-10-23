@@ -202,6 +202,63 @@ func TestRun_EdgeSampleCICZipNested(t *testing.T) {
 	assertCounts(t, got, []string{"60", "0", "0", "1", "0", "0", "0"})
 }
 
+const overseasZip = "Prod223_4334_FC041186_20250331_OVERSEAS.zip"
+
+// overseasCounts checks the Farrington Homes facts from english-accounts/.
+func overseasCounts(t *testing.T, csvPath string) {
+	t.Helper()
+	got := duckdbCounts(t, csvPath, `
+		count(*),
+		count(*) FILTER (WHERE company_number <> 'FC041186'),
+		count(*) FILTER (WHERE source_file <> '`+overseasZip+`'),
+		count(*) FILTER (
+			WHERE concept = 'EntityCurrentLegalOrRegisteredName'
+			  AND value = 'Farrington Homes Limited'
+		) > 0,
+		count(*) FILTER (
+			WHERE concept = 'NetAssetsLiabilities'
+			  AND value = '-434780'
+			  AND unit = 'iso4217:GBP'
+			  AND period_end = '2025-03-31'
+			  AND dimensions IS NULL
+		),
+		count(*) FILTER (
+			WHERE concept = 'NetAssetsLiabilities'
+			  AND value = '100'
+			  AND unit = 'iso4217:GBP'
+			  AND period_end = '2024-03-31'
+			  AND dimensions IS NULL
+		)`)
+	assertCounts(t, got, []string{"177", "0", "0", "true", "1", "1"})
+}
+
+func TestRun_EdgeSampleOverseasEnglishAccountsDirect(t *testing.T) {
+	csvPath, stderr := extractSample(t, samplePath(t, overseasZip))
+	if !strings.Contains(stderr, "members=1") || !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	if strings.Contains(stderr, "no reports") {
+		t.Fatalf("overseas package rejected:\n%s", stderr)
+	}
+	overseasCounts(t, csvPath)
+}
+
+func TestRun_EdgeSampleOverseasEnglishAccountsNested(t *testing.T) {
+	sample := samplePath(t, overseasZip)
+	outer := filepath.Join(t.TempDir(), "outer.zip")
+	if err := archive.WriteZip(outer, map[string]string{overseasZip: sample}); err != nil {
+		t.Fatal(err)
+	}
+	csvPath, stderr := extractSample(t, outer)
+	if !strings.Contains(stderr, "nested zip: "+overseasZip+" (1 members)") {
+		t.Fatalf("stderr missing nested summary:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "members=1") || !strings.Contains(stderr, "files_err=0") {
+		t.Fatalf("stderr: %s", stderr)
+	}
+	overseasCounts(t, csvPath)
+}
+
 func TestRun_EdgeSampleFactInsideContinuation(t *testing.T) {
 	const file = "01922327_aa_2025-12-31.xhtml"
 	csvPath, stderr := extractSample(t, samplePath(t, file))

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- An `OVERSEAS-<CRN>` accounts package was rejected with `no reports` because its report is under `english-accounts/`. Overseas packages now keep only `english-accounts/` and skip any original-language folder. Other packages are unchanged.
+
 ## [0.4.6] - 2026-10-16
 
 ### Fixed
