@@ -98,6 +98,30 @@ func TestSelectPackage(t *testing.T) {
 			names: []string{"CIC-00000001/cic34/only.xhtml"},
 			want:  packageSelection{Kind: packageCH},
 		},
+		{
+			name:  "overseas keeps english-accounts",
+			names: []string{"OVERSEAS-FC041186/english-accounts/FS_X_31032025.xhtml"},
+			want:  packageSelection{Kind: packageCH, Files: []string{"OVERSEAS-FC041186/english-accounts/FS_X_31032025.xhtml"}},
+		},
+		{
+			name: "overseas skips original-language and accounts folders",
+			names: []string{
+				"overseas-FC041186/English-Accounts/en.xhtml",
+				"overseas-FC041186/original-accounts/fr.xhtml",
+				"overseas-FC041186/accounts/other.xhtml",
+			},
+			want: packageSelection{Kind: packageCH, Files: []string{"overseas-FC041186/English-Accounts/en.xhtml"}},
+		},
+		{
+			name:  "overseas with no english-accounts",
+			names: []string{"OVERSEAS-FC041186/original-accounts/fr.xhtml"},
+			want:  packageSelection{Kind: packageCH},
+		},
+		{
+			name:  "english-accounts is not kept outside an overseas package",
+			names: []string{"CIC-05016384/english-accounts/en.xhtml"},
+			want:  packageSelection{Kind: packageCH},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

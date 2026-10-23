@@ -51,10 +51,10 @@ func selectPackage(names []string) packageSelection {
 			UKFRS: true,
 		}
 	}
-	if chPackageRoot(norm) {
+	if root, ok := chPackageRoot(norm); ok {
 		return packageSelection{
 			Kind:  packageCH,
-			Files: selectCHReports(norm),
+			Files: selectCHReports(norm, root),
 		}
 	}
 	return packageSelection{Kind: packageBulk}
@@ -111,10 +111,13 @@ func hasMarker(names []string, prefix string) bool {
 	return false
 }
 
-// chPackageRoot reports a single top-level folder named PREFIX-CRN.
-func chPackageRoot(names []string) bool {
+// chPackageRoot returns the single top-level folder when it is named PREFIX-CRN.
+func chPackageRoot(names []string) (string, bool) {
 	roots := topLevels(names)
-	return len(roots) == 1 && prefixCRN.MatchString(roots[0])
+	if len(roots) == 1 && prefixCRN.MatchString(roots[0]) {
+		return roots[0], true
+	}
+	return "", false
 }
 
 func topLevels(names []string) []string {
@@ -189,10 +192,21 @@ func discoverReports(names []string, prefix string) []string {
 	return out
 }
 
-func selectCHReports(names []string) []string {
-	var subsidiary, accounts []string
+// selectCHReports picks the filing from a PREFIX-CRN package. An OVERSEAS
+// package keeps only the English accounts under english-accounts/; any
+// original-language folder is skipped. Other packages keep
+// subsidiary-accounts/ when present, else accounts/.
+func selectCHReports(names []string, root string) []string {
+	overseas := strings.HasPrefix(strings.ToUpper(root), "OVERSEAS-")
+	var subsidiary, accounts, english []string
 	for _, name := range names {
 		if !memberNameOK(name) || isZipName(name) || !isXBRLName(name) {
+			continue
+		}
+		if overseas {
+			if hasPathSegment(name, "english-accounts") {
+				english = append(english, name)
+			}
 			continue
 		}
 		switch {
@@ -201,6 +215,9 @@ func selectCHReports(names []string) []string {
 		case hasPathSegment(name, "accounts"):
 			accounts = append(accounts, name)
 		}
+	}
+	if overseas {
+		return english
 	}
 	if len(subsidiary) > 0 {
 		return subsidiary

@@ -209,6 +209,31 @@ Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
 
 Tests: `TestRun_FilingHistoryPackages`, `TestRun_PackageNestedInBulkZip`.
 
+## Overseas package with English accounts
+
+Found in [Accounts_Bulk_Data-2026-10-22.zip](https://download.companieshouse.gov.uk/Accounts_Bulk_Data-2026-10-22.zip), member `Prod223_4334_FC041186_20250331_OVERSEAS.zip` (FARRINGTON HOMES LIMITED, `FC041186`, a Jersey company with a UK establishment). It was the only `OVERSEAS` member in that pack. Reported in [#28](https://github.com/mrbrianevans/ch-xbrl/issues/28).
+
+The member is a zip of 15,231 bytes with one entry and no directory entries:
+
+```text
+OVERSEAS-FC041186/english-accounts/FS_FarringtonHomesLimited_31032025.xhtml
+```
+
+The `.xhtml` is an FRS 102 iXBRL report (schemaRef `https://xbrl.frc.org.uk/FRS-102/2025-01-01/FRS-102-2025-01-01.xsd`). It starts with whitespace and `<html xmlns=...>`, with no XML declaration.
+
+`OVERSEAS-FC041186` matches `PREFIX-CRN`, so the zip is a Companies House package. The package selector used to keep only `accounts/` and `subsidiary-accounts/`, so `english-accounts/` was dropped and the member failed with `no reports` (`files_err=1`, no facts).
+
+Behaviour that must stay:
+
+- A package whose top-level folder is `OVERSEAS-<CRN>` (case-insensitive) emits only the iXBRL files under `english-accounts/` (case-insensitive, exact segment). An original-language folder, or an `accounts/` folder, in the same package is skipped and logged (`skip nested member: …`).
+- An `OVERSEAS` package with no `english-accounts/` report is a member error (`no reports`).
+- `english-accounts/` is not selected in other `PREFIX-CRN` packages.
+- The package emits 177 facts with `company_number` `FC041186`, `EntityCurrentLegalOrRegisteredName` `Farrington Homes Limited`, and `NetAssetsLiabilities` `-434780` GBP at 2025-03-31 (`100` at 2024-03-31). `source_file` is the package name, both as the input and as a bulk member.
+
+The member is committed at `samples/Prod223_4334_FC041186_20250331_OVERSEAS.zip`.
+
+Tests: `TestSelectPackage`, `TestRun_EdgeSampleOverseasEnglishAccountsDirect`, `TestRun_EdgeSampleOverseasEnglishAccountsNested`.
+
 ## Untransformable date
 
 A fact tagged with a date format that cannot be transformed fails the member. Nothing from that file is written. It counts in `files_err`. Without `--continue-on-error` the process exits 1. With the flag the member is logged and skipped. The log names the source file, concept, format, and the text.
