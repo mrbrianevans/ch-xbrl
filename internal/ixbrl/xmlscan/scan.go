@@ -123,6 +123,10 @@ func (s *Scanner) Reset(data []byte) {
 	} else {
 		clear(s.ns)
 	}
+	// Interned prefixes are kept between documents, within reason.
+	if len(s.intern) > 1024 {
+		clear(s.intern)
+	}
 	s.validChars = legalChars(data)
 	s.hasCR = bytes.IndexByte(data, '\r') >= 0
 	s.hasCDEnd = bytes.Contains(data, cdataEnd)
@@ -979,35 +983,45 @@ func inCharRange(r rune) bool {
 // character in the XML Char production. When it holds, Decoder's per-value
 // check can only fail on a numeric reference, which checkEntities covers.
 func legalChars(b []byte) bool {
+	if !utf8.Valid(b) {
+		return false
+	}
+	// A byte below 0x20 other than tab, LF and CR. (w-lo)&^w&hi is non-zero
+	// exactly when some byte of w is below 0x20: the lowest such byte gets
+	// no borrow from below, and bytes from 0x80 are masked by ^w.
 	const (
 		lo = 0x2020202020202020
 		hi = 0x8080808080808080
 	)
-	for i := 0; i < len(b); {
-		for i+8 <= len(b) {
-			// No byte has the high bit set and none is below 0x20.
-			w := binary.LittleEndian.Uint64(b[i:])
-			if (w|(w-lo))&hi != 0 {
-				break
-			}
-			i += 8
-		}
-		if i >= len(b) {
-			break
-		}
-		c := b[i]
-		if c < utf8.RuneSelf {
-			if c < 0x20 && c != '\t' && c != '\n' && c != '\r' {
-				return false
-			}
-			i++
-			continue
-		}
-		r, size := utf8.DecodeRune(b[i:])
-		if r == utf8.RuneError && size == 1 || r == 0xFFFE || r == 0xFFFF {
+	i := 0
+	for ; i+8 <= len(b); i += 8 {
+		w := binary.LittleEndian.Uint64(b[i:])
+		if (w-lo)&^w&hi != 0 && !onlyWhitespaceControls(b[i:i+8]) {
 			return false
 		}
-		i += size
+	}
+	if !onlyWhitespaceControls(b[i:]) {
+		return false
+	}
+	// U+FFFE and U+FFFF are EF BF BE and EF BF BF. In valid UTF-8, EF only
+	// starts a three-byte sequence.
+	for j := 0; ; {
+		k := bytes.Index(b[j:], []byte{0xEF, 0xBF})
+		if k < 0 {
+			return true
+		}
+		j += k + 2
+		if j < len(b) && (b[j] == 0xBE || b[j] == 0xBF) {
+			return false
+		}
+	}
+}
+
+func onlyWhitespaceControls(b []byte) bool {
+	for _, c := range b {
+		if c < 0x20 && c != '\t' && c != '\n' && c != '\r' {
+			return false
+		}
 	}
 	return true
 }

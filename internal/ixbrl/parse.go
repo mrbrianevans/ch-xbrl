@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/mrbrianevans/ch-xbrl/internal/fact"
@@ -27,6 +28,7 @@ const (
 	nsXLink  = "http://www.w3.org/1999/xlink"
 	nsXMLNS  = "http://www.w3.org/2000/xmlns/"
 	nsXML    = "http://www.w3.org/XML/1998/namespace"
+	nsXHTML  = "http://www.w3.org/1999/xhtml"
 )
 
 type contextInfo struct {
@@ -117,6 +119,10 @@ func parseDocument(data []byte, sourceFile, onlyTarget string) (Document, error)
 	return Document{Facts: facts, Corrections: n}, nil
 }
 
+// scanners keeps tokenisers, and their buffers, between members. Nothing a
+// fact holds points into a scanner: names and values are copied out.
+var scanners = sync.Pool{New: func() any { return xmlscan.New(nil) }}
+
 func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, error) {
 	// Strip BOM / leading junk before the first '<' (seen in older CH dumps).
 	data = stripXMLPreamble(data)
@@ -127,7 +133,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	// is read as is and &#160; in a date is decoded (docs/edge-cases.md).
 	// There is no HTML void-element auto-close: `<col> </col>` is an
 	// ordinary element (docs/edge-cases.md).
-	sc := xmlscan.New(data)
+	sc := scanners.Get().(*xmlscan.Scanner)
+	sc.Reset(data)
+	defer func() {
+		sc.Reset(nil)
+		scanners.Put(sc)
+	}()
 
 	// prefix → namespace URI (document-level, updated as we go)
 	ns := map[string]string{}
@@ -200,11 +211,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			// local aliases the input; string(local) == "…" does not allocate.
 			local := sc.Local()
 			space := sc.Space()
+			ix := isIX(space)
 			lastDim = sc.Attr("dimension")
 
 			// ix:exclude hides its text from ancestor facts and continuations.
 			// A fact nested inside it is still its own frame.
-			if isIX(space) && string(local) == "exclude" {
+			if ix && string(local) == "exclude" {
 				openStack = append(openStack, &openFrame{kind: openExclude, space: space, local: string(local)})
 				continue
 			}
@@ -238,7 +250,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 			case isNS(space, nsXBRLI) && string(local) == "unit":
 				curUnit = &unitInfo{ID: sc.Attr("id")}
 
-			case isIX(space) && (string(local) == "nonFraction" || string(local) == "nonNumeric"):
+			case ix && (string(local) == "nonFraction" || string(local) == "nonNumeric"):
 				qname := sc.Attr("name")
 				nsURI, badPrefix := inlineNamespace(qname, ns)
 				if badPrefix != "" {
@@ -288,7 +300,7 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 				}
 				openStack = append(openStack, &openFrame{kind: openFact, fact: pf, space: space, local: string(local)})
 
-			case isIX(space) && string(local) == "continuation":
+			case ix && string(local) == "continuation":
 				// Continuation of a prior fact (continuedAt chain).
 				// Nested continuations each keep their own frame.
 				openStack = append(openStack, &openFrame{
@@ -501,7 +513,12 @@ func parseBytes(data []byte, sourceFile, onlyTarget string) ([]fact.Fact, int, e
 	return out, corrections, nil
 }
 
+// isIX reports an inline XBRL namespace. Most elements of a filing are
+// XHTML, so that answer is checked first.
 func isIX(space string) bool {
+	if space == nsXHTML {
+		return false
+	}
 	return space == nsIXBRL || space == nsIXBRL1 || space == "" ||
 		strings.Contains(space, "inlineXBRL")
 }
@@ -614,8 +631,7 @@ func isClassicItem(space string, sc *xmlscan.Scanner) bool {
 		return false
 	}
 	switch space {
-	case nsXBRLI, nsLink, nsXLink, nsXBRLDI, nsXMLNS,
-		"http://www.w3.org/1999/xhtml",
+	case nsXBRLI, nsLink, nsXLink, nsXBRLDI, nsXMLNS, nsXHTML,
 		"http://www.w3.org/2001/XMLSchema-instance",
 		"http://www.w3.org/2001/XMLSchema",
 		"http://xbrl.org/2005/xbrldt",
